@@ -45,7 +45,7 @@ A TurboTax-style guided step flow. The user provides a description and submits. 
 
 Each step includes a collapsible "more info" section explaining the domain. For steps where inference confidence is low, this section is auto-expanded. For Memory & State specifically, a "help me determine the best option" flow surfaces targeted clarifying questions and recommends based on the answers. The questions and explainer content for all steps live in the maintenance manifest and are updated on the same refresh cadence.
 
-**The step list adapts** based on prior confirmed answers. Model preferences is a conditional step — it only surfaces if the platform selected in step 2 does not constrain model selection.
+**The step list adapts** based on prior confirmed answers. Model preferences always surfaces. Platform selection (step 2) filters the available options but does not suppress the step. When inference can determine a model, it surfaces pre-populated. When inference confidence is too low, it surfaces with a "Choose for me" default. If the user changes the model selection, available options and pre-selections in the tools step update accordingly.
 
 Reasoning for each step lives in the agent layer. The UI renders and captures; it does not reason.
 
@@ -67,7 +67,7 @@ Agents receive the full verified context: the original description, all confirme
 | 8 | Greenfield vs. brownfield | New build, extending existing system, or migration |
 | 9 | Failure tolerance | Mission criticality, acceptable failure modes, audit trail requirements |
 | 10 | Hard constraints | Non-negotiables that eliminate options entirely (not preferences). Collected last, passed directly to agents — does not affect intake inference |
-| 11 | Model preferences | *Conditional:* only surfaces if platform (step 2) does not constrain model selection |
+| 11 | Model preferences | Always surfaces. Platform (step 2) filters available options. Pre-populated with inference if confident, or "Choose for me" if not. Changing selection updates tool options downstream. |
 
 
 ---
@@ -78,9 +78,9 @@ A shared knowledge store that agents read from at query time. Kept current by a 
 
 All options surfaced in the intake UI are sourced from the manifest. The manifest is the single source of truth for available options across all steps.
 
-**Refresh cadence:**
-- Vendor-specific cloud offerings and tooling: frequent (weekly or more)
-- Architecture patterns: monthly
+**Refresh cadence:** Lazy and on-demand — refresh only runs when the tool is accessed. Staleness is checked on UI open; stale entries are refreshed in the background before the run proceeds.
+- Vendor-specific cloud offerings and tooling: daily
+- Architecture patterns: every 2 weeks
 
 **Agents both consume and maintain the manifest.** To prevent drift, a Manifest Gatekeeper reviews all proposed updates before they go live.
 
@@ -106,7 +106,6 @@ New entries are scored using source weighting and move through staged inclusion 
 
 **Secondary signals (contribute but with lower weight):**
 - Additional citations from credible sources
-- User behavior within the recommender system (useful long-term but requires volume to be meaningful)
 - Contradiction by a newer pattern from a high-weight source (strong negative signal)
 
 **Staged inclusion:**
