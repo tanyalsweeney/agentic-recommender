@@ -282,26 +282,53 @@ Contains:
 
 ## Settled decisions
 
-| Decision | Choice | Reason |
-|---|---|---|
-| Pipeline runs | Two separate runs | Single pass optimizes for two audiences simultaneously and does neither well |
-| Agent input | Verified structured context only | Prevents downstream agents from reasoning from bad intake inference |
-| Intake inference | Single stateful agent, sequential reasoning across steps | Inter-step dependencies handled naturally; 85% accuracy bar does not justify per-step specialist agents; users can correct any wrong inference |
-| Reasoning layer | Agent layer only | UI displays and captures; reasoning must not split into the frontend |
-| Options source | Maintenance manifest only | Nothing that could evolve is hardcoded in the UI |
-| Pass 2 trigger | User-initiated | Only pays for deep run when user explicitly wants it |
-| Manifest knowledge freshness | On-demand refresh | Keeps available options and patterns current for intake UI and agent recommendations |
-| Compatibility Validator freshness | Live web search per run | Ensures version, compatibility, and pricing data is current at evaluation time — the manifest does not serve as a source for CV checks |
-| Cost visibility | Surfaced in Pass 1 | Every stakeholder needs to speak to ongoing cost |
-| Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer |
-| Pass 2 architecture | Dedicated synthesis agents, one per recommendation domain | Expanding validated output is a different job than producing recommendations; re-running the wave model would re-derive what is already settled |
-| Pass 2 input | Raw agent outputs from all waves + verified intake context | Rendered Pass 1 is for humans; synthesis agents need the underlying detail |
-| Compatibility Validator in Pass 2 | Shared input to all synthesis agents, no synthesis counterpart | Cross-cutting data; not a domain with its own ADRs or specs |
-| Manifest governance | Confidence scoring + source weighting + staged inclusion | Handles quality/relevance disputes without over-relying on human escalation |
-| Schema changes | Automatic human escalation | Too broad an impact to leave to agent consensus |
-| Manifest refresh | On-demand, lazy trigger | No wasted cycles during quiet periods; naturally scales with usage
-| Manifest staleness threshold | Daily for AI-specific tooling | AI tooling landscape changes too rapidly for weekly cadence |
-| Manifest refresh UX | Background on UI open; blocks only if user submits before refresh completes | User writing their description usually covers the refresh window |
-| Gatekeeper rejected entries | Dropped, no queue | Next refresh cycle is the retry mechanism |
-| User-scoped tools | Run-scoped, live-researched, flagged as unvetted in output | Keeps manifest integrity intact while still evaluating user-specified tools |
-| Trust & Control placement | Wave 1 (sequential after Orchestration and Security) | HITL feasibility is architecturally load-bearing for Pass 1 — the Skeptic lacks the domain expertise to substitute for a dedicated T&C assessment |
+### System architecture
+
+| Decision | Choice | Reason | Decided |
+|---|---|---|---|
+| Pipeline runs | Two separate runs | Single pass optimizes for two audiences simultaneously and does neither well | 2026-04-14 |
+| Reasoning layer | Agent layer only | UI displays and captures; reasoning must not split into the frontend | 2026-04-14 |
+
+### Maintenance manifest
+
+| Decision | Choice | Reason | Decided |
+|---|---|---|---|
+| Manifest knowledge freshness | On-demand refresh | Keeps available options and patterns current for intake UI and agent recommendations | 2026-04-15 |
+| Manifest governance | Confidence scoring + source weighting + staged inclusion | Handles quality/relevance disputes without over-relying on human escalation | 2026-04-14 |
+| Schema changes | Automatic human escalation | Too broad an impact to leave to agent consensus | 2026-04-14 |
+| Manifest refresh | On-demand, lazy trigger | No wasted cycles during quiet periods; naturally scales with usage | 2026-04-14 |
+| Manifest staleness threshold | Daily for AI-specific tooling | AI tooling landscape changes too rapidly for weekly cadence | 2026-04-14 |
+| Manifest refresh UX | Background on UI open; blocks only if user submits before refresh completes | User writing their description usually covers the refresh window | 2026-04-14 |
+| Gatekeeper rejected entries | Dropped, no queue | Next refresh cycle is the retry mechanism | 2026-04-14 |
+| User-scoped tools | Run-scoped, live-researched, flagged as unvetted in output | Keeps manifest integrity intact while still evaluating user-specified tools | 2026-04-14 |
+
+### Intake
+
+| Decision | Choice | Reason | Decided |
+|---|---|---|---|
+| Intake inference | Single stateful agent, sequential reasoning across steps | Inter-step dependencies handled naturally; 85% accuracy bar does not justify per-step specialist agents; users can correct any wrong inference | 2026-04-14 |
+| Agent input | Verified structured context only | Prevents downstream agents from reasoning from bad intake inference | 2026-04-14 |
+| Options source | Maintenance manifest only | Nothing that could evolve is hardcoded in the UI | 2026-04-14 |
+
+### Agent pipeline
+
+| Decision | Choice | Reason | Decided |
+|---|---|---|---|
+| Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer | 2026-04-14 |
+| Trust & Control placement | Wave 1 (sequential after Orchestration and Security) | HITL feasibility is architecturally load-bearing for Pass 1 — the Skeptic lacks the domain expertise to substitute for a dedicated T&C assessment | 2026-04-15 |
+
+### Compatibility Validator
+
+| Decision | Choice | Reason | Decided |
+|---|---|---|---|
+| Compatibility Validator freshness | Live web search per run | Ensures version, compatibility, and pricing data is current at evaluation time — the manifest does not serve as a source for CV checks | 2026-04-15 |
+| Compatibility Validator in Pass 2 | Shared input to all synthesis agents, no synthesis counterpart | Cross-cutting data; not a domain with its own ADRs or specs | 2026-04-14 |
+
+### Output
+
+| Decision | Choice | Reason | Decided |
+|---|---|---|---|
+| Cost visibility | Surfaced in Pass 1 | Every stakeholder needs to speak to ongoing cost | 2026-04-14 |
+| Pass 2 trigger | User-initiated | Only pays for deep run when user explicitly wants it | 2026-04-14 |
+| Pass 2 architecture | Dedicated synthesis agents, one per recommendation domain | Expanding validated output is a different job than producing recommendations; re-running the wave model would re-derive what is already settled | 2026-04-14 |
+| Pass 2 input | Raw agent outputs from all waves + verified intake context | Rendered Pass 1 is for humans; synthesis agents need the underlying detail | 2026-04-14 |
