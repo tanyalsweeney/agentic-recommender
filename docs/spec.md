@@ -125,8 +125,8 @@ New entries are scored using source weighting and move through staged inclusion 
 ### Guiding principle
 Agents focus on agentic-specific concerns. Traditional software architecture concerns (APIs, databases, auth, deployment infrastructure) are out of scope for the agent layer.
 
-### Wave 1 — Parallel
-All agents run simultaneously on the verified context. Each agent produces domain recommendations **plus structured cost signals** for their area. Cost signals feed into the Compatibility Validator in Wave 2.
+### Wave 1 — Mostly parallel
+Orchestration, Security, Memory & State, and Tool & Integration run in parallel on the verified context. Trust & Control runs after Orchestration and Security complete — it cannot place gates without knowing the flow and risk profile. All Wave 1 agents produce domain recommendations **plus structured cost signals** for their area. Cost signals feed into the Compatibility Validator in Wave 2.
 
 | Agent | Agentic focus |
 |---|---|
@@ -135,18 +135,36 @@ All agents run simultaneously on the verified context. Each agent produces domai
 | Memory & State | Persistence strategy, shared state design, memory pattern selection. Note: users frequently don't know if they need memory or state — the intake step for this domain needs more explanatory scaffolding than others, and the agent should surface its reasoning explicitly rather than just its conclusion. |
 | Tool & Integration | Reasons about where the tool-vs-agent boundary should be drawn for this user's specific system. Core decision framework: tools for deterministic operations (same input, same output), agents for tasks requiring judgment. Also covers MCP usage and build vs. buy recommendations. Platform-specific tool filtering from the manifest happens within this agent but is not its core value. |
 
-### Wave 2 — Sequential (depends on Wave 1)
-
-**Compatibility Validator**
-- Checks compatibility: versions, MCP, model constraints, cloud, memory
-- Collects current pricing and tier data via web lookup (already hitting vendor pages)
-- Aggregates cost signals from Wave 1 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
-- Feeds cost estimates into Pass 1 output
-
-**Trust & Control**
+**Trust & Control** *(sequential — runs after Orchestration and Security complete)*
 - HITL placement and approval gate design
 - Depends on Orchestration (to know the flow) and Security (to know the risk profile) before it can place gates meaningfully
 - Autonomy level is captured during intake; this agent determines where and how that level is enforced within the specific architecture
+
+### Wave 2 — Sequential (depends on Wave 1)
+
+**Compatibility Validator**
+
+Runs a fresh web search for every tool and integration point it evaluates. Does not rely on cached manifest data for compatibility checks — versions change, integration issues surface, and patches ship on short cycles.
+
+*Compatibility checks:*
+- Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
+- Checks LLM SDK version against orchestration framework, memory/vector store against embedding model API, agent framework against tool execution runtime, and model constraints against platform deployment target
+- Collects current pricing and tier data from vendor pages (already visiting them for version and compatibility research)
+- Aggregates cost signals from Wave 1 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
+
+*Per-tool intelligence (captured while already on vendor documentation):*
+- End-of-life date for the recommended version
+- HIGH and CRITICAL CVEs affecting the recommended version that have not been patched in that version
+- Meaningful breaking changes between the recommended version and current stable
+- License (SPDX identifier; copyleft licenses flagged for legal review)
+- For managed cloud services: availability in the target cloud provider and region — whether specified by the user or recommended by the system
+
+*Cross-agent conflict checks:*
+- Constraint violations: checks whether any tool or decision recommended by one Wave 1 agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
+- Integration gaps: verifies that every tool dependency an agent assumes is actually accounted for by some agent in the set
+- Version conflicts: where two agents both depend on the same tool, checks that their version requirements are compatible
+
+The CV's full report feeds Pass 1 output directly and is shared input to all six Pass 2 synthesis agents.
 
 **Failure & Observability**
 - Eval strategy
@@ -272,7 +290,8 @@ Contains:
 | Reasoning layer | Agent layer only | UI displays and captures; reasoning must not split into the frontend |
 | Options source | Maintenance manifest only | Nothing that could evolve is hardcoded in the UI |
 | Pass 2 trigger | User-initiated | Only pays for deep run when user explicitly wants it |
-| Knowledge freshness | Maintenance manifest with scheduled refresh | Keeps compatibility analysis current without relying on model training data |
+| Manifest knowledge freshness | On-demand refresh | Keeps available options and patterns current for intake UI and agent recommendations |
+| Compatibility Validator freshness | Live web search per run | Ensures version, compatibility, and pricing data is current at evaluation time — the manifest does not serve as a source for CV checks |
 | Cost visibility | Surfaced in Pass 1 | Every stakeholder needs to speak to ongoing cost |
 | Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer |
 | Pass 2 architecture | Dedicated synthesis agents, one per recommendation domain | Expanding validated output is a different job than producing recommendations; re-running the wave model would re-derive what is already settled |
@@ -285,3 +304,4 @@ Contains:
 | Manifest refresh UX | Background on UI open; blocks only if user submits before refresh completes | User writing their description usually covers the refresh window |
 | Gatekeeper rejected entries | Dropped, no queue | Next refresh cycle is the retry mechanism |
 | User-scoped tools | Run-scoped, live-researched, flagged as unvetted in output | Keeps manifest integrity intact while still evaluating user-specified tools |
+| Trust & Control placement | Wave 1 (sequential after Orchestration and Security) | HITL feasibility is architecturally load-bearing for Pass 1 — the Skeptic lacks the domain expertise to substitute for a dedicated T&C assessment |
