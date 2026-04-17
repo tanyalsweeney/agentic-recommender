@@ -101,7 +101,7 @@ All options surfaced in the intake UI are sourced from the manifest. The manifes
 New entries are scored using source weighting and move through staged inclusion based on score.
 
 **Primary confidence signals (carry the most weight):**
-- Adoption by recognized practitioners and organizations (leading indicator, hard to fake)
+- Adoption by recognized practitioners and organizations (leading indicator, hard to fake). Independence of adopting orgs is evaluated using the vendor relationship cache maintained by the Compatibility Validator — see CV section. A vendor's adoption of their own tool scores zero. An affiliate org's adoption also scores zero. Adoption count is weighted by number of genuinely independent adopters.
 - Time without contradicting evidence (stability signal)
 
 **Secondary signals (contribute but with lower weight):**
@@ -117,6 +117,103 @@ New entries are scored using source weighting and move through staged inclusion 
 - What is the manifest's data structure and query pattern — full load, filtered lookup, or embedding search?
 - Who are the recognized practitioners and organizations? This is itself a list that needs governance.
 - What are the specific confidence thresholds for graduation and demotion?
+- Initial population: the manifest requires a human-curated seed list before the system can run. Criteria for seed inclusion and the seed list itself are TBD. Depends on org list resolution.
+
+---
+
+## Practitioner org list
+
+A tiered list of AI-forward organizations whose adoption of a tool or pattern is treated as a credible confidence signal. Maintained separately from the maintenance manifest with its own governance.
+
+### Why a separate gatekeeper
+
+The org list is more load-bearing than the manifest. A bad manifest entry affects one tool's score. A bad org list entry corrupts adoption signals across every tool that org has ever touched. This warrants a higher bar and dedicated oversight.
+
+### Org List Gatekeeper
+
+A dedicated gatekeeper agent, distinct from the Manifest Gatekeeper, governs all changes to the org list. The two gatekeepers have the right to challenge each other — the Manifest Gatekeeper can flag if an org's adoption patterns appear compromised; the Org List Gatekeeper can flag if a manifest entry's confidence score appears inflated by suspect adoption signals. When the two gatekeepers disagree, the more conservative position wins.
+
+### Human approval required for all org list changes
+
+Unlike the Manifest Gatekeeper, the Org List Gatekeeper does not have authority to make changes autonomously. All proposed modifications require human (owner/admin) approval.
+
+**Proposed modification flow:**
+1. Org List Gatekeeper proposes additions, removals, or tier changes with written justification and links to source material reviewed
+2. Owner/admin reviews each proposed modification and approves or overrides
+3. If overridden, the Gatekeeper runs a deeper research pass — either surfacing a stronger argument for its position, or validating the human's reasoning with evidence
+4. Human reviews the second pass via a full review screen and confirms or reverses their override
+5. Human decision is final. No third pass.
+
+Rejected modifications are dropped with no queue. If an org has legs, it will surface again on the next cycle with whatever additional evidence has accumulated.
+
+### Org list scoring signals
+
+An org's tier is determined by depth of commitment to agentic systems across four signals:
+
+1. **Engineering publications** — volume and technical depth; marketing content does not count
+2. **Open-source tooling** — active maintenance; abandoned repos do not count
+3. **Platform offerings** — established offerings; beta announcements do not count
+4. **Market influence** — platform or tooling decisions demonstrably shape industry adoption at scale; reserved for a short list; requires explicit owner/admin approval; independence check still applies
+
+**Tier definitions:**
+
+| Tier | Criteria |
+|---|---|
+| Tier 1 | Active in at least two signal categories with sustained meaningful output — OR qualifies on market influence |
+| Tier 2 | Strong presence in one signal category |
+| Tier 3 | Early but genuine signals; not yet established enough for Tier 2 but credible enough to track |
+
+**Recency qualifier:** Any org with no meaningful activity across their signals in the last 6 months is flagged for re-evaluation regardless of tier.
+
+**Tier weighting in confidence scoring:** Tier 1 org adoption carries more weight than Tier 2; Tier 2 carries more weight than Tier 3. Exact weighting is agent-determined based on signal strength and independence — no fixed formula.
+
+### Seed list
+
+**Tier 1 — Market influence**
+Anthropic, OpenAI, Google/DeepMind, Microsoft, Amazon/AWS, Meta, Nvidia
+
+**Tier 1 — Deep commitment across multiple signals**
+- LangChain — dominant framework ecosystem (LangGraph, LangSmith), extensive engineering publications
+- Hugging Face — open source hub, smolagents, prolific technical publishing
+
+**Tier 2 — Strong in one area**
+- Cohere, Mistral, Together AI — serious model providers with genuine engineering depth
+- Weights & Biases — observability tooling and publications
+- Pinecone, Weaviate — vector DB providers with substantive engineering content
+- Modal, E2B — agent infrastructure with real technical credibility
+- Databricks — strong engineering depth, MLflow ownership, serious publications
+- Cursor — AI-native company running agentic systems as core product
+
+**Tier 3 — Emerging**
+- CrewAI, LlamaIndex, Haystack — frameworks with growing but not yet established track records
+- Composio — tooling layer, newer but gaining traction
+
+### Periodic and on-demand review
+
+The current org list is surfaced to the owner/admin on a periodic cadence for review. Any item on the list can be challenged — either on the periodic review screen or on-demand at any time.
+
+**On-demand challenge batching:** Multiple challenges triggered in the same session are batched into a single research job. Research runs in the background and is non-blocking. The owner/admin reviews findings at next convenient moment.
+
+### Urgent flag — admin level
+
+Owner/admin can mark any org as urgent. Urgent flags bypass batching and trigger immediate research.
+
+**While an urgent hold is active:**
+- All new runs: any recommendation that would include a held org's tools is blocked or surfaced with a prominent warning
+- In-flight runs that have already passed the affected tool: allowed to complete; output is flagged retroactively with a hold warning
+- Hold persists until owner/admin explicitly resolves it — confirm hold, escalate to removal, or lift
+
+### Urgent flag — user level
+
+Authenticated users can flag an org as urgent for their own runs only. User-level flags do not affect the manifest, the org list, or any other user's runs.
+
+**User-level hold behavior:**
+- Affects only that user's recommendations — held org's tools are blocked or flagged in their runs
+- Triggers background research scoped to that user's flag; findings are surfaced to the user
+- User can lift their own hold at any time
+
+**Aggregate signal to owner/admin:**
+User-level holds are surfaced to the owner/admin in aggregate on next run — not individually (user privacy preserved), but as a pattern: e.g. "3 users have active holds on Org X — view details." Unusual hold activity on an org triggers a prompt for the owner/admin to consider an admin-level review. This is a nudge, not an automatic hold.
 
 ---
 
@@ -165,6 +262,17 @@ Runs a fresh web search for every tool and integration point it evaluates. Does 
 - Version conflicts: where two agents both depend on the same tool, checks that their version requirements are compatible
 
 The CV's full report feeds Pass 1 output directly and is shared input to all six Pass 2 synthesis agents.
+
+*Vendor relationship cache (side effect of CV runs):*
+
+CV captures ownership and affiliate information opportunistically during its vendor documentation visits. When CV encounters ownership details (parent company, acquiring org, subsidiary relationships) while researching a tool, it writes that to a shared vendor relationship cache.
+
+- CV writes to the cache; it does not read from it or use it for compatibility checks
+- All cache entries route through the Manifest Gatekeeper before affecting confidence scoring
+- Cache entries carry a staleness threshold tied to the tool's refresh cadence — stale entries are re-validated on next CV visit to that vendor
+- Coverage is run-driven: only tools that appear in recommendations accumulate relationship data. Low-traffic tools may have no cache entry and fall back to direct-vendor-only zero-scoring.
+
+See Maintenance Manifest — Confidence scoring for how this cache is used to evaluate independence of adoption signals.
 
 **Failure & Observability**
 - Eval strategy
