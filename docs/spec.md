@@ -190,7 +190,7 @@ All views support time filtering: presets (today / this week / this month) and a
 
 **Design principle: show value early, minimize friction.** The user sees the system working immediately — inference results presented for confirmation — before being asked to provide anything additional. High-friction asks before value delivery are avoided.
 
-A TurboTax-style guided step flow. The user provides a description and submits. Inference runs once on the description, producing a pre-populated selection for every step. From that point, the system presents one step at a time with:
+A TurboTax-style guided step flow. The user provides a description and any hard constraints upfront, then submits. Hard constraints are collected with the description — before inference runs — so the intake agent can exclude non-viable options from the start rather than surfacing them for the user to reject. Inference runs once on the description and constraints together, producing a pre-populated selection for every step. From that point, the system presents one step at a time with:
 - A progress / remaining steps indicator
 - The inference made at the top of the step, pre-selected
 - Available options for that step (all sourced from the maintenance manifest)
@@ -206,6 +206,22 @@ Nothing that could evolve is hardcoded in the UI. All options at every step are 
 
 Agents receive the full verified context: the original description, all confirmed selections, and any hard constraints. They do not re-infer what the intake flow already established.
 
+### Review screen
+
+The final step before submission. Displays the complete verified context — project description, hard constraints, and all confirmed step selections — so the user sees the full picture together for the first time.
+
+All fields are editable. The user can correct anything they spotted while reviewing without navigating back through individual steps.
+
+**Downstream dependency handling:**
+If an edit would invalidate a downstream selection, the system surfaces a confirmation before proceeding. The message specifies what will be re-inferred — not just what will be cleared — so the user understands the system will handle it:
+
+> *"Changing your platform will update your available model options and tool recommendations. Your current selections for those steps will be replaced with new inferences. Continue?"*
+
+Re-inference runs only on the affected steps. Unaffected selections are preserved.
+
+**Hard constraints field:**
+The hard constraints field is prominently surfaced on the review screen as an explicit prompt — users frequently discover constraints they hadn't articulated while walking through the domain steps. Any constraints added here are folded into verified context before the run proceeds.
+
 ### Intake steps
 
 | # | Step | Notes |
@@ -220,8 +236,7 @@ Agents receive the full verified context: the original description, all confirme
 | 7 | Scale | Run volume, concurrency expectations |
 | 8 | Greenfield vs. brownfield | New build, extending existing system, or migration |
 | 9 | Failure tolerance | Mission criticality, acceptable failure modes, audit trail requirements |
-| 10 | Hard constraints | Non-negotiables that eliminate options entirely (not preferences). Collected last, passed directly to agents — does not affect intake inference |
-| 11 | Model preferences | Always surfaces. Platform (step 2) filters available options. Pre-populated with inference if confident, or "Choose for me" if not. Changing selection updates tool options downstream. |
+| 10 | Model preferences | Always surfaces. Platform (step 2) filters available options. Pre-populated with inference if confident, or "Choose for me" if not. Changing selection updates tool options downstream. |
 
 
 ---
@@ -616,9 +631,19 @@ Output is gated by tier. All runs execute the full pipeline; gating is applied a
 | Pipeline runs | Two separate runs | Single pass optimizes for two audiences simultaneously and does neither well | 2026-04-14 |
 | Reasoning layer | Agent layer only | UI displays and captures; reasoning must not split into the frontend | 2026-04-14 |
 | System configuration | Admin dashboard with runtime-configurable thresholds | Refresh cadences, confidence thresholds, and cycle caps change as demand and the tooling landscape evolve — hardcoding them requires a deploy to tune | 2026-04-20 |
+| Config data model | All thresholds stored with an owner identifier; global default is `owner = global` | Per-tenant config overrides are additional rows with `owner = tenant_id` — no schema change needed when multi-tenancy is added | 2026-04-20 |
+| Config resolution pattern | Always check for tenant-specific override first, fall back to global default | Builds the lookup pattern now so adding per-tenant config later is a data change, not a code change | 2026-04-20 |
 | Multi-tenancy | Deferred — design only | White-label consultancy version is a future feature; initial build is single-tenant | 2026-04-20 |
 
-> Multi-tenancy design note: The existing governance model (owner/admin role, user-level holds, scoped run history) maps directly to a multi-tenant model without rearchitecting. When implemented: shared base manifest with tenant-level additive/suppressive overrides gated by the Manifest Gatekeeper; no tenant-level modification of base confidence scores; per-tenant domain agent registration; per-tenant dashboard config overrides. Data model should carry a `tenant_id` from day one.
+> **Multi-tenancy and configuration design notes**
+>
+> Multi-tenancy is deferred, but several design decisions made now ensure it can be added without rearchitecting.
+>
+> *Governance model:* The existing owner/admin role, user-level holds, and scoped run history map directly to a multi-tenant model. When implemented, this extends to: shared base manifest with tenant-level additive/suppressive overrides gated by the Manifest Gatekeeper; no tenant-level modification of base confidence scores; per-tenant domain agent registration. Data model should carry a `tenant_id` from day one.
+>
+> *Config model:* All configurable thresholds (refresh cadences, confidence bands, cycle caps, hold thresholds) are stored as records with an owner identifier — `owner = global` for the system defaults. Per-tenant overrides are additional rows with `owner = tenant_id`. No schema change is needed when multi-tenancy is added.
+>
+> *Config resolution:* When the system looks up any threshold, it checks for a tenant-specific override first, then falls back to the global default. This lookup pattern is built into the initial single-tenant product — all lookups currently return the global default, but the pattern is already in place. Adding per-tenant manifest refresh schedules or threshold overrides later is a data addition, not a code change.
 
 ### Maintenance manifest
 
@@ -638,6 +663,8 @@ Output is gated by tier. All runs execute the full pipeline; gating is applied a
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
 | Intake inference | Single stateful agent, sequential reasoning across steps | Inter-step dependencies handled naturally; 85% accuracy bar does not justify per-step specialist agents; users can correct any wrong inference | 2026-04-14 |
+| Hard constraints collection | Collected with project description, before inference runs | Intake agent must know constraints before inferring platform, tooling, and model options — collecting them last risks surfacing options the user will immediately reject | 2026-04-20 |
+| Review screen | Fully editable; final step before submission | User sees full verified context together for the first time; edits trigger re-inference on affected steps only with explicit downstream impact confirmation | 2026-04-20 |
 | Agent input | Verified structured context only | Prevents downstream agents from reasoning from bad intake inference | 2026-04-14 |
 | Options source | Maintenance manifest only | Nothing that could evolve is hardcoded in the UI | 2026-04-14 |
 
