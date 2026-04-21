@@ -39,6 +39,7 @@ Owner/admin can view and update system configuration without a code deploy. All 
 | Skeptic cycle cap | 4 | Maximum debate cycles before caveats are assigned and output ships |
 | Gatekeeper cycle cap | 2 | Maximum cycles before a disputed manifest entry is rejected and dropped |
 | User hold aggregate threshold | 3 users | Number of user-level holds on the same org that triggers an admin nudge to consider an admin-level review |
+| CV result cache TTL | 24 hours (default) | How long a cached per-tool CV result is considered fresh before re-research is required |
 
 Per-tenant overrides of these defaults are supported in the multi-tenant configuration (see Multi-tenancy note under Settled decisions).
 
@@ -182,7 +183,7 @@ All views support time filtering: presets (today / this week / this month) and a
 - Users can browse past runs and review previous recommendations
 - Users can load a past run's verified context as a starting point for a new run, modify the description or selections, and re-run from scratch
 
-> Note: Most users will not proceed past Pass 1. Re-runs are typically triggered by reviewing Pass 1 output and wanting to refine the description — not by dissatisfaction with intake inferences.
+> Note: Most users will not proceed past Pass 1. Re-runs are typically triggered by reviewing Pass 1 output and wanting to refine the description — not by dissatisfaction with intake inferences. Multiple Pass 1 iterations before settling on a stable description is expected behavior for the primary audience — not an edge case. This has direct implications for CV re-search costs (see Planned enhancements below).
 
 ---
 
@@ -190,7 +191,9 @@ All views support time filtering: presets (today / this week / this month) and a
 
 **Design principle: show value early, minimize friction.** The user sees the system working immediately — inference results presented for confirmation — before being asked to provide anything additional. High-friction asks before value delivery are avoided.
 
-A TurboTax-style guided step flow. The user provides a description and any hard constraints upfront, then submits. Hard constraints are collected with the description — before inference runs — so the intake agent can exclude non-viable options from the start rather than surfacing them for the user to reject. Inference runs once on the description and constraints together, producing a pre-populated selection for every step. From that point, the system presents one step at a time with:
+A TurboTax-style guided step flow. The user provides a description and any hard constraints upfront, then submits. Hard constraints are collected with the description — before inference runs — so the intake agent can exclude non-viable options from the start rather than surfacing them for the user to reject. Inference runs once on the description and constraints together, producing a pre-populated selection for every step.
+
+**Spec Scaffold (optional):** A fill-in-the-blanks wizard available at the description step, surfaced with the prompt: *"Not sure your description is complete enough? Let Spec Scaffold help."* The wizard covers every structurally meaningful dimension of an agentic system — autonomy level, failure tolerance, memory requirements, scale, and others that experienced users naturally omit when describing freeform. Each blank is prepopulated with the most common answer as placeholder text; users replace what doesn't fit. The completed form populates the description text box as editable prose — the user refines and submits as normal. The scaffolding disappears once it has done its job. A more complete initial description directly reduces re-run volume and CV re-search costs. From that point, the system presents one step at a time with:
 - A progress / remaining steps indicator
 - The inference made at the top of the step, pre-selected
 - Available options for that step (all sourced from the maintenance manifest)
@@ -476,6 +479,16 @@ CV captures ownership and affiliate information opportunistically during its ven
 - Coverage is run-driven: only tools that appear in recommendations accumulate relationship data. Low-traffic tools may have no cache entry and fall back to direct-vendor-only zero-scoring.
 
 See Maintenance Manifest — Confidence scoring for how this cache is used to evaluate independence of adoption signals.
+
+*CV result cache:*
+
+A global cache shared across all users and tenants, keyed by tool + version + date. Built from day 1 — iteration volume before settling on a stable description is expected behavior for the primary audience, and retrofitting caching later means refactoring an existing flow.
+
+- First run to research a given tool on a given day pays the search cost; all subsequent runs that day retrieve the cached result
+- Cache entry TTL is configurable via the admin dashboard (default: 24 hours); exposed alongside existing refresh thresholds
+- Cross-tool compatibility checks are never cached — they depend on the full tool set for a given run and must always re-run
+- CV is researching public vendor documentation; one user's research benefiting another is a feature, not a concern
+- A CVE or deprecation notice that drops before cache expiry will not be reflected until the next run after TTL — acceptable given the existing daily staleness tolerance elsewhere in the system, and mitigated by setting a shorter TTL if needed
 
 **Failure & Observability**
 - Eval strategy
