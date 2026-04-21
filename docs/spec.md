@@ -548,7 +548,7 @@ On-demand, lazily triggered — no scheduled cron. Refresh only runs when there 
 - If the user submits before refresh completes, a brief message explains the wait
 - Run proceeds only on fresh manifest data
 
-**Staleness threshold:** Tier-based — see Refresh cadence table above. Tier 1 tools refresh if last run > 2 weeks; architecture patterns if > 4 weeks; Tier 2/3 tools only when referenced by a run.
+**Staleness threshold:** Tier-based and configurable via the admin dashboard — see Refresh cadence table above for defaults. Tier 2/3 tools refresh only when referenced by a run.
 
 ### User-scoped tools
 
@@ -599,24 +599,17 @@ Contains:
 
 **Compatibility Validator output** feeds all six synthesis agents as shared input — it is not a synthesis domain in its own right but provides the version, pricing, and constraint data that makes configuration accurate.
 
-### Future paid tier
-- Step-by-step implementation instructions
-- Generated agent code ready to drop into user's architecture
-
-> Note: When the future paid tier generates domain-specific implementation code, the Wave 0 domain agent constraint brief becomes load-bearing for correctness — generated code must conform to the same regulatory constraints as the architecture. No additional intake step is needed; domain context is already captured at step 0.
-
 ---
 
 ## Pricing and access tiers
 
-Output is gated by tier. All runs execute the full pipeline; gating is applied at render time.
+Output is gated by tier. The Pass 1 pipeline (Wave 0–3 + CV) runs only after the user has confirmed all intake inferences and clicked Analyze — nothing expensive executes during intake or on the review screen. All Pass 1 runs execute the full pipeline; gating is applied at render time only. Pass 2 is a separate user-initiated run and never executes automatically.
 
 | Tier | What the user receives | Price |
 |---|---|---|
 | Free | Exec summary + validated tool list with maturity labels (Established / Emerging / Experimental / User-specified); CV category titles visible, values blurred; up to 3 runs/day | $0 |
 | Pass 1 | Full Pass 1 output: architectural diagram, full CV detail (version, CVE, license, EOL, cost estimates), security summary | $49 / run |
 | Pass 2 | Full Pass 2 output: ADRs, configuration, specs | $199 / run (requires Pass 1) |
-| Future paid tier | Step-by-step implementation instructions + generated agent code | TBD |
 
 **Free tier rate limit:**
 - Users may run up to 3 free runs per day
@@ -634,7 +627,7 @@ Output is gated by tier. All runs execute the full pipeline; gating is applied a
 - The architectural diagram is the strongest conversion lever for the executive/decision-maker audience: it's the artifact that goes into a deck
 - $49 is impulse-purchase territory for the primary audience (senior technical builders who expense tools)
 - Pass 2 is episodic use, not a daily driver — per-run pricing is honest and aligns cost with value delivered
-- Full pipeline runs on every request; gating is render-time only — no partial pipeline execution
+- Every Pass 1 run executes the full Wave 0–3 pipeline and CV regardless of tier — a free tier user gets the same quality of underlying analysis as a paying user. What differs is what gets rendered: tier determines which parts of the output are shown, blurred, or hidden. This keeps the architecture simple (no conditional pipeline execution) and ensures the free tier output is genuinely trustworthy, not a degraded version.
 
 ---
 
