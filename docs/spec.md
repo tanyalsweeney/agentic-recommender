@@ -482,18 +482,19 @@ See Maintenance Manifest — Confidence scoring for how this cache is used to ev
 
 *CV result cache:*
 
-A global cache shared across all users and tenants, keyed by tool + version + date. Built from day 1 — iteration volume before settling on a stable description is expected behavior for the primary audience, and retrofitting caching later means refactoring an existing flow.
+A global cache shared across all users and tenants, keyed by tool + version + timestamp. Built from day 1 — iteration volume before settling on a stable description is expected behavior for the primary audience, and retrofitting caching later means refactoring an existing flow.
 
-- First run to research a given tool on a given day pays the search cost; all subsequent runs that day retrieve the cached result
+- First run to research a given tool pays the search cost; all subsequent runs within the TTL window retrieve the cached result
 - Cache entry TTL is configurable via the admin dashboard (default: 24 hours); exposed alongside existing refresh thresholds
 - Cross-tool compatibility checks are never cached — they depend on the full tool set for a given run and must always re-run
 - CV is researching public vendor documentation; one user's research benefiting another is a feature, not a concern
 - A CVE or deprecation notice that drops before cache expiry will not be reflected until the next run after TTL — acceptable given the existing daily staleness tolerance elsewhere in the system, and mitigated by setting a shorter TTL if needed
 
 **Failure & Observability**
-- Eval strategy
-- Tracing approach
-- Agentic-specific failure mode analysis
+- Agentic-specific failure mode analysis — cascading agent failures, reasoning loops, tool misuse, non-deterministic outputs, memory corruption across sessions
+- Eval strategy for non-deterministic reasoning — how to evaluate multi-agent pipelines where unit testing reasoning is not possible
+- Tracing reasoning chains and inter-agent handoffs — the agentic-specific slice of distributed tracing
+- Explicitly flags intersections where traditional observability approaches need to be adapted rather than applied as-is; does not cover standard observability infrastructure
 
 ### Wave 3 — Final review
 
@@ -516,9 +517,11 @@ A global cache shared across all users and tenants, keyed by tool + version + da
 
 > Note: The Skeptic debate protocol generates tradeoff documentation as a side effect — accepted overrides and their reasoning feed directly into Pass 2 ADRs.
 
-### Open questions
-- Do all four Wave 1 agents bring sufficiently distinct reasoning? Still need to work through: Orchestration, Memory & State, Tool & Integration, Security.
-- Failure & Observability: is the whole agent justified or just the agentic slice of it?
+### Resolved: agent scope and distinctness
+
+**Wave 1 agent distinctness:** All four Wave 1 agents are justified and kept separate. Orchestration and Tool & Integration share a surface-level concern (system structure) but use different reasoning frameworks — Orchestration reasons about coordination topology; Tool & Integration reasons about the tool-vs-agent boundary, MCP usage, and build vs. buy. Merging them would produce shallower output on at least one domain for an audience that will notice wrong recommendations.
+
+**Failure & Observability scope:** The agent covers the agentic slice only — agentic-specific failure modes, eval strategy for non-deterministic reasoning, and tracing of reasoning chains and inter-agent handoffs. Traditional observability infrastructure is out of scope. Where traditional approaches need to be adapted (not just applied) because agents are involved, the agent explicitly flags those intersections. This is consistent with how Security is scoped.
 
 ---
 
@@ -565,7 +568,7 @@ The Compatibility Validator handles user-scoped tools via live lookup, the same 
 **Tone:** Plain English, jargon-light, intellectually respectful.
 
 Contains:
-- Executive summary — includes a brief callout if any non-established components are in the recommendation set (e.g. "two components in this architecture are emerging patterns — see the tool manifest for detail")
+- Executive summary — includes a brief callout if any non-established components are in the recommendation set (e.g. "two components in this architecture are emerging patterns — see the tool manifest for detail"); includes a plain-language scope statement making clear that this recommendation covers the agentic architecture only. Traditional software concerns — hosting, deployment, UI, standard observability infrastructure — are outside scope and assumed to be within the builder's existing capabilities. Where those concerns intersect with agentic-specific behavior in ways that may surprise an experienced engineer, they are explicitly flagged in the relevant section.
 - Architecture diagram
 - Validated tool manifest — each tool and pattern carries a maturity label derived from its manifest state: **Established** (full inclusion), **Emerging** (probationary), **Experimental** (flagged/confidence declining), or **User-specified** (not in manifest, live-researched). Labels are manifest-derived, not agent-generated.
 - Cost estimates (ongoing operational cost, surfaced here because almost every stakeholder needs to speak to it)
