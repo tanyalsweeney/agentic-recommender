@@ -22,6 +22,159 @@ A user describes a project. The system walks them through a guided intake flow, 
 - User accounts with MFA
 - Login required to access the system
 
+### Admin configuration dashboard
+
+Owner/admin can view and update system configuration without a code deploy. All default values are defined in the spec but treated as runtime config, not hardcoded.
+
+**Configurable settings exposed on the dashboard:**
+
+| Setting | Default | Notes |
+|---|---|---|
+| Tier 1 tool refresh threshold | 2 weeks | Lazy trigger; refresh runs if last refresh exceeds this age |
+| Architecture pattern refresh threshold | 4 weeks | Lazy trigger |
+| Tier 2/3 tool refresh policy | On-demand (run-referenced only) | Toggle between on-demand and a fixed cadence if demand justifies it |
+| Confidence score — Established threshold | ≥ 7 | Score at or above this graduates an entry to full inclusion |
+| Confidence score — Experimental threshold | ≤ 3 | Score at or below this flags an entry as declining |
+| Confidence score — Drop threshold | 0 | Entries at zero are removed on next refresh |
+| Skeptic cycle cap | 4 | Maximum debate cycles before caveats are assigned and output ships |
+| Gatekeeper cycle cap | 2 | Maximum cycles before a disputed manifest entry is rejected and dropped |
+| User hold aggregate threshold | 3 users | Number of user-level holds on the same org that triggers an admin nudge to consider an admin-level review |
+
+Per-tenant overrides of these defaults are supported in the multi-tenant configuration (see Multi-tenancy note under Settled decisions).
+
+### Agent version panel
+
+Read-only view of all core agents with rollback capability. No prompt editing — new versions come from the deploy pipeline only.
+
+**Per-agent display:**
+- Active version (semantic version tag + deploy date)
+- One-line changelog entry for the current version
+- Deploy history — last 3–5 versions, each with changelog entry and deploy timestamp
+- Run count on the current version
+
+**Rollback flow:**
+1. Admin selects a previous version from the history list
+2. Dashboard shows the changelog diff — what is being reverted from and to, in plain language
+3. Explicit confirmation required before rollback executes
+4. Rollback applies to new runs only — in-flight runs complete on the version they started with
+5. Rollback is logged as a deployment event (timestamp, who triggered it, version replaced, version restored)
+
+**When this is useful:** a newly deployed agent version produces degraded recommendations. Rollback recovers the system in minutes; the bad version is investigated in source control afterward.
+
+> Multi-tenancy note: tenants will eventually be able to pin to a specific agent version rather than tracking latest — relevant for regulated environments where agent changes must be reviewed before adoption. The versioning infrastructure supports this; the pin capability is deferred.
+
+### Org list approval workflow
+
+The primary interface for org list governance. All proposed modifications from the Org List Gatekeeper surface here for review.
+
+**Pending modifications queue:**
+- Each proposed addition, removal, or tier change is listed with the Gatekeeper's written justification and links to source material reviewed
+- Admin approves or overrides each modification individually
+- On override: the Gatekeeper runs a deeper research pass; findings surface in the same queue for a second review
+- Human decision after the second pass is final — no third pass; resolved items are removed from the queue
+
+**Admin nominations:**
+- Admin can nominate a candidate org by name directly from this panel
+- Nomination triggers a Gatekeeper research pass; findings are routed back through the pending modifications queue for approval using the same flow as Gatekeeper-initiated proposals
+
+**Current org list:**
+- Browsable by tier
+- Each entry shows: tier, active scoring signals, last reviewed date, recency qualifier status
+- Any entry can be challenged on-demand; challenges triggered in the same session are batched into a single research job and surface when complete
+
+### Active holds and user signals
+
+**Admin-level urgent holds:**
+- List of all active admin-level holds with org name, flag date, and current status
+- Holds affecting in-flight runs are flagged; runs that completed while a hold was active are retroactively marked in run history
+- Resolution options per hold: confirm (org stays flagged), escalate to removal (routes through the org list approval queue), or lift
+
+**User hold aggregate signal:**
+- Surfaces when user-level holds on the same org reach the configurable threshold (default: 3 users — adjustable in admin configuration settings)
+- Shown as a pattern, not individually (user privacy preserved): e.g. "3 users have active holds on Org X — view details"
+- "View details" shows hold count, date range, and any research findings already generated
+- Admin can escalate directly to an admin-level hold or dismiss from here
+
+### Manifest health
+
+Supports time filtering: presets (today / this week / this month) and a custom date range picker.
+
+- Entry counts by maturity tier: Established / Emerging / Experimental
+- Entries pending Gatekeeper review
+- Entries dropped in the selected time window, with reason
+- Last refresh timestamp per entry type (Tier 1 tools, architecture patterns, Tier 2/3 tools)
+- Stale entry count — entries overdue for refresh based on current threshold settings
+
+### Pipeline observability
+
+All views support time filtering: presets (today / this week / this month) and a custom date range picker.
+
+**Run volume and health:**
+- Run volume over time (daily / weekly)
+- Pipeline success and failure rates
+- Per-agent failure rates — surfaces which agent is failing most frequently
+
+**Run duration distribution:**
+- Fastest and slowest run on record
+- Percentile breakdown: p5 / p25 / p50 / p75 / p95
+
+**Cost per run:**
+
+| Line item | Granularity |
+|---|---|
+| Token costs | Per agent: input / output / cached tokens split |
+| Web search costs | Per run total (CV-driven); reported separately from token costs |
+| Wave subtotals | Rolled up from agent lines for Wave 0–3 |
+| Run total | All-in cost for the run |
+
+> The input / output / cached token split is load-bearing: if prompt cache hit rate degrades, costs spike without an obvious cause at the wave level.
+
+**Conversion metrics:**
+
+*Funnel:*
+- Unique users with ≥1 completed Pass 1
+- Unique users with ≥1 completed Pass 2
+- Conversion rate between them
+
+*Pass 1 run distribution:*
+- Average Pass 1 runs per user
+- Distribution by bucket: 1 run / 2–3 runs / 4+ runs
+
+*Conversion rate by Pass 1 run bucket:*
+- Of users who ran Pass 1 once, X% converted; 2–3 times, Y%; 4+, Z%
+- Surfaces whether high-iteration users are engaged converters or stuck non-converters
+
+*Time-to-conversion:*
+- Of users who converted, what % did so in the same session vs. returning later
+- Median and p75 time between first Pass 1 and first Pass 2
+
+*Abandonment point:*
+- Where non-converters leave: mid-intake / after Pass 1 / after hitting the paywall
+- Each stage shown as a drop-off rate
+
+*Caveat tier correlation:*
+- Conversion rate segmented by the highest Skeptic caveat tier in the run's output: no caveat / Advisory / Blocking Condition / Do Not Build This
+- Surfaces whether certain caveat tiers are killing conversion
+
+> **Planned additions — high signal, requires more instrumentation:** intake correction rate (how many inferences the user changed), intake selection correlation with conversion, maturity label mix correlation with iteration and conversion. Add when instrumentation is in place.
+
+> **Planned additions — useful at volume:** return visit conversion rate, domain correlation (Wave 0 domain-specific runs vs. general runs). Add when user base is large enough for statistical significance.
+
+### User and billing management
+
+**User management:**
+- User list with account status and MFA enforcement state
+- Ability to manage accounts: suspend, reset MFA, reassign tier
+
+**Billing and margin visibility:**
+
+| View | What it shows |
+|---|---|
+| Cost per pricing tier | Average all-in cost (tokens + search) for a free run, Pass 1 run, Pass 2 run — primary margin signal |
+| API spend trend | Total token and search spend over time |
+| Revenue by tier | Run counts and revenue for free / Pass 1 / Pass 2 |
+| Margin per tier | Revenue minus average cost per tier — flags quickly if the free tier becomes unsustainable |
+
 ### Run history
 - Every completed run is stored per user account
 - Stored per run: verified context (intake selections + hard constraints) and Pass 1 output
@@ -57,6 +210,7 @@ Agents receive the full verified context: the original description, all confirme
 
 | # | Step | Notes |
 |---|---|---|
+| 0 | Domain context | Conditional — only surfaces when domain agents are registered for the tenant. Asks whether the project operates in a regulated or specialized domain (e.g., healthcare, government contracting). Selecting a domain activates the corresponding Wave 0 agent(s). Suppressed entirely in the general-purpose product where no domain agents are registered. |
 | 1 | Orchestration pattern | Agent count, structure (orchestrator + subagents, pipeline, DAG, etc.) |
 | 2 | Platform & deployment | Constrains model selection and available tooling downstream |
 | 3 | External integrations | Systems the agent touches — APIs, databases, SaaS, etc. |
@@ -78,9 +232,18 @@ A shared knowledge store that agents read from at query time. Kept current by a 
 
 All options surfaced in the intake UI are sourced from the manifest. The manifest is the single source of truth for available options across all steps.
 
-**Refresh cadence:** Lazy and on-demand — refresh only runs when the tool is accessed. Staleness is checked on UI open; stale entries are refreshed in the background before the run proceeds.
-- Vendor-specific cloud offerings and tooling: daily
-- Architecture patterns: every 2 weeks
+**Refresh cadence:** Lazy and on-demand — refresh only runs when there is demand for it. Staleness is checked on UI open; stale entries are refreshed in the background before the run proceeds.
+
+| Entry type | Refresh trigger | Default threshold |
+|---|---|---|
+| Tier 1 tools in manifest | Lazy, if last refresh exceeds threshold | 2 weeks |
+| Architecture patterns | Lazy, if last refresh exceeds threshold | 4 weeks |
+| Tier 2/3 tools | Only when a run references them | — |
+| User-specified tools | Never written to manifest; CV handles live | — |
+
+All thresholds are configurable via the admin dashboard and take effect immediately — no deploy required. See Application layer — Admin configuration dashboard.
+
+> Note: The Compatibility Validator performs live web search per run for version, CVE, and pricing data. Manifest staleness does not affect compatibility accuracy — only which tools surface in intake and confidence score freshness.
 
 **Agents both consume and maintain the manifest.** To prevent drift, a Manifest Gatekeeper reviews all proposed updates before they go live.
 
@@ -108,16 +271,22 @@ New entries are scored using source weighting and move through staged inclusion 
 - Additional citations from credible sources
 - Contradiction by a newer pattern from a high-weight source (strong negative signal)
 
+**Confidence tier bands:**
+
+| Score | Label | State |
+|---|---|---|
+| ≥ 7 | Established | Full inclusion — surfaced as default recommendations |
+| 4–6 | Emerging | Probationary — present in manifest, not surfaced as default |
+| 1–3 | Experimental | Flagged / confidence declining |
+| 0 | Dropped | Removed from manifest on next refresh |
+
 **Staged inclusion:**
-- New entries enter probationary state — present in manifest but not surfaced as default recommendations
-- Graduate to full inclusion when confidence crosses threshold
-- Drop to flagged/experimental if confidence declines
+- New entries enter at Emerging (probationary) — present in manifest but not surfaced as default recommendations
+- Graduate to Established when confidence score reaches ≥ 7
+- Drop to Experimental if confidence declines; removed at 0 on next refresh
 
 ### Open questions
 - What is the manifest's data structure and query pattern — full load, filtered lookup, or embedding search?
-- Who are the recognized practitioners and organizations? This is itself a list that needs governance.
-- What are the specific confidence thresholds for graduation and demotion?
-- Initial population: the manifest requires a human-curated seed list before the system can run. Criteria for seed inclusion and the seed list itself are TBD. Depends on org list resolution.
 
 ---
 
@@ -221,6 +390,25 @@ User-level holds are surfaced to the owner/admin in aggregate on next run — no
 
 ### Guiding principle
 Agents focus on agentic-specific concerns. Traditional software architecture concerns (APIs, databases, auth, deployment infrastructure) are out of scope for the agent layer.
+
+### Wave 0 — Domain context (conditional)
+
+Runs before Wave 1, only when a domain agent is active for the tenant. Produces a structured constraint brief that is appended to verified context before Wave 1 begins. All downstream agents (Wave 1, CV, The Skeptic, synthesis agents) receive it as additional context without modification.
+
+**Constraint brief schema (typed, not free text):**
+- Required regulatory controls
+- Prohibited tools or patterns
+- Mandatory certifications or compliance frameworks
+- Scope of applicability (e.g., applies to data handling only, applies to all components)
+
+**Domain agent interface (standardized):**
+- Input: verified intake context
+- Output: constraint brief conforming to the schema above
+- Registration: tenant supplies an API endpoint or Claude API tool definition; the system calls it at Wave 0
+
+Multiple domain agents can be active on a single run (e.g., a system that is both HIPAA-scoped and deployed on a government platform). Each produces a constraint brief; briefs are merged before being passed downstream.
+
+Domain agents are tenant-registered and not part of the default pipeline. The general-purpose product has no Wave 0.
 
 ### Wave 1 — Mostly parallel
 Orchestration, Security, Memory & State, and Tool & Integration run in parallel on the verified context. Trust & Control runs after Orchestration and Security complete — it cannot place gates without knowing the flow and risk profile. All Wave 1 agents produce domain recommendations **plus structured cost signals** for their area. Cost signals feed into the Compatibility Validator in Wave 2.
@@ -329,7 +517,7 @@ On-demand, lazily triggered — no scheduled cron. Refresh only runs when there 
 - If the user submits before refresh completes, a brief message explains the wait
 - Run proceeds only on fresh manifest data
 
-**Staleness threshold:** Daily for AI-specific tooling (models, SDKs, frameworks, pricing). The AI tooling landscape changes rapidly; weekly cadence is too slow for this domain.
+**Staleness threshold:** Tier-based — see Refresh cadence table above. Tier 1 tools refresh if last run > 2 weeks; architecture patterns if > 4 weeks; Tier 2/3 tools only when referenced by a run.
 
 ### User-scoped tools
 
@@ -384,7 +572,38 @@ Contains:
 - Step-by-step implementation instructions
 - Generated agent code ready to drop into user's architecture
 
-> Note: If the paid tier generates domain-specific agent code, a domain context intake step will be needed (e.g. "accounting," "medical compliance"). Domain context is not needed for architecture recommendations but becomes load-bearing when generating implementation.
+> Note: When the future paid tier generates domain-specific implementation code, the Wave 0 domain agent constraint brief becomes load-bearing for correctness — generated code must conform to the same regulatory constraints as the architecture. No additional intake step is needed; domain context is already captured at step 0.
+
+---
+
+## Pricing and access tiers
+
+Output is gated by tier. All runs execute the full pipeline; gating is applied at render time.
+
+| Tier | What the user receives | Price |
+|---|---|---|
+| Free | Exec summary + validated tool list with maturity labels (Established / Emerging / Experimental / User-specified); CV category titles visible, values blurred; up to 3 runs/day | $0 |
+| Pass 1 | Full Pass 1 output: architectural diagram, full CV detail (version, CVE, license, EOL, cost estimates), security summary | $49 / run |
+| Pass 2 | Full Pass 2 output: ADRs, configuration, specs | $199 / run (requires Pass 1) |
+| Future paid tier | Step-by-step implementation instructions + generated agent code | TBD |
+
+**Free tier rate limit:**
+- Users may run up to 3 free runs per day
+- The limit is disclosed before the user clicks "Analyze" for the first time — no surprises at the paywall
+- After 3 runs, additional runs require a Pass 1 purchase
+
+**CV output on the free tier:**
+- Every category the Compatibility Validator found data for is shown by title (e.g. Cost estimates, End-of-life date, CVEs, Breaking changes, License) — the user can see what was found
+- The values within each category are blurred — visible after the first run, not before; the blur itself communicates what data exists and motivates conversion
+- The validated tool list with maturity labels remains fully visible
+
+**Rationale:**
+- Free tier shows enough signal (maturity labels, CV category titles) to demonstrate that the system did real work — but withholds the detail the user needs to act
+- Blurred CV values are a stronger conversion lever than a generic paywall: the user can see exactly what they're missing
+- The architectural diagram is the strongest conversion lever for the executive/decision-maker audience: it's the artifact that goes into a deck
+- $49 is impulse-purchase territory for the primary audience (senior technical builders who expense tools)
+- Pass 2 is episodic use, not a daily driver — per-run pricing is honest and aligns cost with value delivered
+- Full pipeline runs on every request; gating is render-time only — no partial pipeline execution
 
 ---
 
@@ -396,6 +615,10 @@ Contains:
 |---|---|---|---|
 | Pipeline runs | Two separate runs | Single pass optimizes for two audiences simultaneously and does neither well | 2026-04-14 |
 | Reasoning layer | Agent layer only | UI displays and captures; reasoning must not split into the frontend | 2026-04-14 |
+| System configuration | Admin dashboard with runtime-configurable thresholds | Refresh cadences, confidence thresholds, and cycle caps change as demand and the tooling landscape evolve — hardcoding them requires a deploy to tune | 2026-04-20 |
+| Multi-tenancy | Deferred — design only | White-label consultancy version is a future feature; initial build is single-tenant | 2026-04-20 |
+
+> Multi-tenancy design note: The existing governance model (owner/admin role, user-level holds, scoped run history) maps directly to a multi-tenant model without rearchitecting. When implemented: shared base manifest with tenant-level additive/suppressive overrides gated by the Manifest Gatekeeper; no tenant-level modification of base confidence scores; per-tenant domain agent registration; per-tenant dashboard config overrides. Data model should carry a `tenant_id` from day one.
 
 ### Maintenance manifest
 
@@ -422,6 +645,8 @@ Contains:
 
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
+| Domain-specific expertise | Wave 0 plugin — produces typed constraint brief before Wave 1 | Domain agents produce constraints, not recommendations; Wave 0 narrows the solution space before other agents reason into it; downstream agents receive brief as context with no modification | 2026-04-20 |
+| Domain agent interface | Standardized schema (typed constraint brief); tenant supplies endpoint or Claude API tool definition | Structured output lets downstream agents reason reliably; free text would require each agent to re-parse domain requirements | 2026-04-20 |
 | Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer | 2026-04-14 |
 | Trust & Control placement | Wave 1 (sequential after Orchestration and Security) | HITL feasibility is architecturally load-bearing for Pass 1 — the Skeptic lacks the domain expertise to substitute for a dedicated T&C assessment | 2026-04-15 |
 
