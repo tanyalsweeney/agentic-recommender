@@ -1,10 +1,12 @@
 # Agentic Architecture Recommender
 
-A guided system that takes a project description and produces a validated architecture recommendation for agentic AI systems — including orchestration pattern, tool selection, memory strategy, security posture, and cost estimates.
+A guided system that takes a description of what you're building and produces a validated architecture recommendation for agentic AI systems, including orchestration pattern, tool selection, memory strategy, security posture, and cost estimates.
 
 The system walks users through a structured intake flow, infers architecture decisions from their description, and hands verified context to a panel of specialist agents. Output is produced in two passes: a decision-layer summary for stakeholders, and a full implementation layer for builders.
 
-**This project is in active design.** The spec is a living document and the codebase is early. What's here right now reflects the thinking, not the finished build.
+**Scope:** This covers agentic architecture only, the decisions unique to systems where AI agents reason, act, and coordinate. Traditional software concerns (hosting, deployment, databases, CI/CD) are out of scope. Where traditional practices need to be adapted for agents rather than applied as-is, the system flags those intersections explicitly.
+
+**This project is in active design.** The spec is a living document. What's here reflects the thinking, not the finished build.
 
 ## What's in this repo
 
@@ -14,7 +16,7 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Status
 
-Design phase. Core architecture decisions are being finalized in the spec before implementation begins.
+Design phase. Core architecture decisions are being finalized before implementation begins.
 
 ---
 
