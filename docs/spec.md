@@ -2,7 +2,24 @@
 
 ## What this system does
 
-A user describes a project. The system walks them through a guided intake flow, inferring their agentic architecture at each step and adapting remaining steps based on prior confirmations. Once intake is complete, verified context is handed to a team of specialist agents that produce a structured recommendation in two passes.
+A user describes what they're building. The system walks them through a guided intake flow, inferring their agentic architecture at each step and adapting remaining steps based on prior confirmations. Once intake is complete, verified context is handed to a team of specialist agents that produce a structured recommendation in two passes.
+
+---
+
+## Scope
+
+The recommendation pipeline covers agentic architecture — the decisions unique to systems where AI agents reason, act, and coordinate. The following are assumed to be within the builder's existing capabilities and are not covered:
+- Hosting, deployment, and infrastructure
+- UI and frontend design
+- API and database design
+- CI/CD pipelines
+- Standard observability infrastructure (logging, monitoring, alerting)
+
+Some areas look familiar but behave differently when agents are involved. The pipeline explicitly flags these intersections rather than assuming standard practice applies:
+- **Security** — agentic systems introduce attack surfaces (prompt injection, tool misuse, trust boundary violations) that don't appear on a standard security checklist
+- **Observability** — reasoning chains and inter-agent handoffs require extensions beyond standard distributed tracing
+- **Testing** — non-deterministic agent outputs can't be unit tested; eval strategy is covered explicitly
+- **Failure handling** — cascading agent failures and reasoning loops follow different patterns than standard error recovery
 
 ---
 
@@ -30,7 +47,7 @@ Owner/admin can view and update system configuration without a code deploy. All 
 
 | Setting | Default | Notes |
 |---|---|---|
-| Tier 1 tool refresh threshold | 2 weeks | Lazy trigger; refresh runs if last refresh exceeds this age |
+| Tier 1 tool refresh threshold | 2 weeks | Lazy trigger (refresh runs if last refresh exceeds this age) |
 | Architecture pattern refresh threshold | 4 weeks | Lazy trigger |
 | Tier 2/3 tool refresh policy | On-demand (run-referenced only) | Toggle between on-demand and a fixed cadence if demand justifies it |
 | Confidence score — Established threshold | ≥ 7 | Score at or above this graduates an entry to full inclusion |
@@ -66,7 +83,7 @@ Read-only view of all core agents with rollback capability. No prompt editing �
 
 ### Org list approval workflow
 
-The primary interface for org list governance. All proposed modifications from the Org List Gatekeeper surface here for review.
+The org list is a tiered registry of AI-forward organizations whose adoption of a tool or pattern is treated as a credible confidence signal in the recommendation engine. A compromised entry has outsized downstream impact: unlike a single bad tool recommendation, a bad org entry corrupts the adoption signals that underpin confidence scoring across every tool that org has ever touched. All changes require human approval — the Org List Gatekeeper proposes modifications, but cannot act unilaterally; all proposed additions, removals, and tier changes surface here for admin review.
 
 **Pending modifications queue:**
 - Each proposed addition, removal, or tier change is listed with the Gatekeeper's written justification and links to source material reviewed
@@ -130,6 +147,18 @@ All views support time filtering: presets (today / this week / this month) and a
 
 > The input / output / cached token split is load-bearing: if prompt cache hit rate degrades, costs spike without an obvious cause at the wave level.
 
+**Maintenance pipeline costs:**
+
+Reported separately from recommendation pipeline costs — maintenance spend is not tied to user runs and would be invisible in per-run reporting.
+
+| Line item | Granularity |
+|---|---|
+| Manifest refresh | Token costs (input / output / cached) + web search costs per refresh run |
+| Manifest Gatekeeper | Token costs per review; cycle count per entry |
+| Org list research jobs | Token costs + web search costs per job (periodic review, on-demand challenge, urgent flag) |
+| Org List Gatekeeper | Token costs per review; cycle count per proposal |
+| Period total | All-in maintenance cost for the selected time window |
+
 **Conversion metrics:**
 
 *Funnel:*
@@ -157,9 +186,25 @@ All views support time filtering: presets (today / this week / this month) and a
 - Conversion rate segmented by the highest Skeptic caveat tier in the run's output: no caveat / Advisory / Blocking Condition / Do Not Build This
 - Surfaces whether certain caveat tiers are killing conversion
 
-> **Planned additions — high signal, requires more instrumentation:** intake correction rate (how many inferences the user changed), intake selection correlation with conversion, maturity label mix correlation with iteration and conversion. Add when instrumentation is in place.
+*Intake correction rate:*
+- Per step: how often users changed the pre-populated inference
+- Surfaces which steps the intake agent gets wrong most frequently — a signal for prompt tuning
 
-> **Planned additions — useful at volume:** return visit conversion rate, domain correlation (Wave 0 domain-specific runs vs. general runs). Add when user base is large enough for statistical significance.
+*Intake selection correlation:*
+- Which intake selections (platform, orchestration pattern, model, etc.) correlate with Pass 2 conversion
+- Surfaces whether certain architecture profiles attract higher-intent users
+
+*Maturity label mix:*
+- Distribution of Established / Emerging / Experimental labels in the recommendation set, correlated with re-run count and conversion rate
+- Surfaces whether architectures heavy in Emerging or Experimental components drive iteration or kill conversion
+
+*Return visit conversion:*
+- Of users who did not convert in their first session, what % returned and converted later
+- Median time between first Pass 1 and Pass 2 purchase for return converters
+
+*Domain correlation:*
+- Conversion rate and run volume segmented by whether Wave 0 was active and which domain agent ran
+- Surfaces whether domain-specific runs convert differently from general runs
 
 ### User and billing management
 
@@ -178,7 +223,7 @@ All views support time filtering: presets (today / this week / this month) and a
 
 ### Run history
 - Every completed run is stored per user account
-- Stored per run: verified context (intake selections + hard constraints) and Pass 1 output
+- Stored per run: original inference per intake step, verified context (final confirmed selections + hard constraints), maturity label distribution of the recommendation set, Wave 0 domain agent tag (if active), and Pass 1 output
 - Pass 2 output stored only if the user generates it
 - Users can browse past runs and review previous recommendations
 - Users can load a past run's verified context as a starting point for a new run, modify the description or selections, and re-run from scratch
@@ -230,12 +275,12 @@ The hard constraints field is prominently surfaced on the review screen as an ex
 | # | Step | Notes |
 |---|---|---|
 | 0 | Domain context | Conditional — only surfaces when domain agents are registered for the tenant. Asks whether the project operates in a regulated or specialized domain (e.g., healthcare, government contracting). Selecting a domain activates the corresponding Wave 0 agent(s). Suppressed entirely in the general-purpose product where no domain agents are registered. |
-| 1 | Orchestration pattern | Agent count, structure (orchestrator + subagents, pipeline, DAG, etc.) |
+| 1 | Orchestration pattern | Agent count, structure (orchestrator + subagents, pipeline, directed acyclic graph, etc.) |
 | 2 | Platform & deployment | Constrains model selection and available tooling downstream |
-| 3 | External integrations | Systems the agent touches — APIs, databases, SaaS, etc. |
-| 4 | Data & file handling | File types, data sensitivity, protection schemes (IRM, classification labels) |
+| 3 | External integrations | Systems the agent touches — APIs, databases, cloud services, etc. |
+| 4 | Data & file handling | File types, data sensitivity, protection schemes (information rights management, classification labels) |
 | 5 | Memory & state | Session persistence, shared agent state, memory horizon. Auto-expand explainer; offer guided "help me determine" flow |
-| 6 | Autonomy & HITL | Autonomy level, human-in-the-loop requirements |
+| 6 | Autonomy & Human-in-the-Loop | Autonomy level, human-in-the-loop requirements |
 | 7 | Scale | Run volume, concurrency expectations |
 | 8 | Greenfield vs. brownfield | New build, extending existing system, or migration |
 | 9 | Failure tolerance | Mission criticality, acceptable failure modes, audit trail requirements |
@@ -499,6 +544,7 @@ A global cache shared across all users and tenants, keyed by tool + version + ti
 ### Wave 3 — Final review
 
 **The Skeptic**
+- The primary question The Skeptic hammers on: does this recommendation actually solve what the user described building? Technical correctness and compatibility are table stakes — fitness to the user's specific system is the core challenge.
 - Identifies weak points in Wave 1 + 2 output and sends them back to the relevant agent(s) with detailed reasoning
 - Receiving agent(s) either adopt the suggestion or counter with a reasoned override (e.g. cost impact, latency impact, new attack surface introduced, implementation burden)
 - The Skeptic evaluates counter-arguments and accepts or rejects them; accepted overrides are surfaced in the output with their tradeoff reasoning
@@ -653,6 +699,8 @@ Output is gated by tier. The Pass 1 pipeline (Wave 0–3 + CV) runs only after t
 > *Config model:* All configurable thresholds (refresh cadences, confidence bands, cycle caps, hold thresholds) are stored as records with an owner identifier — `owner = global` for the system defaults. Per-tenant overrides are additional rows with `owner = tenant_id`. No schema change is needed when multi-tenancy is added.
 >
 > *Config resolution:* When the system looks up any threshold, it checks for a tenant-specific override first, then falls back to the global default. This lookup pattern is built into the initial single-tenant product — all lookups currently return the global default, but the pattern is already in place. Adding per-tenant manifest refresh schedules or threshold overrides later is a data addition, not a code change.
+>
+> *Org list data model:* The `owner` field pattern applies to org list entries as well as config thresholds. All current entries are `owner = global`. The data model supports `owner = tenant_id` entries from day one — a tenant with a legitimate need to elevate a specific org for their own runs (e.g. a white-label tenant whose customers are integrating that org's products) can do so without a schema change. The confidence scoring pipeline is built to filter org list entries by owner at query time. Governance: tenant-scoped org list entries are established by the global admin at white-label setup time and locked — no tenant-facing UI or self-service capability. Changes require a change order back to the global admin and follow the same approval flow as any other org list modification.
 
 ### Maintenance manifest
 
