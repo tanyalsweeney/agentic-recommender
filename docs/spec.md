@@ -710,7 +710,7 @@ Output is gated by tier. The Pass 1 pipeline (Wave 0–3 + CV) runs only after t
 | Manifest governance | Confidence scoring + source weighting + staged inclusion | Handles quality/relevance disputes without over-relying on human escalation | 2026-04-14 |
 | Schema changes | Automatic human escalation | Too broad an impact to leave to agent consensus | 2026-04-14 |
 | Manifest refresh | On-demand, lazy trigger | No wasted cycles during quiet periods; naturally scales with usage | 2026-04-14 |
-| Manifest staleness threshold | Daily for AI-specific tooling | AI tooling landscape changes too rapidly for weekly cadence | 2026-04-14 |
+| Manifest staleness threshold | Tier-based; configurable via admin dashboard | Tier 1 tools default to 2 weeks; architecture patterns to 4 weeks; Tier 2/3 tools refresh only when referenced by a run | 2026-04-21 |
 | Manifest refresh UX | Background on UI open; blocks only if user submits before refresh completes | User writing their description usually covers the refresh window | 2026-04-14 |
 | Gatekeeper rejected entries | Dropped, no queue | Next refresh cycle is the retry mechanism | 2026-04-14 |
 | User-scoped tools | Run-scoped, live-researched, flagged as unvetted in output | Keeps manifest integrity intact while still evaluating user-specified tools | 2026-04-14 |
