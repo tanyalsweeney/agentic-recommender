@@ -238,7 +238,13 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 
 A TurboTax-style guided step flow. The user provides a description and any hard constraints upfront, then submits. Hard constraints are collected with the description — before inference runs — so the intake agent can exclude non-viable options from the start rather than surfacing them for the user to reject. Inference runs once on the description and constraints together, producing a pre-populated selection for every step.
 
-**Spec Scaffold (optional):** A fill-in-the-blanks wizard available at the description step, surfaced with the prompt: *"Not sure your description is complete enough? Let Spec Scaffold help."* The wizard covers every structurally meaningful dimension of an agentic system — autonomy level, failure tolerance, memory requirements, scale, and others that experienced users naturally omit when describing freeform. Each blank is prepopulated with the most common answer as placeholder text; users replace what doesn't fit. The completed form populates the description text box as editable prose — the user refines and submits as normal. The scaffolding disappears once it has done its job. A more complete initial description directly reduces re-run volume and CV re-search costs. From that point, the system presents one step at a time with:
+**Spec Scaffold (free):** A fill-in-the-blanks wizard surfaced at the description step with the prompt: *"Most users miss a few things freeform. Spec Scaffold takes 2 minutes, costs nothing, and draws out the details that matter."* The wizard covers every structurally meaningful dimension of an agentic system: autonomy level, failure tolerance, memory requirements, scale, and other details that even experienced users tend to omit when writing freeform. Each field is prepopulated with the most common answer as placeholder text; users replace only what doesn't fit. Once completed, the form renders as editable prose in the description text box; the user refines and submits as normal. The scaffold remains available at the description step and can be used as many times as needed.
+
+A more complete initial description directly reduces re-run volume and CV re-search costs.
+
+**Positioning:** Spec Scaffold should be positioned as a recommended first step for all users, not a fallback for uncertain ones. Experienced users describing in-flight projects frequently omit dimensions they consider obvious; the scaffold surfaces those gaps before they cost a run. The UI should make the connection to run cost explicit: fewer wasted iterations means a direct financial benefit to the user.
+
+From that point, the system presents one step at a time with:
 - A progress / remaining steps indicator
 - The inference made at the top of the step, pre-selected
 - Available options for that step (all sourced from the maintenance manifest)
@@ -694,16 +700,19 @@ Contains:
 
 Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs only after the user has confirmed all intake inferences and clicked Analyze — nothing expensive executes during intake or on the review screen. All Pass 1 runs execute the full pipeline; gating is applied at render time only. Pass 2 is a separate user-initiated run and never executes automatically.
 
+**What counts as a run:** A run is one complete pipeline execution that produces Pass 1 output. Each click of "Analyze" that completes successfully is one run. Loading a past run's verified context and re-submitting is a new run. Reviewing past output in run history is not a run. Re-inference triggered by edits on the review screen is part of intake, not a run. A pipeline execution that fails before producing output is not a run: no charge and no count against the daily limit. Pass 2 generation is a separate run and never counts toward the free tier daily limit.
+
 | Tier | What the user receives | Price |
 |---|---|---|
 | Free | Exec summary + validated tool list with maturity labels (Established / Emerging / Experimental / User-specified); CV category titles visible, values blurred; up to 3 runs/day | $0 |
+| Run Pack | 10 additional free-tier runs (same limited output as the free tier); purchasable when the daily limit is reached; for the description iteration phase | $TBD / pack |
 | Pass 1 | Full Pass 1 output: architectural diagram, full CV detail (version, CVE, license, EOL, cost estimates), security summary | $49 / run |
 | Pass 2 | Full Pass 2 output: ADRs, configuration, specs | $199 / run (requires Pass 1) |
 
 **Free tier rate limit:**
 - Users may run up to 3 free runs per day
 - The limit is disclosed before the user clicks "Analyze" for the first time — no surprises at the paywall
-- After 3 runs, additional runs require a Pass 1 purchase
+- After 3 free runs, additional free-tier runs require a Run Pack purchase; full Pass 1 output requires a Pass 1 purchase
 
 **CV output on the free tier:**
 - Every category the Compatibility Validator found data for is shown by title (e.g. Cost estimates, End-of-life date, CVEs, Breaking changes, License) — the user can see what was found
@@ -716,7 +725,8 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 - The architectural diagram is the strongest conversion lever for the executive/decision-maker audience: it's the artifact that goes into a deck
 - $49 is impulse-purchase territory for the primary audience (senior technical builders who expense tools)
 - Pass 2 is episodic use, not a daily driver — per-run pricing is honest and aligns cost with value delivered
-- Every Pass 1 run executes the full Wave 0–3 pipeline and CV regardless of tier — a free tier user gets the same quality of underlying analysis as a paying user. What differs is what gets rendered: tier determines which parts of the output are shown, blurred, or hidden. This keeps the architecture simple (no conditional pipeline execution) and ensures the free tier output is genuinely trustworthy, not a degraded version.
+- Every Pass 1 run executes the full pipeline regardless of tier — a free tier user gets the same quality of underlying analysis as a paying user. What differs is what gets rendered: tier determines which parts of the output are shown, blurred, or hidden. This keeps the architecture simple (no conditional pipeline execution) and ensures the free tier output is genuinely trustworthy, not a degraded version.
+- The Run Pack exists because even expert users describing in-flight projects need multiple iterations to land a high-quality description. The 3 free runs/day limit is a cost control mechanism, not a conversion driver — capping high-intent users at 3 attempts per day creates friction without benefit. The Run Pack monetizes the iteration phase without requiring users to pay for full Pass 1 output before they are ready.
 
 ---
 
