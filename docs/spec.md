@@ -459,7 +459,7 @@ Agents focus on agentic-specific concerns. Traditional software architecture con
 
 ### Wave 0 — Domain context (conditional)
 
-Runs before Wave 1, only when a domain agent is active for the tenant. Produces a structured constraint brief that is appended to verified context before Wave 1 begins. All downstream agents (Wave 1, CV, The Skeptic, synthesis agents) receive it as additional context without modification.
+Runs before Wave 1, only when a domain agent is active for the tenant. Produces a structured constraint brief that is appended to verified context before Wave 1 begins. All downstream agents (Waves 1, 2, and 2.5, The Skeptic, synthesis agents) receive it as additional context without modification.
 
 **Constraint brief schema (typed, not free text):**
 - Required regulatory controls
@@ -476,8 +476,8 @@ Multiple domain agents can be active on a single run (e.g., a system that is bot
 
 Domain agents are tenant-registered and not part of the default pipeline. The general-purpose product has no Wave 0.
 
-### Wave 1 — Mostly parallel
-Orchestration, Security, Memory & State, and Tool & Integration run in parallel on the verified context. Trust & Control runs after Orchestration and Security complete — it cannot place gates without knowing the flow and risk profile. All Wave 1 agents produce domain recommendations **plus structured cost signals** for their area. Cost signals feed into the Compatibility Validator in Wave 2.
+### Wave 1 — Parallel
+All four agents run in parallel on the verified context. All produce domain recommendations **plus structured cost signals** for their area. Cost signals feed into the Compatibility Validator at Wave 2.5.
 
 | Agent | Agentic focus |
 |---|---|
@@ -486,14 +486,32 @@ Orchestration, Security, Memory & State, and Tool & Integration run in parallel 
 | Memory & State | Persistence strategy, shared state design, memory pattern selection. Note: users frequently don't know if they need memory or state — the intake step for this domain needs more explanatory scaffolding than others, and the agent should surface its reasoning explicitly rather than just its conclusion. |
 | Tool & Integration | Reasons about where the tool-vs-agent boundary should be drawn for this user's specific system. Core decision framework: tools for deterministic operations (same input, same output), agents for tasks requiring judgment. Also covers MCP usage and build vs. buy recommendations. Platform-specific tool filtering from the manifest happens within this agent but is not its core value. |
 
-**Trust & Control** *(sequential — runs after Orchestration and Security complete)*
+### Wave 2 — Cooperative (depends on Wave 1)
+
+Failure & Observability and Trust & Control run together in a structured exchange. Both receive the full Wave 1 output. Both produce structured cost signals for CV at Wave 2.5 — F&O's signals cover eval infrastructure and tracing overhead; T&C's cover HITL gate overhead and human review latency.
+
+**Exchange protocol:**
+1. F&O produces its failure mode analysis: cascading failure points, reasoning loop risks, high-risk handoff points in the architecture, eval strategy for non-deterministic reasoning, and tracing approach
+2. T&C incorporates the failure analysis into gate placement: HITL gates are positioned to address identified risk points; T&C's response is structured output covering gate placements with rationale
+3. F&O confirms whether the recovery story holds with the proposed gates in place, or adjusts if gate placements materially change the failure picture
+
+**Termination:**
+- Early exit: if F&O's step 3 confirmation requires no adjustment, the exchange is complete
+- Cycle cap: 2 cycles; if unresolved after 2 cycles, each agent ships its current output and the unresolved tension is passed to The Skeptic, flagged for resolution
+
+**Failure & Observability scope:**
+- Agentic-specific failure mode analysis — cascading agent failures, reasoning loops, tool misuse, non-deterministic outputs, memory corruption across sessions
+- Eval strategy for non-deterministic reasoning — how to evaluate multi-agent pipelines where unit testing reasoning is not possible
+- Tracing reasoning chains and inter-agent handoffs — the agentic-specific slice of distributed tracing
+- Explicitly flags intersections where traditional observability approaches need to be adapted rather than applied as-is; does not cover standard observability infrastructure
+
+**Trust & Control scope:**
 - HITL placement and approval gate design
-- Depends on Orchestration (to know the flow) and Security (to know the risk profile) before it can place gates meaningfully
+- Depends on Orchestration (to know the flow) and Security (to know the risk profile); receives both from Wave 1
+- In the cooperative exchange, also incorporates F&O's failure mode analysis to position gates at high-risk points in the architecture
 - Autonomy level is captured during intake; this agent determines where and how that level is enforced within the specific architecture
 
-### Wave 2 — Sequential (depends on Wave 1)
-
-**Compatibility Validator**
+### Wave 2.5 — Compatibility Validator
 
 Runs a fresh web search for every tool and integration point it evaluates. Does not rely on cached manifest data for compatibility checks — versions change, integration issues surface, and patches ship on short cycles.
 
@@ -501,7 +519,7 @@ Runs a fresh web search for every tool and integration point it evaluates. Does 
 - Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
 - Checks LLM SDK version against orchestration framework, memory/vector store against embedding model API, agent framework against tool execution runtime, and model constraints against platform deployment target
 - Collects current pricing and tier data from vendor pages (already visiting them for version and compatibility research)
-- Aggregates cost signals from Wave 1 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
+- Aggregates cost signals from Wave 1 and Wave 2 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
 
 *Per-tool intelligence (captured while already on vendor documentation):*
 - End-of-life date for the recommended version
@@ -511,7 +529,7 @@ Runs a fresh web search for every tool and integration point it evaluates. Does 
 - For managed cloud services: availability in the target cloud provider and region — whether specified by the user or recommended by the system
 
 *Cross-agent conflict checks:*
-- Constraint violations: checks whether any tool or decision recommended by one Wave 1 agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
+- Constraint violations: checks whether any tool or decision recommended by one agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
 - Integration gaps: verifies that every tool dependency an agent assumes is actually accounted for by some agent in the set
 - Version conflicts: where two agents both depend on the same tool, checks that their version requirements are compatible
 
@@ -538,17 +556,11 @@ A global cache shared across all users and tenants, keyed by tool + version + ti
 - CV is researching public vendor documentation; one user's research benefiting another is a feature, not a concern
 - A CVE or deprecation notice that drops before cache expiry will not be reflected until the next run after TTL — acceptable given the existing daily staleness tolerance elsewhere in the system, and mitigated by setting a shorter TTL if needed
 
-**Failure & Observability**
-- Agentic-specific failure mode analysis — cascading agent failures, reasoning loops, tool misuse, non-deterministic outputs, memory corruption across sessions
-- Eval strategy for non-deterministic reasoning — how to evaluate multi-agent pipelines where unit testing reasoning is not possible
-- Tracing reasoning chains and inter-agent handoffs — the agentic-specific slice of distributed tracing
-- Explicitly flags intersections where traditional observability approaches need to be adapted rather than applied as-is; does not cover standard observability infrastructure
-
 ### Wave 3 — Final review
 
 **The Skeptic**
 - The primary question The Skeptic hammers on: does this recommendation actually solve what the user described building? Technical correctness and compatibility are table stakes — fitness to the user's specific system is the core challenge.
-- Identifies weak points in Wave 1 + 2 output and sends them back to the relevant agent(s) with detailed reasoning
+- Identifies weak points in Waves 1, 2, and 2.5 output and sends them back to the relevant agent(s) with detailed reasoning
 - Receiving agent(s) either adopt the suggestion or counter with a reasoned override (e.g. cost impact, latency impact, new attack surface introduced, implementation burden)
 - The Skeptic evaluates counter-arguments and accepts or rejects them; accepted overrides are surfaced in the output with their tradeoff reasoning
 - No human escalation — ships with a caveat tier if unresolved at cycle cap
@@ -570,7 +582,7 @@ A global cache shared across all users and tenants, keyed by tool + version + ti
 
 **Wave 1 agent distinctness:** All four Wave 1 agents are justified and kept separate. Orchestration and Tool & Integration share a surface-level concern (system structure) but use different reasoning frameworks — Orchestration reasons about coordination topology; Tool & Integration reasons about the tool-vs-agent boundary, MCP usage, and build vs. buy. Merging them would produce shallower output on at least one domain for an audience that will notice wrong recommendations.
 
-**Failure & Observability scope:** The agent covers the agentic slice only — agentic-specific failure modes, eval strategy for non-deterministic reasoning, and tracing of reasoning chains and inter-agent handoffs. Traditional observability infrastructure is out of scope. Where traditional approaches need to be adapted (not just applied) because agents are involved, the agent explicitly flags those intersections. This is consistent with how Security is scoped.
+**Wave 2 cooperative rationale:** Failure & Observability and Trust & Control have a genuine bidirectional dependency — failure mode analysis informs where gates should be placed, and gate placements affect the failure recovery story. A cooperative exchange resolves this without forcing a sequential ordering that benefits one agent at the expense of the other. The F&O → T&C direction is the stronger dependency (gate placement is a decision that should incorporate failure mode context), so F&O leads the exchange. The 2-cycle cap keeps cost bounded; unresolved tensions pass to The Skeptic, flagged for resolution.
 
 ---
 
@@ -626,7 +638,7 @@ Contains:
 ### Pass 2 — Implementation layer (user-initiated)
 **Audience:** The builder who will implement the architecture.
 **Trigger:** User clicks through after reviewing Pass 1 and feeling confident in the direction.
-**Input:** Raw outputs from all recommendation pipeline agents (Wave 1, Wave 2, and The Skeptic) plus verified intake context. The rendered Pass 1 document is a human artifact and is not re-fed into the pipeline.
+**Input:** Raw outputs from all recommendation pipeline agents (Waves 1, 2, and 2.5, and The Skeptic) plus verified intake context. The rendered Pass 1 document is a human artifact and is not re-fed into the pipeline.
 
 Contains:
 - Architecture Decision Records (ADRs) — the *why* behind each decision, tradeoffs considered
@@ -652,7 +664,7 @@ Contains:
 
 ## Pricing and access tiers
 
-Output is gated by tier. The Pass 1 pipeline (Wave 0–3 + CV) runs only after the user has confirmed all intake inferences and clicked Analyze — nothing expensive executes during intake or on the review screen. All Pass 1 runs execute the full pipeline; gating is applied at render time only. Pass 2 is a separate user-initiated run and never executes automatically.
+Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs only after the user has confirmed all intake inferences and clicked Analyze — nothing expensive executes during intake or on the review screen. All Pass 1 runs execute the full pipeline; gating is applied at render time only. Pass 2 is a separate user-initiated run and never executes automatically.
 
 | Tier | What the user receives | Price |
 |---|---|---|
@@ -736,7 +748,9 @@ Output is gated by tier. The Pass 1 pipeline (Wave 0–3 + CV) runs only after t
 | Domain-specific expertise | Wave 0 plugin — produces typed constraint brief before Wave 1 | Domain agents produce constraints, not recommendations; Wave 0 narrows the solution space before other agents reason into it; downstream agents receive brief as context with no modification | 2026-04-20 |
 | Domain agent interface | Standardized schema (typed constraint brief); tenant supplies endpoint or Claude API tool definition | Structured output lets downstream agents reason reliably; free text would require each agent to re-parse domain requirements | 2026-04-20 |
 | Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer | 2026-04-14 |
-| Trust & Control placement | Wave 1 (sequential after Orchestration and Security) | HITL feasibility is architecturally load-bearing for Pass 1 — the Skeptic lacks the domain expertise to substitute for a dedicated T&C assessment | 2026-04-15 |
+| Trust & Control placement | Wave 2 (cooperative with Failure & Observability) | T&C and F&O have a bidirectional dependency; cooperative exchange resolves it without forcing a sequential ordering that benefits one at the expense of the other | 2026-04-23 |
+| Wave 2 cooperative model | F&O leads the exchange; 2-cycle cap; unresolved tensions pass to The Skeptic | F&O → T&C is the stronger dependency direction; cycle cap keeps cost bounded | 2026-04-23 |
+| CV placement | Wave 2.5 — standalone, after Wave 2 completes | CV validates the full recommendation set from Waves 1 and 2 before The Skeptic reviews; aggregates cost signals from both waves | 2026-04-23 |
 
 ### Compatibility Validator
 
