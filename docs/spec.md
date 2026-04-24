@@ -578,6 +578,33 @@ A global cache shared across all users and tenants, keyed by tool + version + ti
 
 > Note: The Skeptic debate protocol generates tradeoff documentation as a side effect — accepted overrides and their reasoning feed directly into Pass 2 ADRs.
 
+### Pass 1 Synthesis — Technical Writer
+
+Runs after Wave 3 completes. Receives the full validated output from Waves 1, 2, and 2.5 plus The Skeptic's final resolved state (accepted overrides with tradeoff reasoning, assigned caveat tiers). Does not receive intermediate debate transcripts — only the resolved output. Produces the Pass 1 document.
+
+This is Pass 1 only. The Technical Writer does not produce Pass 2 content. Pass 2 has dedicated domain synthesis agents.
+
+**Input:**
+- Validated recommendations from Waves 1, 2, and 2.5
+- The Skeptic's final resolved state: accepted overrides with tradeoff reasoning, any assigned caveat tiers
+- Verified intake context (for scope statement and cost estimate grounding)
+
+**Architecture diagram:**
+The Technical Writer produces the architecture diagram as part of Pass 1 synthesis. Format is Mermaid flowchart — text that renders as a visual diagram in the frontend via Mermaid.js, exportable as SVG or PNG. The source text is stored alongside the rendered output so users can copy it.
+
+- Direction: chosen by the Technical Writer based on the shape of the architecture. Pipeline flows typically read better left-to-right; hub-and-spoke or DAG patterns may read better top-down.
+- Abstraction level: decision-maker, not implementation detail. Major components and flows; related components grouped into subgraphs; implementation detail omitted. The Technical Writer decides what to include and at what level of abstraction for the Pass 1 audience — the same judgment it applies to the executive summary. Full component detail is reserved for Pass 2.
+- Caveated components are visually distinguished (e.g., border style or label) so the diagram and the caveat tier callouts in the executive summary are legible together
+
+**Tone and framing:**
+- Plain English, jargon-light, intellectually respectful throughout
+- Caveat tiers from The Skeptic are framed in plain language; tier determines prominence: Advisory surfaces as a footnote; Blocking Condition surfaces as a named callout; Do Not Build This leads the document and prompts the user to refine their description and re-run
+- Scope statement included in the executive summary (agentic architecture only; what is out of scope and why)
+- Non-established components called out briefly in the executive summary with a reference to the validated tool manifest for detail
+
+**Faithfulness constraint:**
+The Technical Writer does not editorialize. Its judgment calls are structural — what to show, at what abstraction level, how to frame for the audience — not substantive. It does not soften, amplify, or recharacterize the recommendations it receives. The strength of a concern, the weight of a tradeoff, and the severity of a caveat are determined by the earlier agents and The Skeptic; the Technical Writer's job is to represent them faithfully in plain language, not to re-adjudicate them.
+
 ### Resolved: agent scope and distinctness
 
 **Wave 1 agent distinctness:** All four Wave 1 agents are justified and kept separate. Orchestration and Tool & Integration share a surface-level concern (system structure) but use different reasoning frameworks — Orchestration reasons about coordination topology; Tool & Integration reasons about the tool-vs-agent boundary, MCP usage, and build vs. buy. Merging them would produce shallower output on at least one domain for an audience that will notice wrong recommendations.
@@ -627,10 +654,11 @@ The Compatibility Validator handles user-scoped tools via live lookup, the same 
 ### Pass 1 — Decision layer (always produced)
 **Audience:** Executive or decision maker reading for directional confidence.
 **Tone:** Plain English, jargon-light, intellectually respectful.
+**Produced by:** The Technical Writer (Pass 1 Synthesis) — see agent pipeline section.
 
 Contains:
 - Executive summary — includes a brief callout if any non-established components are in the recommendation set (e.g. "two components in this architecture are emerging patterns — see the tool manifest for detail"); includes a plain-language scope statement making clear that this recommendation covers the agentic architecture only. Traditional software concerns — hosting, deployment, UI, standard observability infrastructure — are outside scope and assumed to be within the builder's existing capabilities. Where those concerns intersect with agentic-specific behavior in ways that may surprise an experienced engineer, they are explicitly flagged in the relevant section.
-- Architecture diagram
+- Architecture diagram — Mermaid flowchart rendered in the frontend, exportable as SVG or PNG. Decision-maker abstraction level: major components and flows, implementation detail omitted. See Technical Writer spec for diagram constraints.
 - Validated tool manifest — each tool and pattern carries a maturity label derived from its manifest state: **Established** (full inclusion), **Emerging** (probationary), **Experimental** (flagged/confidence declining), or **User-specified** (not in manifest, live-researched). Labels are manifest-derived, not agent-generated.
 - Cost estimates (ongoing operational cost, surfaced here because almost every stakeholder needs to speak to it)
 - Security summary (trust boundaries defined, controls in place — reassuring without reading like a pentest report)
@@ -764,6 +792,8 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
 | Cost visibility | Surfaced in Pass 1 | Every stakeholder needs to speak to ongoing cost | 2026-04-14 |
+| Pass 1 synthesis | Technical Writer agent, runs after Wave 3 | Synthesis-to-critique and synthesis-to-document are different tasks; The Skeptic produces validated debate output, not a readable document; keeping them separate prevents the critique lens from coloring the Pass 1 framing | 2026-04-23 |
+| Architecture diagram format | Mermaid flowchart, produced by Technical Writer | Agent-producible text that renders without image generation; familiar to the target audience; exportable as SVG or PNG; abstraction level is a judgment call made by the Technical Writer for the decision-maker audience | 2026-04-23 |
 | Pass 2 trigger | User-initiated | Only pays for deep run when user explicitly wants it | 2026-04-14 |
 | Pass 2 architecture | Dedicated synthesis agents, one per recommendation domain | Expanding validated output is a different job than producing recommendations; re-running the wave model would re-derive what is already settled | 2026-04-14 |
 | Pass 2 input | Raw agent outputs from all waves + verified intake context | Rendered Pass 1 is for humans; synthesis agents need the underlying detail | 2026-04-14 |
