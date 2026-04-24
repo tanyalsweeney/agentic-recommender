@@ -2,36 +2,54 @@
 
 ## What we accomplished this session
 
-- Began consistency review and readability pass on spec.md with LinkedIn audience in mind
-- Added Scope section to spec (new section between "What this system does" and "Target users") — calls out what is and isn't covered, and where traditional practices need adaptation
-- Updated opening line: "A user describes a project" → "A user describes what they're building"
-- Standardized lazy trigger note in admin config table: parenthetical inline on row 1 only
-- Added org list context paragraph to admin dashboard org list section — explains what the org list is and why it's load-bearing before the workflow details
-- Added maintenance pipeline costs table to pipeline observability section — was a genuine gap; maintenance spend is not tied to user runs and would be invisible in per-run reporting
-- Promoted all planned conversion metrics to live reporting from day 1; removed "planned additions" callouts
-- Updated run history to store original inference per step, maturity label distribution, and Wave 0 domain agent tag — data needed for the promoted metrics
-- Fixed stale manifest staleness threshold in settled decisions (was "daily"; updated to tier-based model with correct defaults)
-- Spelled out acronyms in intake steps table (DAG, IRM, HITL, SaaS)
-- Added fitness as The Skeptic's primary challenge — "does this recommendation actually solve what the user described building?"
-- Resolved tenant-scoped org list entries: `owner` field pattern extended to org list from day 1; governance is global admin sets at white-label setup time, locked, change order required to update
-- Updated README: scope paragraph added, language tightened, opening line updated
-- Added v3 system diagram (SVG) and detailed diagram (JSX) from claude.ai session
-- Established no em dashes style preference across all written output
+- Full consistency review of spec.md — produced 20 findings organized by severity (inconsistencies, logic gaps, missing aspects)
+- Built a prioritized checklist with time and difficulty estimates, ordered mission critical to nice to have
+- Closed all 6 mission critical checklist items (details below)
+- Added step 11 (Tools) to the intake flow — always surfaces after model confirmation; conditional pre-population based on manifest coverage; one-click add/remove; user-specified tools added here
+- Fixed "all options sourced from manifest" overstatement — step 3 (External integrations) is free-text user input, not manifest-driven
+- Restructured the agent pipeline waves: Wave 1 fully parallel, Wave 2 cooperative (F&O + T&C), Wave 2.5 CV standalone, Wave 3 The Skeptic
+- Added Technical Writer agent as Pass 1 synthesis step — runs after Wave 3; produces the Pass 1 document including the Mermaid architecture diagram; faithfulness constraint prevents editorializing
+- Specified architecture diagram format: Mermaid flowchart, direction chosen by Technical Writer based on architecture shape, decision-maker abstraction level, exportable as SVG or PNG
+- Added run definition to pricing section — what counts and doesn't count as a run, edge cases covered
+- Added Run Pack as a first-class pricing tier — additional free-tier runs for the description iteration phase
+- Updated Spec Scaffold: renamed to free, replaced prompt copy with conversion-oriented messaging, added Positioning note, scaffold now remains available throughout the description step (not one-use)
 
 ## Key decisions made this session
 
-- **Scope section added to spec.** Explicitly calls out what the system does not cover and where traditional practices need adaptation. Positioned at the top so readers know upfront.
-- **Maintenance pipeline costs are a separate reporting category.** Not visible in per-run reporting; warrant their own dashboard section.
-- **Conversion metrics are live from day 1.** Data captured from day 1 (original inferences, maturity label distribution, Wave 0 tag stored per run). Usefulness increases with volume — more incentive to grow.
-- **Fitness is The Skeptic's primary lens.** Technical correctness and compatibility are table stakes; does this recommendation actually solve what the user described building is the core challenge.
-- **Tenant-scoped org list entries designed in from day 1.** `owner = tenant_id` pattern on org list entries, consistent with config threshold pattern. Governance: set by global admin at white-label setup, locked, change order to update. No tenant-facing UI.
-- **Cross-tool CV compatibility checks are deliberately never cached.** Per-tool results are already cached (the expensive part). Cross-tool checks re-run on the full tool set each time — clean invariant, avoids combination-specific edge cases. Decision is final; no need to revisit.
-- **No em dashes** in any written output — spec, README, handoff, or conversation.
+- **Step 11 (Tools) added to intake.** Always surfaces after model confirmation. Manifest tools filtered by confirmed platform and model. Pre-populated section is conditional on coverage — empty inferred list when manifest is thin, but step always surfaces to preserve user-specified tool capability.
+- **Wave restructure.** Wave 1 is now fully parallel (4 agents). F&O and T&C move to Wave 2 as a cooperative exchange: F&O leads with failure mode analysis, T&C incorporates it into gate placement, F&O confirms. 2-cycle cap; unresolved tensions pass to The Skeptic, flagged for resolution. CV is standalone at Wave 2.5, aggregating cost signals from Waves 1 and 2.
+- **Wave 2 cooperative rationale.** F&O and T&C have a genuine bidirectional dependency. Cooperative exchange resolves it without forcing a sequential ordering that benefits one agent at the expense of the other. F&O leads because gate placement is a decision that should incorporate failure mode context.
+- **Technical Writer added.** Synthesis-to-critique and synthesis-to-document are different tasks. The Skeptic produces validated debate output; the Technical Writer produces the readable document. Keeping them separate prevents the critique lens from coloring the Pass 1 framing. Faithfulness constraint: judgment calls are structural, not substantive.
+- **Mermaid flowchart for architecture diagram.** Agent-producible text, renders without image generation, familiar to the target audience, exportable. Direction is the Technical Writer's call based on the architecture shape.
+- **Run definition.** A run is one complete pipeline execution that produces Pass 1 output. Pass 2 never counts toward the free tier limit. Failed executions are not runs. Loading a past run's context and re-submitting is a new run.
+- **Run Pack added.** Even expert users describing in-flight projects need many iterations to land a quality description (user's husband, an award-winning data scientist at Microsoft, needed ~20 attempts on an in-flight project). The 3/day limit is a cost control mechanism, not a conversion driver. The Run Pack monetizes the iteration phase without requiring premature commitment to Pass 1. Price TBD.
+- **Spec Scaffold repositioned.** Recommended first step for all users, not a fallback. The UI should explicitly connect scaffold use to run cost savings. Scaffold remains available throughout the description step.
+
+## Checklist status
+
+Closed this session: #1, #2, #4, #6, #14, #15
+
+Remaining (from original 20-item list — prioritized order):
+- **#13** — Pass 1 output spec doesn't explicitly list what F&O and T&C contribute. The Technical Writer has access to all wave outputs and the faithfulness constraint covers it implicitly, but the Pass 1 output section should be updated to name F&O and T&C sections explicitly. Partially addressed; needs a follow-up edit.
+- **#8** — Domain agent brief merging on conflict (two domain briefs with contradictory constraints)
+- **#7** — Skeptic early exit threshold undefined
+- **#17** — Pipeline failure handling (what happens when the product's own agents fail)
+- **#9** — Hard constraint exhaustion scenario
+- **#3** — Org list second-pass review: queue vs. full review screen inconsistency
+- **#11** — Free tier abuse prevention
+- **#10** — Low-confidence step handling beyond model preferences
+- **#12** — Refresh failure handling
+- **#5** — Confidence config table: Emerging band missing, Experimental/Drop overlap
+- **#19** — User-scoped tools absent from CV section
+- **#16** — Output format and shareability
+- **#18** — Org list seed list and Gatekeeper approval flow
+- **#20** — Session expiry during long pipeline run
+- Structural: move "Resolved: agent scope" section to Settled Decisions
 
 ## What's immediately next
 
-1. **Continue consistency review pass** — session was interrupted; more of the spec remains to be reviewed
-2. **Simplification pass** — eliminate unnecessary complexity; target the lightest system that produces high-quality results
+1. **Close #13** — update Pass 1 output section to name F&O and T&C contributions explicitly
+2. **Work through remaining checklist** — continue in priority order
 3. **Resolve manifest data structure and query pattern** — full load, filtered lookup, or embedding search; last remaining open spec question; blocks CLAUDE.md
 4. **Write CLAUDE.md** — architectural guardrails for Claude
 5. **Curate manifest seed list** — can proceed in parallel with CLAUDE.md
@@ -39,6 +57,7 @@
 ## Open questions (remaining)
 
 - What is the manifest's data structure and query pattern — full load, filtered lookup, or embedding search?
+- Run Pack price (marked $TBD in spec)
 
 ## Collaboration notes
 
@@ -53,5 +72,5 @@
 - Target user is confirmed as senior technical builders. Conservatism in recommendations is a feature for this audience, not a limitation.
 - User is publishing a LinkedIn newsletter (~8 chapters) documenting this build. Newsletter drafts live at ~/Desktop/blog entries/ — kept outside the repo intentionally. Claude.ai handles newsletter drafting; Claude Code handles spec work.
 - User follows general-audience AI news, not deep technical press — frame deep-cut tooling references accordingly
-- Simplification pass is next after consistency review — hold that lens throughout; the goal is the lightest system that produces high-quality results
-- No em dashes in any written output (spec, README, handoff, conversation). Use commas, colons, or parentheses instead.
+- Simplification pass is still on the list — hold that lens as remaining spec work continues; the goal is the lightest system that produces high-quality results
+- No em dashes in any written output (spec, README, handoff, conversation). Use commas, colons, or parentheses instead. Watch for em dashes when using user-provided text verbatim.
