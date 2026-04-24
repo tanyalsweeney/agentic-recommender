@@ -246,11 +246,13 @@ A TurboTax-style guided step flow. The user provides a description and any hard 
 
 Each step includes a collapsible "more info" section explaining the domain. For steps where inference confidence is low, this section is auto-expanded. For Memory & State specifically, a "help me determine the best option" flow surfaces targeted clarifying questions and recommends based on the answers. The questions and explainer content for all steps live in the maintenance manifest and are updated on the same refresh cadence.
 
-**The step list adapts** based on prior confirmed answers. Model preferences always surfaces. Platform selection (step 2) filters the available options but does not suppress the step. When inference can determine a model, it surfaces pre-populated. When inference confidence is too low, it surfaces with a "Choose for me" default. If the user changes the model selection, available options and pre-selections in the tools step update accordingly.
+**The step list adapts** based on prior confirmed answers. Model preferences always surfaces. Platform selection (step 2) filters the available options but does not suppress the step. When inference can determine a model, it surfaces pre-populated. When inference confidence is too low, it surfaces with a "Choose for me" default. If the user changes the model selection, available options and pre-selections in step 11 (Tools) update accordingly.
+
+Step 11 (Tools) follows a variant of the standard step pattern: multiple tools may be inferred and pre-selected simultaneously. The pre-populated section is conditional on manifest coverage for the confirmed platform and model. If manifest tools match: inferred tools surface pre-selected at the top; remaining compatible manifest tools are listed below. If no manifest tools match: the inferred list is empty and the step opens with an invitation to add tools manually. In both cases the step always surfaces — suppressing it when coverage is thin would also eliminate the ability to add user-specified tools, which is most needed on unusual platforms. One-click to add or remove any tool; one-click to confirm all inferred selections.
 
 Reasoning for each step lives in the agent layer. The UI renders and captures; it does not reason.
 
-Nothing that could evolve is hardcoded in the UI. All options at every step are sourced from the maintenance manifest.
+Nothing that could evolve is hardcoded in the UI. Options at every step are sourced from the maintenance manifest — step 3 (External integrations) is the exception, where the user describes their own systems rather than selecting from a predefined list.
 
 Agents receive the full verified context: the original description, all confirmed selections, and any hard constraints. They do not re-infer what the intake flow already established.
 
@@ -284,7 +286,8 @@ The hard constraints field is prominently surfaced on the review screen as an ex
 | 7 | Scale | Run volume, concurrency expectations |
 | 8 | Greenfield vs. brownfield | New build, extending existing system, or migration |
 | 9 | Failure tolerance | Mission criticality, acceptable failure modes, audit trail requirements |
-| 10 | Model preferences | Always surfaces. Platform (step 2) filters available options. Pre-populated with inference if confident, or "Choose for me" if not. Changing selection updates tool options downstream. |
+| 10 | Model preferences | Always surfaces. Platform (step 2) filters available options. Pre-populated with inference if confident, or "Choose for me" if not. Changing selection updates tool options in step 11. |
+| 11 | Tools | Always surfaces after model preferences are confirmed. Manifest tools are filtered by the confirmed platform (step 2) and model (step 10). If manifest tools match: The intake agent infers relevant tools from the project description. Inferred tools appear pre-selected at the top; any individual tool can be added or removed with one click. Remaining compatible manifest tools are listed below. If no manifest tools match the confirmed platform and model, the inferred list is empty. In both cases, this step always surfaces with an invitation to add tools manually; suppressing it when manifest coverage is thin would also remove the ability to add user-specified tools. User-specified tools not in the manifest can be added here; they are scoped to the run, researched live by agents, and flagged as unvetted in the output. One click confirms all selections. |
 
 
 ---
@@ -723,7 +726,8 @@ Output is gated by tier. The Pass 1 pipeline (Wave 0–3 + CV) runs only after t
 | Hard constraints collection | Collected with project description, before inference runs | Intake agent must know constraints before inferring platform, tooling, and model options — collecting them last risks surfacing options the user will immediately reject | 2026-04-20 |
 | Review screen | Fully editable; final step before submission | User sees full verified context together for the first time; edits trigger re-inference on affected steps only with explicit downstream impact confirmation | 2026-04-20 |
 | Agent input | Verified structured context only | Prevents downstream agents from reasoning from bad intake inference | 2026-04-14 |
-| Options source | Maintenance manifest only | Nothing that could evolve is hardcoded in the UI | 2026-04-14 |
+| Options source | Maintenance manifest only, except step 3 (External integrations) which is free-text user input | Step 3 asks users to describe their own systems — APIs, databases, cloud services — not to select from a predefined list | 2026-04-23 |
+| Tools step | Step 11, always surfaces after model confirmation; multi-select with conditional pre-population | Tool options depend on both platform and model; step always surfaces so user-specified tools can be added even when manifest coverage is thin | 2026-04-23 |
 
 ### Agent pipeline
 
