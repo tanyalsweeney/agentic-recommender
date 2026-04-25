@@ -257,15 +257,17 @@ A more complete initial description directly reduces re-run volume and CV re-sea
 
 **Positioning:** Spec Scaffold should be positioned as a recommended first step for all users, not a fallback for uncertain ones. Experienced users describing in-flight projects frequently omit dimensions they consider obvious; the scaffold surfaces those gaps before they cost a run. The UI should make the connection to run cost explicit: fewer wasted iterations means a direct financial benefit to the user.
 
-From that point, the system presents one step at a time with:
-- A progress / remaining steps indicator
-- The inference made at the top of the step, pre-selected
-- Available options for that step (all sourced from the maintenance manifest)
-- Single-click ability to select a different option if the inference is incorrect
+From that point, the system presents one step at a time. Each step has one of three states:
 
-Each step includes a collapsible "more info" section explaining the domain. For steps where inference confidence is low, this section is auto-expanded. For Memory & State specifically, a "help me determine the best option" flow surfaces targeted clarifying questions and recommends based on the answers. The questions and explainer content for all steps live in the maintenance manifest and are updated on the same refresh cadence.
+- **High confidence inference:** the inferred option is pre-selected. Available options are shown below.
+- **Low confidence:** nothing is pre-selected. Available options are shown. No guess is surfaced — anchoring the user on a weak inference is worse than showing nothing.
+- **Not applicable:** the system is confident this step isn't required for the described architecture. Nothing is pre-selected. A brief message explains: "This isn't obviously required for your use case." Available options are shown in case the user knows otherwise.
 
-**The step list adapts** based on prior confirmed answers. Model preferences always surfaces. Platform selection (step 2) filters the available options but does not suppress the step. When inference can determine a model, it surfaces pre-populated. When inference confidence is too low, it surfaces with a "Choose for me" default. If the user changes the model selection, available options and pre-selections in step 11 (Tools) update accordingly.
+Each step includes an expandable "more info" section explaining the domain, collapsed by default in all states. For Memory & State specifically, a "help me determine the best option" flow surfaces targeted clarifying questions and recommends based on the answers — available regardless of inference state. The questions and explainer content for all steps live in the maintenance manifest and are updated on the same refresh cadence.
+
+If the user proceeds with nothing selected, agents receive that step as empty and handle it from the full verified context.
+
+**The step list adapts** based on prior confirmed answers. Model preferences always surfaces. Platform selection (step 2) filters the available options but does not suppress the step. When inference confidence is too low or the step is not applicable, nothing is pre-selected. If the user changes the model selection, available options and pre-selections in step 11 (Tools) update accordingly.
 
 Step 11 (Tools) follows a variant of the standard step pattern: multiple tools may be inferred and pre-selected simultaneously. The pre-populated section is conditional on manifest coverage for the confirmed platform and model. If manifest tools match: inferred tools surface pre-selected at the top; remaining compatible manifest tools are listed below. If no manifest tools match: the inferred list is empty and the step opens with an invitation to add tools manually. In both cases the step always surfaces — suppressing it when coverage is thin would also eliminate the ability to add user-specified tools, which is most needed on unusual platforms. One-click to add or remove any tool; one-click to confirm all inferred selections.
 
@@ -859,6 +861,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
 | Intake inference | Single stateful agent, sequential reasoning across steps | Inter-step dependencies handled naturally; 85% accuracy bar does not justify per-step specialist agents; users can correct any wrong inference | 2026-04-14 |
+| Step inference states | Three states: high confidence (pre-selected), low confidence (nothing selected), not applicable (nothing selected, brief message); more info accordion collapsed by default in all states | Anchoring users on weak inferences is worse than showing nothing; auto-expanding the accordion is condescending for senior technical builders | 2026-04-25 |
 | Constraint collection and classification | Collected with project description, before inference runs; classified as binary exclusion or optimization target | Binary exclusions filter the option set before inference; optimization targets are weighting signals passed to agents — near-zero run cost addition, closes the gap where cost/overhead preferences would otherwise be ignored or incorrectly treated as exclusions | 2026-04-25 |
 | Binary exclusion exhaustion | Step still surfaces with a warning; user can add manually, adjust constraints, or proceed; agents attempt to find viable options outside the manifest; The Skeptic assigns caveat tier if irreconcilable | Suppressing an exhausted step hides the problem; agents are better positioned than intake to reason about options outside the manifest | 2026-04-25 |
 | Review screen | Fully editable; final step before submission | User sees full verified context together for the first time; edits trigger re-inference on affected steps only with explicit downstream impact confirmation | 2026-04-20 |
