@@ -55,8 +55,9 @@ Owner/admin can view and update system configuration without a code deploy. All 
 | Architecture pattern refresh threshold | 4 weeks | Lazy trigger |
 | Tier 2/3 tool refresh policy | On-demand (run-referenced only) | Toggle between on-demand and a fixed cadence if demand justifies it |
 | Confidence score — Established threshold | ≥ 7 | Score at or above this graduates an entry to full inclusion |
-| Confidence score — Experimental threshold | ≤ 3 | Score at or below this flags an entry as declining |
-| Confidence score — Drop threshold | 0 | Entries at zero are removed on next refresh |
+| Confidence score — Emerging band | Between Experimental floor and Established threshold (4–6 by default) | Derived — not directly configurable; updates automatically when adjacent thresholds change; read-only display |
+| Confidence score — Experimental threshold | > Drop threshold and ≤ 3 | Score above Drop and at or below this flags an entry as declining; Drop threshold takes precedence at the floor |
+| Confidence score — Drop threshold | 0 | Entries at this score are removed on next refresh; takes precedence over Experimental threshold |
 | Skeptic cycle cap | 4 | Maximum debate cycles before caveats are assigned and output ships |
 | Gatekeeper cycle cap | 2 | Maximum cycles before a disputed manifest entry is rejected and dropped |
 | User hold aggregate threshold | 3 users | Number of user-level holds on the same org that triggers an admin nudge to consider an admin-level review |
@@ -238,6 +239,14 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 - Users can load a past run's verified context as a starting point for a new run, modify the description or selections, and re-run from scratch
 
 > Note: Most users will not proceed past Pass 1. Re-runs are typically triggered by reviewing Pass 1 output and wanting to refine the description — not by dissatisfaction with intake inferences. Multiple Pass 1 iterations before settling on a stable description is expected behavior for the primary audience — not an edge case. This has direct implications for CV re-search costs (see Planned enhancements below).
+
+### Session expiry and long-running pipelines
+
+**Pipeline execution is fully server-side.** Once the user clicks Analyze, the pipeline runs to completion regardless of session state — the user can close the tab, lock their device, or let their session expire. Results are stored in run history and are accessible on re-authentication. No pipeline work is lost due to session expiry.
+
+**Intake state is browser-local.** If a session expires before the user submits (during intake), intake progress is lost. This is standard web app behavior. The impact is low: prior run history lets users reload a previous verified context as a starting point, and the Spec Scaffold can be used again from the beginning.
+
+**Run completion notification:** users can opt in to an email notification when a run completes. The notification includes a direct link to the completed run in run history. Useful for the primary audience who submit a run and return to it later — email infrastructure is already in place for account verification.
 
 ---
 
@@ -428,6 +437,8 @@ An org's tier is determined by depth of commitment to agentic systems across fou
 
 ### Seed list
 
+Seed list entries are pre-approved by the owner at system initialization — they represent the founding judgment call that defines the starting state of the org list. The Gatekeeper approval flow applies to all subsequent additions, removals, and tier changes. Seed entries are subject to the same periodic review cadence as all other entries; the Gatekeeper will produce proper signal documentation on first review cycle.
+
 **Tier 1 — Market influence**
 Anthropic, OpenAI, Google/DeepMind, Microsoft, Amazon/AWS, Meta, Nvidia
 
@@ -570,6 +581,11 @@ CV's work is decomposed into independently checkpointable sub-tasks (see Pipelin
 *Cost aggregation:*
 - Aggregates cost signals from Wave 1 and Wave 2 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
 
+*User-scoped tools:*
+- Tools specified by the user that are not in the manifest are evaluated by CV via live lookup — the same per-tool sub-tasks run (version, CVE, EOL, license, pricing, documentation link) with no manifest data as a starting point
+- User-scoped tools are eligible for the CV result cache on the same terms as manifest tools — if the same tool and version has been researched within the TTL window, the cached result is reused
+- CV flags user-scoped tools as user-specified and unvetted in its output; this label carries through to Pass 1
+
 The CV's full report feeds Pass 1 output directly and is shared input to all six Pass 2 synthesis agents.
 
 *Vendor relationship cache (side effect of CV runs):*
@@ -697,12 +713,6 @@ Persistent checkpoints carry a TTL configurable via the admin dashboard. The def
 
 **Run history:** failed runs do not produce a run history entry. Persistent checkpoints from agents that completed before the failure are retained and remain eligible for reuse on the next run.
 
-### Resolved: agent scope and distinctness
-
-**Wave 1 agent distinctness:** All four Wave 1 agents are justified and kept separate. Orchestration and Tool & Integration share a surface-level concern (system structure) but use different reasoning frameworks — Orchestration reasons about coordination topology; Tool & Integration reasons about the tool-vs-agent boundary, MCP usage, and build vs. buy. Merging them would produce shallower output on at least one domain for an audience that will notice wrong recommendations.
-
-**Wave 2 cooperative rationale:** Failure & Observability and Trust & Control have a genuine bidirectional dependency — failure mode analysis informs where gates should be placed, and gate placements affect the failure recovery story. A cooperative exchange resolves this without forcing a sequential ordering that benefits one agent at the expense of the other. The F&O → T&C direction is the stronger dependency (gate placement is a decision that should incorporate failure mode context), so F&O leads the exchange. The 2-cycle cap keeps cost bounded; unresolved tensions pass to The Skeptic, flagged for resolution.
-
 ---
 
 ## Maintenance pipeline (separate from recommendation pipeline)
@@ -764,6 +774,11 @@ Contains:
 - Failure modes summary (key agentic failure risks identified for this architecture, eval approach for non-deterministic outputs, where reasoning chain tracing applies — what can go wrong and how the architecture addresses it, at decision-maker abstraction level)
 - Trust and control summary (HITL gate placements and rationale, autonomy level enforcement points — where humans are in the loop and why, framed for a decision maker communicating oversight design to stakeholders)
 
+**Export and sharing:**
+- **PDF export** — full Pass 1 document at the owner's tier level, suitable for attaching to email, Slack, or a presentation
+- **Architecture diagram** — SVG or PNG export; Mermaid source stored alongside for copying (Pass 1 tier only — diagram is not included in free tier output)
+- **Shareable view-only link** — no account required to view. Recipients see exactly what the owner's tier unlocks: full Pass 1 for a Pass 1 purchaser, limited output for a free tier user. No paid content is exposed beyond what the owner has access to.
+
 ### Pass 2 — Implementation layer (user-initiated)
 **Audience:** The builder who will implement the architecture.
 **Trigger:** User clicks through after reviewing Pass 1 and feeling confident in the direction.
@@ -788,6 +803,11 @@ Contains:
 | Failure & Observability synthesis | Failure & Observability agent output |
 
 **Compatibility Validator output** feeds all six synthesis agents as shared input — it is not a synthesis domain in its own right but provides the version, pricing, and constraint data that makes configuration accurate.
+
+**Export and sharing:**
+- **Markdown export** — per section (ADRs, configuration, specs individually); builders can drop sections directly into a repo or wiki
+- **Copy to clipboard** — available per section
+- **Shareable link** — requires an account to view; Pass 2 content is implementation detail intended for the builder's team, not for broad distribution
 
 ---
 
@@ -891,6 +911,8 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Domain conflict resolution | Conditional cooperative step between CV and Wave 3; owned by the relevant domain agents | CV detects constraint violations; resolution requires architectural reasoning that belongs with the domain experts, not CV; 1-cycle cap keeps cost bounded | 2026-04-25 |
 | Skeptic early exit threshold | No concerns at or above Advisory (tier 1) across any dimension, evaluated against verified intake context | Ties the early exit condition to the existing caveat tier system — gives The Skeptic a concrete, consistent question to answer rather than an undefined threshold | 2026-04-25 |
 | Pipeline failure handling | Transient checkpoints for within-run retry; persistent checkpoints for cross-run reuse; safety-critical failures fail the run; non-critical CV sub-tasks ship flagged with documentation link | Agent-level checkpointing preserves all completed work; cross-run reuse reduces cost for iterating users -- consistent with CV result cache pattern already in the spec | 2026-04-25 |
+| Wave 1 agent distinctness | All four Wave 1 agents kept separate | Orchestration and Tool & Integration share a surface-level concern but use different reasoning frameworks — merging them produces shallower output on at least one domain for an audience that will notice wrong recommendations | 2026-04-23 |
+| Wave 2 cooperative rationale | F&O leads the cooperative exchange with T&C | Genuine bidirectional dependency; F&O leads because gate placement should incorporate failure mode context; cooperative exchange avoids forcing a sequential ordering that benefits one agent at the expense of the other | 2026-04-23 |
 
 ### Compatibility Validator
 
@@ -909,3 +931,5 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Pass 2 trigger | User-initiated | Only pays for deep run when user explicitly wants it | 2026-04-14 |
 | Pass 2 architecture | Dedicated synthesis agents, one per recommendation domain | Expanding validated output is a different job than producing recommendations; re-running the wave model would re-derive what is already settled | 2026-04-14 |
 | Pass 2 input | Raw agent outputs from all waves + verified intake context | Rendered Pass 1 is for humans; synthesis agents need the underlying detail | 2026-04-14 |
+| Pass 1 sharing | View-only link (no account required); recipient sees owner's tier output | Decision-makers receiving shared links are the target Pass 1 audience; friction-free access serves the user and markets the product; no paid content exposed beyond owner's tier | 2026-04-25 |
+| Pass 2 sharing | Shareable link requires account; Markdown export per section | Pass 2 is implementation detail for the builder's team; Markdown drops directly into repos and wikis | 2026-04-25 |
