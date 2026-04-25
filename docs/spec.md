@@ -480,6 +480,13 @@ Runs before Wave 1, only when a domain agent is active for the tenant. Produces 
 
 Multiple domain agents can be active on a single run (e.g., a system that is both HIPAA-scoped and deployed on a government platform). Each produces a constraint brief; briefs are merged before being passed downstream.
 
+**Brief merging rules:**
+- Required regulatory controls, mandatory certifications: union of all requirements across all briefs
+- Prohibited tools or patterns: union of all prohibitions — if any brief prohibits something, it is prohibited in the merged brief
+- Scope of applicability: merged to the broadest applicable scope
+
+**Conflict detection:** A conflict exists when a tool or pattern appears as required in one brief and prohibited in another. Detected conflicts are flagged in the merged brief with the names of the contributing domain agents and the specific constraint pair. All downstream agents receive the merged brief including any conflict flags.
+
 Domain agents are tenant-registered and not part of the default pipeline. The general-purpose product has no Wave 0.
 
 ### Wave 1 — Parallel
@@ -561,6 +568,23 @@ A global cache shared across all users and tenants, keyed by tool + version + ti
 - Cross-tool compatibility checks are never cached — they depend on the full tool set for a given run and must always re-run
 - CV is researching public vendor documentation; one user's research benefiting another is a feature, not a concern
 - A CVE or deprecation notice that drops before cache expiry will not be reflected until the next run after TTL — acceptable given the existing daily staleness tolerance elsewhere in the system, and mitigated by setting a shorter TTL if needed
+
+### Domain Conflict Resolution (conditional)
+
+Runs after CV, before Wave 3. Only active when the merged domain brief contains conflict flags.
+
+**Participating agents:** the Wave 1 and Wave 2 agents whose recommendations are directly affected by the flagged constraint conflicts.
+
+**Input:** the flagged conflict pairs from the merged domain brief, plus any constraint violations CV surfaced during its standard cross-agent conflict checks.
+
+**Exchange protocol:**
+1. Participating agents share their current recommendations and the specific constraints each is trying to satisfy
+2. Agents cooperatively propose a resolution — a jointly acceptable architectural choice that satisfies all conflicting constraints
+3. On agreement: each agent updates its output to reflect the resolution; conflict flags are resolved before Wave 3
+
+**Termination:**
+- **Resolved:** all participating agents agree; conflict flags are resolved; output proceeds to Wave 3 cleanly
+- **Unresolved (no agreement after one cycle):** the conflict passes to The Skeptic flagged for resolution; The Skeptic applies the standard caveat framework
 
 ### Wave 3 — Final review
 
@@ -668,6 +692,8 @@ Contains:
 - Validated tool manifest — each tool and pattern carries a maturity label derived from its manifest state: **Established** (full inclusion), **Emerging** (probationary), **Experimental** (flagged/confidence declining), or **User-specified** (not in manifest, live-researched). Labels are manifest-derived, not agent-generated.
 - Cost estimates (ongoing operational cost, surfaced here because almost every stakeholder needs to speak to it)
 - Security summary (trust boundaries defined, controls in place — reassuring without reading like a pentest report)
+- Failure modes summary (key agentic failure risks identified for this architecture, eval approach for non-deterministic outputs, where reasoning chain tracing applies — what can go wrong and how the architecture addresses it, at decision-maker abstraction level)
+- Trust and control summary (HITL gate placements and rationale, autonomy level enforcement points — where humans are in the loop and why, framed for a decision maker communicating oversight design to stakeholders)
 
 ### Pass 2 — Implementation layer (user-initiated)
 **Audience:** The builder who will implement the architecture.
@@ -789,6 +815,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Trust & Control placement | Wave 2 (cooperative with Failure & Observability) | T&C and F&O have a bidirectional dependency; cooperative exchange resolves it without forcing a sequential ordering that benefits one at the expense of the other | 2026-04-23 |
 | Wave 2 cooperative model | F&O leads the exchange; 2-cycle cap; unresolved tensions pass to The Skeptic | F&O → T&C is the stronger dependency direction; cycle cap keeps cost bounded | 2026-04-23 |
 | CV placement | Wave 2.5 — standalone, after Wave 2 completes | CV validates the full recommendation set from Waves 1 and 2 before The Skeptic reviews; aggregates cost signals from both waves | 2026-04-23 |
+| Domain conflict resolution | Conditional cooperative step between CV and Wave 3; owned by the relevant domain agents | CV detects constraint violations; resolution requires architectural reasoning that belongs with the domain experts, not CV; 1-cycle cap keeps cost bounded | 2026-04-25 |
 
 ### Compatibility Validator
 
