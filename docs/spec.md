@@ -2,6 +2,8 @@
 
 ## What this system does
 
+The system's job is to produce an agentic architecture recommendation that actually solves what the user is building. Technical correctness and compatibility are necessary but not sufficient — a recommendation that is technically sound but doesn't fit the user's specific system is a failure.
+
 A user describes what they're building. The system walks them through a guided intake flow, inferring their agentic architecture at each step and adapting remaining steps based on prior confirmations. Once intake is complete, verified context is handed to a team of specialist agents that produce a structured recommendation in two passes.
 
 ---
@@ -461,7 +463,7 @@ User-level holds are surfaced to the owner/admin in aggregate on next run — no
 ## Agent pipeline
 
 ### Guiding principle
-Agents focus on agentic-specific concerns. Traditional software architecture concerns (APIs, databases, auth, deployment infrastructure) are out of scope for the agent layer.
+Every agent's ultimate test is whether the recommendation solves what the user described building. Technical correctness and compatibility are table stakes. The scope constraint follows from this: agentic-specific concerns are what agents are uniquely equipped to get right — traditional software architecture concerns (APIs, databases, auth, deployment infrastructure) are out of scope because they are not where the system adds distinctive value.
 
 ### Wave 0 — Domain context (conditional)
 
@@ -596,7 +598,7 @@ Runs after CV, before Wave 3. Only active when the merged domain brief contains 
 - No human escalation — ships with a caveat tier if unresolved at cycle cap
 
 **Termination conditions:**
-- **Early exit:** if all remaining unresolved concerns fall below threshold across every dimension (process time, process cost, implementation effort, security implications, architectural complexity, maintenance burden), The Skeptic accepts and ships — thresholds evaluated relative to verified intake context (scale, run volume, concurrency)
+- **Early exit:** if all remaining unresolved concerns would not rise to Advisory (tier 1) when evaluated against the verified intake context — no meaningful impact on the user's stated scale, failure tolerance, or autonomy level across any dimension (process time, process cost, implementation effort, security implications, architectural complexity, maintenance burden) — The Skeptic accepts and ships
 - **Cycle cap:** hard limit of 4 cycles; on cycle 4, any concerns still above threshold are assigned a caveat tier and output ships
 
 **Skeptic caveat tiers (assigned at cycle cap):**
@@ -816,6 +818,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Wave 2 cooperative model | F&O leads the exchange; 2-cycle cap; unresolved tensions pass to The Skeptic | F&O → T&C is the stronger dependency direction; cycle cap keeps cost bounded | 2026-04-23 |
 | CV placement | Wave 2.5 — standalone, after Wave 2 completes | CV validates the full recommendation set from Waves 1 and 2 before The Skeptic reviews; aggregates cost signals from both waves | 2026-04-23 |
 | Domain conflict resolution | Conditional cooperative step between CV and Wave 3; owned by the relevant domain agents | CV detects constraint violations; resolution requires architectural reasoning that belongs with the domain experts, not CV; 1-cycle cap keeps cost bounded | 2026-04-25 |
+| Skeptic early exit threshold | No concerns at or above Advisory (tier 1) across any dimension, evaluated against verified intake context | Ties the early exit condition to the existing caveat tier system — gives The Skeptic a concrete, consistent question to answer rather than an undefined threshold | 2026-04-25 |
 
 ### Compatibility Validator
 
