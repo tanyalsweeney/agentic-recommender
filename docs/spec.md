@@ -838,8 +838,8 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 - The architectural diagram is the strongest conversion lever for the executive/decision-maker audience: it's the artifact that goes into a deck
 - $49 is impulse-purchase territory for the primary audience (senior technical builders who expense tools)
 - Pass 2 is episodic use, not a daily driver — per-run pricing is honest and aligns cost with value delivered
-- Every Pass 1 run executes the full pipeline regardless of tier — a free tier user gets the same quality of underlying analysis as a paying user. What differs is what gets rendered: tier determines which parts of the output are shown, blurred, or hidden. This keeps the architecture simple (no conditional pipeline execution) and ensures the free tier output is genuinely trustworthy, not a degraded version.
-- The Run Pack exists because even expert users describing in-flight projects need multiple iterations to land a high-quality description. The 3 free runs/day limit is a cost control mechanism, not a conversion driver — capping high-intent users at 3 attempts per day creates friction without benefit. The Run Pack monetizes the iteration phase without requiring users to pay for full Pass 1 output before they are ready.
+- Every Pass 1 run executes the full pipeline regardless of tier. Tier determines which parts of the output are shown, blurred, or hidden, not the quality of the underlying analysis. This keeps the architecture simple and ensures free tier output is genuinely trustworthy.
+- The Run Pack exists because even expert users need multiple iterations to land a stable description. The 3 free runs/day limit is a cost control mechanism, not a conversion driver. Capping high-intent users at 3 attempts per day creates friction without benefit.
 
 ---
 
