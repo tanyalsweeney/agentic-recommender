@@ -530,23 +530,29 @@ Failure & Observability and Trust & Control run together in a structured exchang
 
 Runs a fresh web search for every tool and integration point it evaluates. Does not rely on cached manifest data for compatibility checks — versions change, integration issues surface, and patches ship on short cycles.
 
-*Compatibility checks:*
-- Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
-- Checks LLM SDK version against orchestration framework, memory/vector store against embedding model API, agent framework against tool execution runtime, and model constraints against platform deployment target
-- Collects current pricing and tier data from vendor pages (already visiting them for version and compatibility research)
-- Aggregates cost signals from Wave 1 and Wave 2 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
+CV's work is decomposed into independently checkpointable sub-tasks (see Pipeline failure handling). Each sub-task persists its output as it completes; a failure in one sub-task retries only that sub-task without losing any other CV work.
 
-*Per-tool intelligence (captured while already on vendor documentation):*
-- End-of-life date for the recommended version
+*Per-tool sub-tasks (parallel, one per tool):*
+- Verifies the recommended version is current and compatible with its integration points
+- END-of-life date for the recommended version
 - HIGH and CRITICAL CVEs affecting the recommended version that have not been patched in that version
 - Meaningful breaking changes between the recommended version and current stable
 - License (SPDX identifier; copyleft licenses flagged for legal review)
+- Pricing and tier data
 - For managed cloud services: availability in the target cloud provider and region — whether specified by the user or recommended by the system
+- Direct link to the vendor documentation page visited — included in CV's report as the source reference and as a manual verification path if any data is flagged as unavailable
 
-*Cross-agent conflict checks:*
+*Cross-tool compatibility checks (run after all per-tool sub-tasks complete):*
+- Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
+- Checks LLM SDK version against orchestration framework, memory/vector store against embedding model API, agent framework against tool execution runtime, and model constraints against platform deployment target
+
+*Cross-agent conflict checks (run after cross-tool checks complete):*
 - Constraint violations: checks whether any tool or decision recommended by one agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
 - Integration gaps: verifies that every tool dependency an agent assumes is actually accounted for by some agent in the set
 - Version conflicts: where two agents both depend on the same tool, checks that their version requirements are compatible
+
+*Cost aggregation:*
+- Aggregates cost signals from Wave 1 and Wave 2 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
 
 The CV's full report feeds Pass 1 output directly and is shared input to all six Pass 2 synthesis agents.
 
@@ -636,6 +642,44 @@ The Technical Writer produces the architecture diagram as part of Pass 1 synthes
 
 **Faithfulness constraint:**
 The Technical Writer does not editorialize. Its judgment calls are structural — what to show, at what abstraction level, how to frame for the audience — not substantive. It does not soften, amplify, or recharacterize the recommendations it receives. The strength of a concern, the weight of a tradeoff, and the severity of a caveat are determined by the earlier agents and The Skeptic; the Technical Writer's job is to represent them faithfully in plain language, not to re-adjudicate them.
+
+### Pipeline failure handling
+
+**Two types of checkpoints:**
+
+- **Transient checkpoints:** exist within a single run attempt. Used by the retry mechanism -- if an agent fails, its transient checkpoint allows retry without re-running any prior agent. Discarded when the run completes (success or terminal failure).
+- **Persistent checkpoints:** each agent's structured output is written to a persistent store as it completes. Reusable across runs when validity conditions are met (see below). This is the same pattern as the CV result cache -- expensive work cached so subsequent runs with the same context don't pay for it again.
+
+CV's work is further decomposed into independently checkpointable sub-tasks (per-tool, cross-tool, cross-agent, cost aggregation) -- each sub-task produces its own persistent checkpoint.
+
+**Cross-run checkpoint reuse:**
+
+A persistent checkpoint is valid for reuse on a subsequent run when all three conditions hold:
+1. Verified context hash is identical -- same description, confirmed selections, and hard constraints
+2. Agent version is unchanged since the checkpoint was created
+3. The manifest has not been refreshed since the checkpoint was created (applies to agents that read from the manifest)
+
+When a run starts, the system checks for a valid persistent checkpoint for each agent. Agents with valid checkpoints are skipped; only agents without valid checkpoints execute. This directly reduces cost and latency for users iterating toward a stable description -- the expected behavior for the primary audience.
+
+Persistent checkpoints carry a TTL configurable via the admin dashboard. The default TTL is tied to the manifest refresh cadence for manifest-reading agents; for CV per-tool sub-tasks, the existing CV result cache TTL applies.
+
+**Retry policy:** Each agent and each CV sub-task retries with exponential backoff on transient failure. If retries are exhausted, failure escalation applies.
+
+**Failure escalation:**
+
+| Component | On retry exhaustion |
+|---|---|
+| Wave 0, Wave 1, Wave 2 agents | Run fails entirely — no partial output, no charge |
+| Domain Conflict Resolution agents | Run fails entirely |
+| CV — cross-tool and cross-agent checks | Run fails entirely — safety-critical |
+| CV — per-tool sub-tasks: CVE, compatibility | Run fails entirely — safety-critical |
+| CV — per-tool sub-tasks: pricing, EOL, license | Ships flagged as unavailable with a direct link to vendor documentation for manual verification |
+| The Skeptic | Run fails entirely |
+| Technical Writer | Run fails entirely |
+
+**User notification:** plain-language message that the run encountered a problem; no technical detail exposed. No charge applied.
+
+**Run history:** failed runs do not produce a run history entry. Persistent checkpoints from agents that completed before the failure are retained and remain eligible for reuse on the next run.
 
 ### Resolved: agent scope and distinctness
 
@@ -819,6 +863,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | CV placement | Wave 2.5 — standalone, after Wave 2 completes | CV validates the full recommendation set from Waves 1 and 2 before The Skeptic reviews; aggregates cost signals from both waves | 2026-04-23 |
 | Domain conflict resolution | Conditional cooperative step between CV and Wave 3; owned by the relevant domain agents | CV detects constraint violations; resolution requires architectural reasoning that belongs with the domain experts, not CV; 1-cycle cap keeps cost bounded | 2026-04-25 |
 | Skeptic early exit threshold | No concerns at or above Advisory (tier 1) across any dimension, evaluated against verified intake context | Ties the early exit condition to the existing caveat tier system — gives The Skeptic a concrete, consistent question to answer rather than an undefined threshold | 2026-04-25 |
+| Pipeline failure handling | Transient checkpoints for within-run retry; persistent checkpoints for cross-run reuse; safety-critical failures fail the run; non-critical CV sub-tasks ship flagged with documentation link | Agent-level checkpointing preserves all completed work; cross-run reuse reduces cost for iterating users -- consistent with CV result cache pattern already in the spec | 2026-04-25 |
 
 ### Compatibility Validator
 
