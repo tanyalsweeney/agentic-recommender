@@ -61,6 +61,7 @@ Owner/admin can view and update system configuration without a code deploy. All 
 | Gatekeeper cycle cap | 2 | Maximum cycles before a disputed manifest entry is rejected and dropped |
 | User hold aggregate threshold | 3 users | Number of user-level holds on the same org that triggers an admin nudge to consider an admin-level review |
 | CV result cache TTL | 24 hours (default) | How long a cached per-tool CV result is considered fresh before re-research is required |
+| Manifest max staleness threshold | 2x the normal refresh threshold per entry type | If refresh fails and retries are exhausted, runs proceed on stale data up to this age; beyond it, runs are blocked until refresh recovers |
 
 Per-tenant overrides of these defaults are supported in the multi-tenant configuration (see Multi-tenancy note under Settled decisions).
 
@@ -729,6 +730,13 @@ On-demand, lazily triggered — no scheduled cron. Refresh only runs when there 
 
 **Staleness threshold:** Tier-based and configurable via the admin dashboard — see Refresh cadence table above for defaults. Tier 2/3 tools refresh only when referenced by a run.
 
+**Refresh failure handling:**
+- Refresh retries with exponential backoff on failure
+- If retry succeeds: normal flow
+- If retries are exhausted: manifest age is checked against the configurable max staleness threshold (default: 2x the normal refresh threshold per entry type)
+  - **Within max staleness threshold:** run proceeds. Admin is notified via a flag in Manifest health. No user-visible change — manifest staleness within tolerance does not affect output quality or user cost.
+  - **Beyond max staleness threshold:** run is blocked. User sees a plain-language "temporarily unavailable, please try again later" message. Admin is notified that manual investigation is required.
+
 ### User-scoped tools
 
 Users may specify a tool that is not in the manifest. These tools are:
@@ -853,6 +861,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Manifest refresh | On-demand, lazy trigger | No wasted cycles during quiet periods; naturally scales with usage | 2026-04-14 |
 | Manifest staleness threshold | Tier-based; configurable via admin dashboard | Tier 1 tools default to 2 weeks; architecture patterns to 4 weeks; Tier 2/3 tools refresh only when referenced by a run | 2026-04-21 |
 | Manifest refresh UX | Background on UI open; blocks only if user submits before refresh completes | User writing their description usually covers the refresh window | 2026-04-14 |
+| Manifest refresh failure | Retry with backoff; within max staleness threshold proceed silently (admin notified); beyond threshold block with generic unavailable message | Stale manifest within tolerance produces identical user-visible output — no reason to notify the user; admin needs to know regardless | 2026-04-25 |
 | Gatekeeper rejected entries | Dropped, no queue | Next refresh cycle is the retry mechanism | 2026-04-14 |
 | User-scoped tools | Run-scoped, live-researched, flagged as unvetted in output | Keeps manifest integrity intact while still evaluating user-specified tools | 2026-04-14 |
 
