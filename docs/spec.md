@@ -238,7 +238,7 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 - Users can browse past runs and review previous recommendations
 - Users can load a past run's verified context as a starting point for a new run, modify the description or selections, and re-run from scratch
 
-> Note: Most users will not proceed past Pass 1. Re-runs are typically triggered by reviewing Pass 1 output and wanting to refine the description — not by dissatisfaction with intake inferences. Multiple Pass 1 iterations before settling on a stable description is expected behavior for the primary audience — not an edge case. This has direct implications for CV re-search costs (see Planned enhancements below).
+> Note: Most users will not proceed past Pass 1. Multiple Pass 1 iterations before settling on a stable description is expected behavior for the primary audience — re-runs are driven by description refinement, not intake inference errors. This has direct implications for CV re-search costs — see CV result cache.
 
 ### Session expiry and long-running pipelines
 
@@ -263,9 +263,7 @@ Inference runs once on the description and constraints together, producing a pre
 
 **Spec Scaffold (free):** A fill-in-the-blanks wizard surfaced at the description step with the prompt: *"Most users miss a few things freeform. Spec Scaffold takes 2 minutes, costs nothing, and draws out the details that matter."* The wizard covers every structurally meaningful dimension of an agentic system: autonomy level, failure tolerance, memory requirements, scale, and other details that even experienced users tend to omit when writing freeform. Each field is prepopulated with the most common answer as placeholder text; users replace only what doesn't fit. Once completed, the form renders as editable prose in the description text box; the user refines and submits as normal. The scaffold remains available at the description step and can be used as many times as needed.
 
-A more complete initial description directly reduces re-run volume and CV re-search costs.
-
-**Positioning:** Spec Scaffold should be positioned as a recommended first step for all users, not a fallback for uncertain ones. Experienced users describing in-flight projects frequently omit dimensions they consider obvious; the scaffold surfaces those gaps before they cost a run. The UI should make the connection to run cost explicit: fewer wasted iterations means a direct financial benefit to the user.
+**Positioning:** Spec Scaffold should be positioned as a recommended first step for all users, not a fallback for uncertain ones. Experienced users describing in-flight projects frequently omit dimensions they consider obvious; the scaffold surfaces those gaps before they cost a run. The UI should make the connection explicit: fewer iterations means fewer CV re-search costs and a direct financial benefit to the user.
 
 From that point, the system presents one step at a time. Each step has one of three states:
 
@@ -320,7 +318,7 @@ The constraints field is prominently surfaced on the review screen as an explici
 | 8 | Greenfield vs. brownfield | New build, extending existing system, or migration |
 | 9 | Failure tolerance | Mission criticality, acceptable failure modes, audit trail requirements |
 | 10 | Model preferences | Always surfaces. Platform (step 2) filters available options. Pre-populated with inference if confident, or "Choose for me" if not. Changing selection updates tool options in step 11. |
-| 11 | Tools | Always surfaces after model preferences are confirmed. Manifest tools are filtered by the confirmed platform (step 2) and model (step 10). If manifest tools match: The intake agent infers relevant tools from the project description. Inferred tools appear pre-selected at the top; any individual tool can be added or removed with one click. Remaining compatible manifest tools are listed below. If no manifest tools match the confirmed platform and model, the inferred list is empty. In both cases, this step always surfaces with an invitation to add tools manually; suppressing it when manifest coverage is thin would also remove the ability to add user-specified tools. User-specified tools not in the manifest can be added here; they are scoped to the run, researched live by agents, and flagged as unvetted in the output. One click confirms all selections. |
+| 11 | Tools | Always surfaces after model preferences are confirmed; multi-select variant (see intake flow above for conditional logic). User-specified tools not in the manifest can be added here — scoped to the run, researched live, and flagged as unvetted in the output. |
 
 
 ---
@@ -555,7 +553,7 @@ Failure & Observability and Trust & Control run together in a structured exchang
 
 ### Wave 2.5 — Compatibility Validator
 
-Runs a fresh web search for every tool and integration point it evaluates. Does not rely on cached manifest data for compatibility checks — versions change, integration issues surface, and patches ship on short cycles.
+Runs a fresh web search per tool and integration point; does not rely on cached manifest data — versions, compatibility issues, and patches change on short cycles.
 
 CV's work is decomposed into independently checkpointable sub-tasks (see Pipeline failure handling). Each sub-task persists its output as it completes; a failure in one sub-task retries only that sub-task without losing any other CV work.
 
@@ -636,7 +634,7 @@ Runs after CV, before Wave 3. Only active when the merged domain brief contains 
 - No human escalation — ships with a caveat tier if unresolved at cycle cap
 
 **Termination conditions:**
-- **Early exit:** if all remaining unresolved concerns would not rise to Advisory (tier 1) when evaluated against the verified intake context — no meaningful impact on the user's stated scale, failure tolerance, or autonomy level across any dimension (process time, process cost, implementation effort, security implications, architectural complexity, maintenance burden) — The Skeptic accepts and ships
+- **Early exit:** if all remaining unresolved concerns would not rise to Advisory (tier 1) when evaluated against the verified intake context, The Skeptic accepts and ships
 - **Cycle cap:** hard limit of 4 cycles; on cycle 4, any concerns still above threshold are assigned a caveat tier and output ships
 
 **Skeptic caveat tiers (assigned at cycle cap):**
@@ -673,7 +671,7 @@ The Technical Writer produces the architecture diagram as part of Pass 1 synthes
 - Non-established components called out briefly in the executive summary with a reference to the validated tool manifest for detail
 
 **Faithfulness constraint:**
-The Technical Writer does not editorialize. Its judgment calls are structural — what to show, at what abstraction level, how to frame for the audience — not substantive. It does not soften, amplify, or recharacterize the recommendations it receives. The strength of a concern, the weight of a tradeoff, and the severity of a caveat are determined by the earlier agents and The Skeptic; the Technical Writer's job is to represent them faithfully in plain language, not to re-adjudicate them.
+The Technical Writer does not editorialize. Its judgment calls are structural — what to show, at what abstraction level, how to frame for the audience — not substantive. Concern strength, tradeoff weight, and caveat severity are determined by earlier agents and The Skeptic; the Technical Writer represents them faithfully in plain language.
 
 ### Pipeline failure handling
 
@@ -906,13 +904,12 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Domain agent interface | Standardized schema (typed constraint brief); tenant supplies endpoint or Claude API tool definition | Structured output lets downstream agents reason reliably; free text would require each agent to re-parse domain requirements | 2026-04-20 |
 | Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer | 2026-04-14 |
 | Trust & Control placement | Wave 2 (cooperative with Failure & Observability) | T&C and F&O have a bidirectional dependency; cooperative exchange resolves it without forcing a sequential ordering that benefits one at the expense of the other | 2026-04-23 |
-| Wave 2 cooperative model | F&O leads the exchange; 2-cycle cap; unresolved tensions pass to The Skeptic | F&O → T&C is the stronger dependency direction; cycle cap keeps cost bounded | 2026-04-23 |
+| Wave 2 cooperative model | F&O leads the exchange; 2-cycle cap; unresolved tensions pass to The Skeptic | F&O → T&C is the stronger dependency direction; gate placement should incorporate failure mode context; cycle cap keeps cost bounded | 2026-04-23 |
 | CV placement | Wave 2.5 — standalone, after Wave 2 completes | CV validates the full recommendation set from Waves 1 and 2 before The Skeptic reviews; aggregates cost signals from both waves | 2026-04-23 |
 | Domain conflict resolution | Conditional cooperative step between CV and Wave 3; owned by the relevant domain agents | CV detects constraint violations; resolution requires architectural reasoning that belongs with the domain experts, not CV; 1-cycle cap keeps cost bounded | 2026-04-25 |
 | Skeptic early exit threshold | No concerns at or above Advisory (tier 1) across any dimension, evaluated against verified intake context | Ties the early exit condition to the existing caveat tier system — gives The Skeptic a concrete, consistent question to answer rather than an undefined threshold | 2026-04-25 |
 | Pipeline failure handling | Transient checkpoints for within-run retry; persistent checkpoints for cross-run reuse; safety-critical failures fail the run; non-critical CV sub-tasks ship flagged with documentation link | Agent-level checkpointing preserves all completed work; cross-run reuse reduces cost for iterating users -- consistent with CV result cache pattern already in the spec | 2026-04-25 |
 | Wave 1 agent distinctness | All four Wave 1 agents kept separate | Orchestration and Tool & Integration share a surface-level concern but use different reasoning frameworks — merging them produces shallower output on at least one domain for an audience that will notice wrong recommendations | 2026-04-23 |
-| Wave 2 cooperative rationale | F&O leads the cooperative exchange with T&C | Genuine bidirectional dependency; F&O leads because gate placement should incorporate failure mode context; cooperative exchange avoids forcing a sequential ordering that benefits one agent at the expense of the other | 2026-04-23 |
 
 ### Compatibility Validator
 
