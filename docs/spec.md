@@ -238,7 +238,12 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 
 **Design principle: show value early, minimize friction.** The user sees the system working immediately — inference results presented for confirmation — before being asked to provide anything additional. High-friction asks before value delivery are avoided.
 
-A TurboTax-style guided step flow. The user provides a description and any hard constraints upfront, then submits. Hard constraints are collected with the description — before inference runs — so the intake agent can exclude non-viable options from the start rather than surfacing them for the user to reject. Inference runs once on the description and constraints together, producing a pre-populated selection for every step.
+A TurboTax-style guided step flow. The user provides a description and any constraints upfront, then submits. Constraints are collected with the description — before inference runs — and classified by the intake agent into two types:
+
+- **Binary exclusions:** eliminate non-viable options entirely before inference runs (e.g., "no third-party cloud services," "must use open-source only"). The intake agent filters the available option set using these before producing pre-populated selections, so the user is never shown options they cannot use.
+- **Optimization targets:** shape recommendations toward a preference without eliminating options (e.g., "minimize cost," "minimize operational overhead," "avoid vendor lock-in where possible"). These are passed as weighting signals to all downstream agents, who favor options that honor the target and flag where it cannot be fully honored.
+
+Inference runs once on the description and constraints together, producing a pre-populated selection for every step.
 
 **Spec Scaffold (free):** A fill-in-the-blanks wizard surfaced at the description step with the prompt: *"Most users miss a few things freeform. Spec Scaffold takes 2 minutes, costs nothing, and draws out the details that matter."* The wizard covers every structurally meaningful dimension of an agentic system: autonomy level, failure tolerance, memory requirements, scale, and other details that even experienced users tend to omit when writing freeform. Each field is prepopulated with the most common answer as placeholder text; users replace only what doesn't fit. Once completed, the form renders as editable prose in the description text box; the user refines and submits as normal. The scaffold remains available at the description step and can be used as many times as needed.
 
@@ -258,11 +263,13 @@ Each step includes a collapsible "more info" section explaining the domain. For 
 
 Step 11 (Tools) follows a variant of the standard step pattern: multiple tools may be inferred and pre-selected simultaneously. The pre-populated section is conditional on manifest coverage for the confirmed platform and model. If manifest tools match: inferred tools surface pre-selected at the top; remaining compatible manifest tools are listed below. If no manifest tools match: the inferred list is empty and the step opens with an invitation to add tools manually. In both cases the step always surfaces — suppressing it when coverage is thin would also eliminate the ability to add user-specified tools, which is most needed on unusual platforms. One-click to add or remove any tool; one-click to confirm all inferred selections.
 
+**Binary exclusion exhaustion:** if a binary constraint eliminates all manifest options for a step, the step still surfaces — suppressing it hides the problem from the user. A specific warning is shown: "Your constraints exclude all available options for this step." The user can add options manually, adjust their constraints on the review screen, or proceed with no selection. If the user proceeds with no selection, agents receive that step as empty and attempt to reason about options that satisfy the constraints, recommending any viable option as unvetted if it is outside the manifest. If agents cannot find a viable option, The Skeptic handles it as a constraint violation and assigns the appropriate caveat tier — up to Do Not Build This (tier 3) if irreconcilable.
+
 Reasoning for each step lives in the agent layer. The UI renders and captures; it does not reason.
 
 Nothing that could evolve is hardcoded in the UI. Options at every step are sourced from the maintenance manifest — step 3 (External integrations) is the exception, where the user describes their own systems rather than selecting from a predefined list.
 
-Agents receive the full verified context: the original description, all confirmed selections, and any hard constraints. They do not re-infer what the intake flow already established.
+Agents receive the full verified context: the original description, all confirmed selections, and all constraints with their classified type. Binary exclusions are already reflected in the available options by the time agents run. Optimization targets are passed as weighting signals — agents apply them when making recommendations and flag explicitly where a target cannot be fully honored. Agents do not re-infer what the intake flow already established.
 
 ### Review screen
 
@@ -277,8 +284,8 @@ If an edit would invalidate a downstream selection, the system surfaces a confir
 
 Re-inference runs only on the affected steps. Unaffected selections are preserved.
 
-**Hard constraints field:**
-The hard constraints field is prominently surfaced on the review screen as an explicit prompt — users frequently discover constraints they hadn't articulated while walking through the domain steps. Any constraints added here are folded into verified context before the run proceeds.
+**Constraints field:**
+The constraints field is prominently surfaced on the review screen as an explicit prompt — users frequently discover constraints they hadn't articulated while walking through the domain steps. Any constraints added here are classified (binary exclusion or optimization target) and folded into verified context before the run proceeds.
 
 ### Intake steps
 
@@ -845,7 +852,8 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
 | Intake inference | Single stateful agent, sequential reasoning across steps | Inter-step dependencies handled naturally; 85% accuracy bar does not justify per-step specialist agents; users can correct any wrong inference | 2026-04-14 |
-| Hard constraints collection | Collected with project description, before inference runs | Intake agent must know constraints before inferring platform, tooling, and model options — collecting them last risks surfacing options the user will immediately reject | 2026-04-20 |
+| Constraint collection and classification | Collected with project description, before inference runs; classified as binary exclusion or optimization target | Binary exclusions filter the option set before inference; optimization targets are weighting signals passed to agents — near-zero run cost addition, closes the gap where cost/overhead preferences would otherwise be ignored or incorrectly treated as exclusions | 2026-04-25 |
+| Binary exclusion exhaustion | Step still surfaces with a warning; user can add manually, adjust constraints, or proceed; agents attempt to find viable options outside the manifest; The Skeptic assigns caveat tier if irreconcilable | Suppressing an exhausted step hides the problem; agents are better positioned than intake to reason about options outside the manifest | 2026-04-25 |
 | Review screen | Fully editable; final step before submission | User sees full verified context together for the first time; edits trigger re-inference on affected steps only with explicit downstream impact confirmation | 2026-04-20 |
 | Agent input | Verified structured context only | Prevents downstream agents from reasoning from bad intake inference | 2026-04-14 |
 | Options source | Maintenance manifest only, except step 3 (External integrations) which is free-text user input | Step 3 asks users to describe their own systems — APIs, databases, cloud services — not to select from a predefined list | 2026-04-23 |
