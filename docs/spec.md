@@ -1,10 +1,10 @@
 # Agentic Architecture Recommender — Product Spec
 
-## What this system does
+## What Agent12 Does
 
-The system's job is to produce an agentic architecture recommendation that actually solves what the user is building. Technical correctness and compatibility are necessary but not sufficient — a recommendation that is technically sound but doesn't fit the user's specific system is a failure.
+The user describes the agentic system they want to build, optionally using a guided checklist. Agent12 infers key architectural decisions from that description, including agent structure, autonomy level, memory, failure handling, deployment platform, run volume, concurrency, model preference, budget, permissions, and security posture. Inferences are presented for review; the user confirms or adjusts each with a single click, then clicks Generate Architecture Spec.
 
-A user describes what they're building. The system walks them through a guided intake flow, inferring their agentic architecture at each step and adapting remaining steps based on prior confirmations. Once intake is complete, verified context is handed to a team of specialist agents that produce a structured recommendation in two passes.
+The confirmed decisions are passed to a team of specialist agents, each working from their own area of expertise. High-quality, fully compatible tools are table stakes. Every agent's primary directive is suitability to the user's intent.
 
 ---
 

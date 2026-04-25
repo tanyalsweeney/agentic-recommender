@@ -2,57 +2,51 @@
 
 ## What we accomplished this session
 
-- Full consistency review of spec.md — produced 20 findings organized by severity (inconsistencies, logic gaps, missing aspects)
-- Built a prioritized checklist with time and difficulty estimates, ordered mission critical to nice to have
-- Closed all 6 mission critical checklist items (details below)
-- Added step 11 (Tools) to the intake flow — always surfaces after model confirmation; conditional pre-population based on manifest coverage; one-click add/remove; user-specified tools added here
-- Fixed "all options sourced from manifest" overstatement — step 3 (External integrations) is free-text user input, not manifest-driven
-- Restructured the agent pipeline waves: Wave 1 fully parallel, Wave 2 cooperative (F&O + T&C), Wave 2.5 CV standalone, Wave 3 The Skeptic
-- Added Technical Writer agent as Pass 1 synthesis step — runs after Wave 3; produces the Pass 1 document including the Mermaid architecture diagram; faithfulness constraint prevents editorializing
-- Specified architecture diagram format: Mermaid flowchart, direction chosen by Technical Writer based on architecture shape, decision-maker abstraction level, exportable as SVG or PNG
-- Added run definition to pricing section — what counts and doesn't count as a run, edge cases covered
-- Added Run Pack as a first-class pricing tier — additional free-tier runs for the description iteration phase
-- Updated Spec Scaffold: renamed to free, replaced prompt copy with conversion-oriented messaging, added Positioning note, scaffold now remains available throughout the description step (not one-use)
+- Closed all 20 original checklist items from the previous handoff
+- Added fitness-to-purpose framing as the system's opening paragraph and guiding principle
+- Added F&O and T&C contributions explicitly to the Pass 1 output Contains list
+- Specified domain brief merging rules and conflict detection in Wave 0
+- Added Domain Conflict Resolution as a conditional cooperative step (CV detects, agents resolve, 1-cycle cap)
+- Decomposed CV into independently checkpointable sub-tasks; added user-scoped tools section and documentation links per tool
+- Specified two-tier checkpointing: transient (within-run retry) and persistent (cross-run reuse)
+- Added pipeline failure handling with a failure escalation table and cross-run checkpoint reuse validity conditions
+- Defined Skeptic early exit threshold (no concerns at or above Advisory tier 1)
+- Added constraint classification to intake: binary exclusion vs. optimization target; exhaustion handling for all-binary-exclusion scenarios
+- Added three-state step model to intake: high confidence, low confidence, not applicable
+- Fixed org list second-pass inconsistency: queue view and full review screen coexist
+- Added free tier abuse prevention: email verification on signup and per-IP rate limiting on account creation
+- Added unusual usage pattern signals to pipeline observability section
+- Added manifest refresh failure handling with retry logic, max staleness threshold, and silent-proceed-within-tolerance behavior
+- Fixed admin config table: Emerging band added (derived, read-only), Experimental/Drop overlap resolved, max staleness threshold added
+- Added export and sharing sections for Pass 1 and Pass 2 output
+- Added org list seed list bootstrapping note
+- Added session expiry handling section
+- Removed "Resolved: agent scope" from pipeline section; converted to two Settled Decisions rows
+- Rewrote agent pipeline guiding principle around fitness-to-purpose north star
+- Terminology fix: "collapsible" updated to "expandable" throughout
 
 ## Key decisions made this session
 
-- **Step 11 (Tools) added to intake.** Always surfaces after model confirmation. Manifest tools filtered by confirmed platform and model. Pre-populated section is conditional on coverage — empty inferred list when manifest is thin, but step always surfaces to preserve user-specified tool capability.
-- **Wave restructure.** Wave 1 is now fully parallel (4 agents). F&O and T&C move to Wave 2 as a cooperative exchange: F&O leads with failure mode analysis, T&C incorporates it into gate placement, F&O confirms. 2-cycle cap; unresolved tensions pass to The Skeptic, flagged for resolution. CV is standalone at Wave 2.5, aggregating cost signals from Waves 1 and 2.
-- **Wave 2 cooperative rationale.** F&O and T&C have a genuine bidirectional dependency. Cooperative exchange resolves it without forcing a sequential ordering that benefits one agent at the expense of the other. F&O leads because gate placement is a decision that should incorporate failure mode context.
-- **Technical Writer added.** Synthesis-to-critique and synthesis-to-document are different tasks. The Skeptic produces validated debate output; the Technical Writer produces the readable document. Keeping them separate prevents the critique lens from coloring the Pass 1 framing. Faithfulness constraint: judgment calls are structural, not substantive.
-- **Mermaid flowchart for architecture diagram.** Agent-producible text, renders without image generation, familiar to the target audience, exportable. Direction is the Technical Writer's call based on the architecture shape.
-- **Run definition.** A run is one complete pipeline execution that produces Pass 1 output. Pass 2 never counts toward the free tier limit. Failed executions are not runs. Loading a past run's context and re-submitting is a new run.
-- **Run Pack added.** Even expert users describing in-flight projects need many iterations to land a quality description (user's husband, an award-winning data scientist at Microsoft, needed ~20 attempts on an in-flight project). The 3/day limit is a cost control mechanism, not a conversion driver. The Run Pack monetizes the iteration phase without requiring premature commitment to Pass 1. Price TBD.
-- **Spec Scaffold repositioned.** Recommended first step for all users, not a fallback. The UI should explicitly connect scaffold use to run cost savings. Scaffold remains available throughout the description step.
+- **Fitness-to-purpose as north star.** Technical correctness and compatibility are necessary but not sufficient. A recommendation that doesn't fit the user's specific system is a failure. This now opens the spec and drives the pipeline guiding principle.
+- **Domain Conflict Resolution is agent-led.** CV detects constraint violations as part of its existing cross-agent conflict checks. CV does not research or attempt resolution. The relevant agents cooperatively resolve; 1-cycle cap; unresolvable mutual exclusions (e.g., strict GDPR data residency + cloud-native tool that violates it) pass to The Skeptic flagged for resolution.
+- **Two-tier checkpointing.** Transient checkpoints live in-memory for the current run (retry without re-running completed agents). Persistent checkpoints store per-agent structured output to durable storage, keyed by intake hash. Cross-run reuse is valid when intake hasn't changed in ways that would invalidate a prior agent's conclusions. Failed runs are not stored at the run level but per-agent outputs can be reused if valid.
+- **CV decomposed into sub-tasks.** Per-tool compatibility, cross-tool compatibility, cross-agent constraint aggregation, and cost aggregation are independently checkpointable. Allows partial CV reuse on re-runs.
+- **Binary exclusion vs. optimization target.** Two distinct constraint types. Binary exclusions eliminate options entirely (e.g., "must be open source"). Optimization targets rank options (e.g., "prefer lower cost"). If all options are eliminated by binary exclusions before a category is resolved, the system surfaces the conflict and asks the user to relax a constraint.
+- **Three-state intake step model.** Steps can be high confidence (pre-populated, user confirms), low confidence (options shown with expandable more info, no auto-selection), or not applicable (step skipped with a note explaining why).
+- **Shareability.** Pass 1: view-only link, no account required, always shows the owner's tier output. Pass 2: account required to view, owner controls sharing.
+- **Stale manifest within tolerance: silent proceed.** No user notification when the manifest is stale but within the max staleness threshold. Staleness within tolerance doesn't affect output quality or user cost. Admin is notified; user is not.
+- **Session expiry during long pipeline runs.** Pipeline execution is server-side and continues regardless of session state. User receives an email notification with a link back to results when the run completes.
 
 ## Checklist status
 
-Closed this session: #1, #2, #4, #6, #14, #15
-
-Remaining (from original 20-item list — prioritized order):
-- **#13** — Pass 1 output spec doesn't explicitly list what F&O and T&C contribute. The Technical Writer has access to all wave outputs and the faithfulness constraint covers it implicitly, but the Pass 1 output section should be updated to name F&O and T&C sections explicitly. Partially addressed; needs a follow-up edit.
-- **#8** — Domain agent brief merging on conflict (two domain briefs with contradictory constraints)
-- **#7** — Skeptic early exit threshold undefined
-- **#17** — Pipeline failure handling (what happens when the product's own agents fail)
-- **#9** — Hard constraint exhaustion scenario
-- **#3** — Org list second-pass review: queue vs. full review screen inconsistency
-- **#11** — Free tier abuse prevention
-- **#10** — Low-confidence step handling beyond model preferences
-- **#12** — Refresh failure handling
-- **#5** — Confidence config table: Emerging band missing, Experimental/Drop overlap
-- **#19** — User-scoped tools absent from CV section
-- **#16** — Output format and shareability
-- **#18** — Org list seed list and Gatekeeper approval flow
-- **#20** — Session expiry during long pipeline run
-- Structural: move "Resolved: agent scope" section to Settled Decisions
+All 20 original checklist items closed. All additional items identified this session closed.
 
 ## What's immediately next
 
-1. **Close #13** — update Pass 1 output section to name F&O and T&C contributions explicitly
-2. **Work through remaining checklist** — continue in priority order
-3. **Resolve manifest data structure and query pattern** — full load, filtered lookup, or embedding search; last remaining open spec question; blocks CLAUDE.md
-4. **Write CLAUDE.md** — architectural guardrails for Claude
-5. **Curate manifest seed list** — can proceed in parallel with CLAUDE.md
+1. **Token reduction pass on spec.md** — full pass looking for opportunities to reduce token use without losing fidelity. Started this session but interrupted; not yet complete.
+2. **Resolve manifest data structure and query pattern** — full load, filtered lookup, or embedding search; last remaining open spec question; blocks CLAUDE.md.
+3. **Write CLAUDE.md** — architectural guardrails for Claude.
+4. **Curate manifest seed list** — can proceed in parallel with CLAUDE.md.
 
 ## Open questions (remaining)
 
@@ -74,3 +68,4 @@ Remaining (from original 20-item list — prioritized order):
 - User follows general-audience AI news, not deep technical press — frame deep-cut tooling references accordingly
 - Simplification pass is still on the list — hold that lens as remaining spec work continues; the goal is the lightest system that produces high-quality results
 - No em dashes in any written output (spec, README, handoff, conversation). Use commas, colons, or parentheses instead. Watch for em dashes when using user-provided text verbatim.
+- User's husband (an award-winning data scientist at Microsoft) raised a brownfield/GitHub integration idea this session — briefly explored, then deliberately abandoned. Out of scope for now; not worth spec space until the current build is shippable.
