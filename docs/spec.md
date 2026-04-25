@@ -40,6 +40,8 @@ Some areas look familiar but behave differently when agents are involved. The pi
 ### Authentication
 - User accounts with MFA
 - Login required to access the system
+- Email verification required on signup — deters throwaway accounts alongside MFA
+- Per-IP rate limiting on account creation — slows bulk account creation without affecting legitimate users
 
 ### Admin configuration dashboard
 
@@ -90,7 +92,7 @@ The org list is a tiered registry of AI-forward organizations whose adoption of 
 **Pending modifications queue:**
 - Each proposed addition, removal, or tier change is listed with the Gatekeeper's written justification and links to source material reviewed
 - Admin approves or overrides each modification individually
-- On override: the Gatekeeper runs a deeper research pass; findings surface in the same queue for a second review
+- On override: the Gatekeeper runs a deeper research pass; findings surface in the same queue as an updated entry showing the original justification alongside the second-pass findings
 - Human decision after the second pass is final — no third pass; resolved items are removed from the queue
 
 **Admin nominations:**
@@ -207,6 +209,10 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 *Domain correlation:*
 - Conversion rate and run volume segmented by whether Wave 0 was active and which domain agent ran
 - Surfaces whether domain-specific runs convert differently from general runs
+
+**Unusual usage patterns:**
+- Accounts hitting the free tier daily limit on many consecutive days with zero conversions — surfaces high-intent non-converters (candidates for outreach) and potential systematic extraction; derived from run count and conversion data already collected
+- Multiple accounts created from the same IP within a short window — derived from signup IP data already logged for per-IP rate limiting
 
 ### User and billing management
 
@@ -391,7 +397,7 @@ Unlike the Manifest Gatekeeper, the Org List Gatekeeper does not have authority 
 1. Org List Gatekeeper proposes additions, removals, or tier changes with written justification and links to source material reviewed
 2. Owner/admin reviews each proposed modification and approves or overrides
 3. If overridden, the Gatekeeper runs a deeper research pass — either surfacing a stronger argument for its position, or validating the human's reasoning with evidence
-4. Human reviews the second pass via a full review screen and confirms or reverses their override
+4. Human reviews the second pass in the same pending modifications queue — the entry now shows the original justification alongside the second-pass findings; human confirms or reverses their override
 5. Human decision is final. No third pass.
 
 Rejected modifications are dropped with no queue. If an org has legs, it will surface again on the next cycle with whatever additional evidence has accumulated.
@@ -821,6 +827,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Config data model | All thresholds stored with an owner identifier; global default is `owner = global` | Per-tenant config overrides are additional rows with `owner = tenant_id` — no schema change needed when multi-tenancy is added | 2026-04-20 |
 | Config resolution pattern | Always check for tenant-specific override first, fall back to global default | Builds the lookup pattern now so adding per-tenant config later is a data change, not a code change | 2026-04-20 |
 | Multi-tenancy | Deferred — design only | White-label consultancy version is a future feature; initial build is single-tenant | 2026-04-20 |
+| Free tier abuse prevention | Email verification + per-IP account creation rate limiting; admin visibility for consecutive daily-limit accounts and multi-account IP patterns | MFA already raises the bar; email verification and IP rate limiting close the multi-account gap; usage pattern signals are free given data already collected for rate limiting and conversion tracking | 2026-04-25 |
 
 > **Multi-tenancy and configuration design notes**
 >
