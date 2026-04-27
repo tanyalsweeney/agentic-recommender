@@ -289,9 +289,11 @@ A TurboTax-style guided step flow. The user provides a description and any const
 
 Inference runs once on the description and constraints together, producing a pre-populated selection for every step.
 
-**Spec Scaffold (free):** A fill-in-the-blanks wizard surfaced at the description step with the prompt: *"Most users miss a few things freeform. Spec Scaffold takes 2 minutes, costs nothing, and draws out the details that matter."* The wizard covers every structurally meaningful dimension of an agentic system: autonomy level, failure tolerance, memory requirements, scale, and other details that even experienced users tend to omit when writing freeform. Each field is prepopulated with the most common answer as placeholder text; users replace only what doesn't fit. Once completed, the form renders as editable prose in the description text box; the user refines and submits as normal. The scaffold remains available at the description step and can be used as many times as needed.
+**Spec Scaffold (free):** A fill-in-the-blanks wizard surfaced at the description step with the prompt: *"New build or mid-flight? Spec Scaffold takes 2 minutes, costs nothing, and draws out what even experienced builders miss freeform. Fewer passes to a stable description means fewer runs — and lower cost."* The wizard covers every structurally meaningful dimension of an agentic system: autonomy level, failure tolerance, memory requirements, scale, and other details that even experienced users tend to omit when writing freeform. Each field is prepopulated with the most common answer as placeholder text; users replace only what doesn't fit. Once completed, the form renders as editable prose in the description text box; the user refines and submits as normal. The scaffold remains available at the description step and can be used as many times as needed.
 
-**Positioning:** Spec Scaffold should be positioned as a recommended first step for all users, not a fallback for uncertain ones. Experienced users describing in-flight projects frequently omit dimensions they consider obvious; the scaffold surfaces those gaps before they cost a run. The UI should make the connection explicit: fewer iterations means fewer CV re-search costs and a direct financial benefit to the user.
+For users starting fresh, the scaffold draws out architecture decisions they haven't made yet. For users mid-build, the same fields describe what they have — filling in existing choices rather than planning new ones produces a description of the current system that the pipeline then validates. Both use cases are served by the same flow with no UX branching required.
+
+**Positioning:** Spec Scaffold should be positioned as a recommended first step for all users, not a fallback for uncertain ones. The prompt explicitly invites both planning and brownfield use — the cost savings framing ("fewer runs — lower cost") is the primary motivator given the 3 free run daily limit.
 
 From that point, the system presents one step at a time. Each step has one of three states:
 
@@ -598,13 +600,15 @@ CV's work is decomposed into independently checkpointable sub-tasks (see Pipelin
 - For managed cloud services: availability in the target cloud provider and region — whether specified by the user or recommended by the system
 - Direct link to the vendor documentation page visited — included in CV's report as the source reference and as a manual verification path if any data is flagged as unavailable
 
-*Cross-tool compatibility checks (run after all per-tool sub-tasks complete):*
-- Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
-- Checks LLM SDK version against orchestration framework, memory/vector store against embedding model API, agent framework against tool execution runtime, and model constraints against platform deployment target
-
-*Cross-agent conflict checks (run after cross-tool checks complete):*
+*Cross-agent conflict checks (run after all per-tool sub-tasks complete):*
 - Constraint violations: checks whether any tool or decision recommended by one agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
 - Integration gaps: verifies that every tool dependency an agent assumes is actually accounted for by some agent in the set
+
+These checks are structural comparisons against data already collected from the per-tool sub-tasks — no additional web search required. Any tools or tool combinations definitively eliminated here are removed from scope before the cross-tool compatibility checks run, avoiding unnecessary web research on rejected candidates.
+
+*Cross-tool compatibility checks (run after cross-agent conflict checks complete, scoped to the surviving tool set):*
+- Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
+- Checks LLM SDK version against orchestration framework, memory/vector store against embedding model API, agent framework against tool execution runtime, and model constraints against platform deployment target
 - Version conflicts: where two agents both depend on the same tool, checks that their version requirements are compatible
 
 *Cost aggregation:*
