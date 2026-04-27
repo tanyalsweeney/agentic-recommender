@@ -12,9 +12,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@agent12/shared": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
-    "zod": "^3.23.0",
-    "@agent12/shared": "workspace:*"
+    "dotenv": "^17.4.2",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "vitest": "^2.1.0"
