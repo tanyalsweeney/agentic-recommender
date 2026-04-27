@@ -6,13 +6,17 @@
   "scripts": {
     "test": "vitest run",
     "eval:intake": "vitest run src/intake",
+    "eval:orchestration": "vitest run src/orchestration",
+    "eval:security": "vitest run src/security",
     "eval:skeptic": "vitest run src/skeptic",
     "eval:technical-writer": "vitest run src/technical-writer",
-    "eval:agents": "vitest run src/agents"
+    "eval:cooperative": "vitest run src/cooperative",
+    "eval:cv": "vitest run src/cv"
   },
   "dependencies": {
     "@agent12/agents": "workspace:*",
-    "@anthropic-ai/sdk": "^0.39.0"
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "vitest": "^2.1.0"
