@@ -20,7 +20,7 @@ const PerToolResult = z.object({
   sourceUrl: z.string().optional(),
   fromCache: z.boolean(),
   flaggedUnavailable: z.array(z.string()).optional(), // fields that shipped as unavailable
-  isUserSpecified: z.boolean().default(false),
+  isUserSpecified: z.boolean(),
 });
 
 const CrossToolResult = z.object({

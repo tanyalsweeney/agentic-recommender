@@ -1,0 +1,26 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+import { fileURLToPath } from "url";
+import { FailureObservabilityAgentOutput } from "../schemas/index.js";
+import { callAgent } from "./base.js";
+
+const PROMPT = readFileSync(
+  resolve(fileURLToPath(import.meta.url), "../../../prompts/failure-observability.txt"),
+  "utf-8"
+);
+
+export async function callFailureObservabilityAgent(
+  manifest: unknown,
+  verifiedContext: unknown,
+  client: Anthropic
+): Promise<FailureObservabilityAgentOutput> {
+  return callAgent({
+    agentName: "failure_observability",
+    systemPrompt: PROMPT,
+    manifest,
+    verifiedContext,
+    zodSchema: FailureObservabilityAgentOutput,
+    client,
+  });
+}

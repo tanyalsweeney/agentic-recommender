@@ -13,7 +13,7 @@ const ToolManifestEntry = z.object({
     nextTierRequirement: z.string().optional(),
   }).optional(),
   version: z.string().optional(),
-  isUserSpecified: z.boolean().default(false),
+  isUserSpecified: z.boolean(),
   caveats: z.array(z.string()).optional(),
 });
 
