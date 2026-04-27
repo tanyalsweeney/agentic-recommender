@@ -9,8 +9,9 @@ The system walks users through a structured intake flow, infers architecture dec
 ## What's in this repo
 
 - [spec.md](spec.md): full product and architecture specification, including all settled decisions
+- [PLAN.md](PLAN.md): phased build sequence with TDD approach
 - [TODOS.md](TODOS.md): deferred work with context and priority
-- [CLAUDE.md](CLAUDE.md): development guidelines and skill routing
+- [CLAUDE.md](CLAUDE.md): development guidelines and architectural guardrails
 - [docs/handoff.md](docs/handoff.md): running context document maintained across sessions
 - [design diagrams/](design%20diagrams/): architecture diagrams
 
@@ -26,7 +27,19 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Status
 
-Design complete. Both CEO and engineering plan reviews cleared. Implementation starts with `packages/shared/src/db/schema.ts`.
+**Active development.** Design complete, implementation underway.
+
+| Phase | Description | Status |
+|---|---|---|
+| 0 | Monorepo scaffolding (pnpm workspaces, TypeScript, Vitest) | Done |
+| 1 | Database schema — 12 tables, 4 indexes, config resolution | Done |
+| 2 | Agent layer — Zod schemas, Anthropic SDK callers, prompt caching | Next |
+| 3 | Pipeline workers — BullMQ wave orchestration, checkpointing | Upcoming |
+| 4 | Web frontend — Next.js intake flow, Pass 1 output rendering | Upcoming |
+| 5 | Admin dashboard, progressive CV disclosure, email notifications | Upcoming |
+| 6 | Maintenance pipeline — manifest refresh, Org List Gatekeeper | Upcoming |
+
+**Local dev:** requires Docker Desktop. Run `docker compose up -d` to start Postgres and Redis.
 
 ---
 
