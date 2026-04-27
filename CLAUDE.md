@@ -28,6 +28,36 @@ Infrastructure: PostgreSQL (all persistent data), Redis (BullMQ job queue).
 
 ---
 
+## Local development
+
+**Prerequisites:** Docker Desktop (docker.com/products/docker-desktop — free, Mac app).
+
+**Start services:**
+```bash
+docker compose up -d        # starts Postgres on :5432 and Redis on :6379
+```
+
+**Stop services:**
+```bash
+docker compose down         # stops containers (data is preserved in postgres_data volume)
+docker compose down -v      # stops and deletes all data (full reset)
+```
+
+**Environment variables:**
+```bash
+cp .env.example .env.local  # do this once, then fill in ANTHROPIC_API_KEY and AUTH_SECRET
+```
+
+Connection strings for local dev are pre-filled in `.env.example` and match
+`docker-compose.yml` exactly. Do not change the ports unless you have a conflict.
+
+**Deployment:** Vercel (Next.js web app) + Railway (BullMQ workers + Postgres + Redis).
+Local dev uses Docker; production uses Railway-managed Postgres and Redis. The
+`DATABASE_URL` and `REDIS_URL` environment variables are the only thing that changes
+between environments.
+
+---
+
 ## Non-negotiable rules
 
 ### Prompt caching — required on every Anthropic SDK call
