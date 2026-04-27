@@ -390,7 +390,8 @@ New entries are scored using source weighting and move through staged inclusion 
 
 **Primary confidence signals (carry the most weight):**
 - Adoption by recognized practitioners and organizations (leading indicator, hard to fake). Independence of adopting orgs is evaluated using the vendor relationship cache maintained by the Compatibility Validator — see CV section. A vendor's adoption of their own tool scores zero. An affiliate org's adoption also scores zero. Adoption count is weighted by number of genuinely independent adopters.
-- Time without contradicting evidence (stability signal)
+- Time without contradicting evidence (stability signal) — evaluated alongside active maintenance signals (see below). Absence of contradiction alone is insufficient: a three-year-old tool with no new releases and no CVEs still has positive stability score but may score zero on maintenance activity.
+- **Active maintenance signals (required gating signal, not just additive weight):** commit activity (at least one meaningful commit in the past 6 months), release cadence (at least one release in the past year), or an explicit vendor support statement. A tool that fails all three maintenance signals is flagged for re-evaluation regardless of confidence score, and its stability signal is discounted to reflect the risk of abandonment.
 
 **Secondary signals (contribute but with lower weight):**
 - Additional citations from credible sources
@@ -720,10 +721,11 @@ CV's work is further decomposed into independently checkpointable sub-tasks (per
 
 **Cross-run checkpoint reuse:**
 
-A persistent checkpoint is valid for reuse on a subsequent run when all three conditions hold:
+A persistent checkpoint is valid for reuse on a subsequent run when all four conditions hold:
 1. Verified context hash is identical -- same description, confirmed selections, and hard constraints
 2. Agent version is unchanged since the checkpoint was created
 3. The manifest has not been refreshed since the checkpoint was created (applies to agents that read from the manifest)
+4. All upstream checkpoint hashes match -- if any upstream agent re-ran and produced different output, this checkpoint is stale even if conditions 1-3 hold. Each checkpoint stores the hashes of all checkpoints it depended on (stored in the upstream_hashes field). Reuse is only valid when all upstream hashes are identical.
 
 When a run starts, the system checks for a valid persistent checkpoint for each agent. Agents with valid checkpoints are skipped; only agents without valid checkpoints execute. This directly reduces cost and latency for users iterating toward a stable description -- the expected behavior for the primary audience.
 
@@ -881,10 +883,41 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 
 ## Settled decisions
 
+### Data model
+
+Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe queries. Every table carries `created_at timestamp default now()`. Multi-tenancy forward: `owner text default 'global'` on tables that will support per-tenant overrides.
+
+| Table | Primary purpose | Key columns |
+|---|---|---|
+| `users` | Auth + billing | id, email, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
+| `runs` | Run storage and state | id, user_id, status, tier, verified_context (jsonb), verified_context_hash, wave0_domain_tag, pass1_output (jsonb), pass2_output (jsonb nullable), maturity_label_distribution (jsonb), charged |
+| `run_checkpoints` | Cross-run reuse | id, run_id, agent_name, wave, status, output_jsonb, upstream_hashes (jsonb), agent_version, manifest_version, context_hash, expires_at |
+| `cv_result_cache` | Cross-user tool cache | id, tool_name, tool_version (UNIQUE pair), cve_status, compat_status, pricing, eol_date, license, breaking_changes, regional_availability, source_url, cached_at, ttl_seconds |
+| `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), platform_compat (jsonb), model_compat (jsonb), last_refreshed_at, owner |
+| `org_list` | Practitioner org registry | id, org_name, tier, signals (jsonb), maintenance_active, last_reviewed_at, owner, status |
+| `org_list_proposals` | Pending org changes | id, org_id, action (add/remove/tier-change), justification, sources (jsonb), status, second_pass_findings (jsonb nullable) |
+| `vendor_relationship_cache` | Affiliate/parent relationships | id, vendor_name, parent_org, affiliates (jsonb), cached_at |
+| `config` | All runtime-configurable thresholds | key, value, owner — PRIMARY KEY (key, owner) |
+| `user_holds` | Per-user org holds | id, user_id, org_id, lifted_at nullable, research_findings (jsonb nullable) |
+| `admin_holds` | Admin-level org holds | id, org_id, resolved_at nullable, resolution, flagged_by |
+| `jobs` | BullMQ job metadata mirror | id, type, status, payload (jsonb), run_id nullable — primary job state lives in Redis/BullMQ; this table is for admin observability only |
+
+**Required indexes in initial migration** (see settled decisions — Database indexes).
+
 ### System architecture
 
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
+| Language and runtime | TypeScript throughout (Node.js) | Frontend is React/TypeScript; TypeScript backend keeps shared types across frontend, workers, and agent layer; Anthropic TS SDK is feature-identical to Python SDK for this use case; single language for code review | 2026-04-27 |
+| Web framework | Next.js (App Router) | Full-stack TypeScript; React frontend; API routes for quick endpoints (auth, intake submission, run history); long-running pipeline execution handled by separate BullMQ workers, not API routes | 2026-04-27 |
+| Job queue | BullMQ v5 + Redis | TypeScript-first; FlowProducer API maps directly to the wave structure (Wave 1 children run in parallel, Wave 2 depends on Wave 1 outputs, etc.); OpenTelemetry support; durable across server restarts | 2026-04-27 |
+| Database | PostgreSQL | Industry standard for this relational workload; handles run history, manifest entries, org list, checkpoint state, CV result cache, and job state | 2026-04-27 |
+| Prompt caching | Three-layer cache breakpoints per agent, explicit cache_control in every SDK call | Layer 1: system prompt + specialist instructions (cache_control: ephemeral, 5-min TTL); Layer 2: full manifest as context (cache_control: ephemeral); Layer 3: verified context + upstream outputs (no cache, changes per run). Cache reads at 10% of input token cost — reduces per-run LLM cost 60-90% within TTL. Must be implemented from day 1 on every agent caller — retrofitting later touches every file. The admin dashboard's cached token split is the primary cache health signal. | 2026-04-27 |
+| Monorepo structure | packages/ with web/, workers/, agents/, shared/, evals/ | web/ = Next.js App Router; workers/ = BullMQ workers (pipeline execution, no timeout limits); agents/ = prompt template files (versioned by file hash) + Zod output schemas + Anthropic SDK callers; shared/ = TypeScript types, DB client (Drizzle ORM), config resolution; evals/ = LLM quality evals (Vitest + real API calls, manual trigger only, never in CI) | 2026-04-27 |
+| Agent versioning | Date prefix + file hash: YYYY-MM-DD-{sha256_8chars} of the prompt template file | Automatic — no manual version bumping; readable in logs and dashboards; hash changes when prompt changes, guaranteeing checkpoint invalidity on prompt update | 2026-04-27 |
+| Agent output schemas | Zod schema per agent, validated on every SDK call before output is returned | Catches structural drift (wrong field names, missing required fields, extra nesting) immediately at the inter-agent boundary rather than propagating corrupt data into downstream waves | 2026-04-27 |
+| BullMQ wave mapping | BullMQ FlowProducer for the wave structure | Wave 1 agents are FlowProducer children; Wave 2 is the parent job that waits for all Wave 1 children; Wave 2.5 waits for Wave 2; Wave 3 waits for Wave 2.5. No custom parallel orchestration needed — FlowProducer handles it natively. | 2026-04-27 |
+| Database indexes | Four composite indexes in the initial migration | run_checkpoints(context_hash, agent_name, agent_version, manifest_version) for checkpoint reuse lookups; cv_result_cache(tool_name, tool_version) unique constraint covers cache lookups; runs(user_id, created_at DESC) for run history; manifest_entries(maturity_tier, platform_compat) for intake options. Must be in the initial migration — retrofitting after data accumulates requires a blocking table rewrite. | 2026-04-27 |
 | Pipeline runs | Two separate runs | Single pass optimizes for two audiences simultaneously and does neither well | 2026-04-14 |
 | Reasoning layer | Agent layer only | UI displays and captures; reasoning must not split into the frontend | 2026-04-14 |
 | Pipeline execution durability | Durable job queue (e.g., BullMQ + Redis or Celery + Redis) | Pipeline is fully server-side and must survive server restarts; checkpoints are the recovery mechanism but require a job queue to detect and retry uncompleted jobs from their last checkpoint | 2026-04-26 |
