@@ -255,8 +255,18 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 - Pass 2 output stored only if the user generates it
 - Users can browse past runs and review previous recommendations
 - Users can load a past run's verified context as a starting point for a new run, modify the description or selections, and re-run from scratch
+- **Dropped tool handling on context load:** if a past context references a tool that has since been dropped from the manifest (confidence = 0), it is shown with a strikethrough and an info icon. On hover: "[Tool name] was removed from the recommendation set on [date] — confidence score reached 0." The step reverts to inference state for the new run. The user sees what they had and understands what changed.
+- **Diff view:** users can compare any two of their past runs side by side. Diff is computed from structured output fields — orchestration pattern, tool selections, maturity label distribution, caveat tiers, cost estimate — not from rendered documents. Changes are surfaced as a readable delta: "Orchestration pattern changed: pipeline → DAG. Memory & State: session-only → shared persistent. 2 tools added to validated list." Helps the primary audience (who iterate multiple times before settling on a stable description) see what actually changed between runs without reading both documents.
 
 > Note: Most users will not proceed past Pass 1. Multiple Pass 1 iterations before settling on a stable description is expected behavior for the primary audience — re-runs are driven by description refinement, not intake inference errors. This has direct implications for CV re-search costs — see CV result cache.
+
+### Progressive CV disclosure
+
+Once the user clicks Analyze and the pipeline begins, the UI streams Compatibility Validator results to the user as each per-tool sub-task completes. Per tool: name, version confirmed, CVE status, pricing status appear as each sub-task finishes. Cross-tool and cross-agent check results display as a group when all per-tool work finishes.
+
+On free tier runs, the blur is applied to CV values as they stream in — the user sees the category name and that a result arrived, but the value is blurred in real time. This preserves the streaming effect (visible progress, trust-building) while maintaining the free-tier gate.
+
+Makes the wait productive: users watch real validation work completing rather than a progress spinner, building confidence before they see the final output. Streaming requires server-sent events or WebSocket on the CV output path. Validate that per-tool sub-task P50 latency justifies the streaming infrastructure before committing (see TODOS.md).
 
 ### Session expiry and long-running pipelines
 
@@ -380,7 +390,8 @@ New entries are scored using source weighting and move through staged inclusion 
 
 **Primary confidence signals (carry the most weight):**
 - Adoption by recognized practitioners and organizations (leading indicator, hard to fake). Independence of adopting orgs is evaluated using the vendor relationship cache maintained by the Compatibility Validator — see CV section. A vendor's adoption of their own tool scores zero. An affiliate org's adoption also scores zero. Adoption count is weighted by number of genuinely independent adopters.
-- Time without contradicting evidence (stability signal)
+- Time without contradicting evidence (stability signal) — evaluated alongside active maintenance signals (see below). Absence of contradiction alone is insufficient: a three-year-old tool with no new releases and no CVEs still has positive stability score but may score zero on maintenance activity.
+- **Active maintenance signals (required gating signal, not just additive weight):** commit activity (at least one meaningful commit in the past 6 months), release cadence (at least one release in the past year), or an explicit vendor support statement. A tool that fails all three maintenance signals is flagged for re-evaluation regardless of confidence score, and its stability signal is discounted to reflect the risk of abandonment.
 
 **Secondary signals (contribute but with lower weight):**
 - Additional citations from credible sources
@@ -400,8 +411,10 @@ New entries are scored using source weighting and move through staged inclusion 
 - Graduate to Established when confidence score reaches ≥ 7
 - Drop to Experimental if confidence declines; removed at 0 on next refresh
 
-### Open questions
-- What is the manifest's data structure and query pattern — full load, filtered lookup, or embedding search?
+### Settled: query pattern
+At launch volume (50-100 entries), the full manifest is passed to each agent at query time (full load). No query API or filtering layer is needed. When the manifest grows past the point where full load becomes expensive in context tokens (~500+ entries), filtered lookup is the migration — adding a WHERE clause to a database query rather than redesigning the access pattern. Embedding search is deferred: it adds retrieval power for ambiguous queries but requires vector store infrastructure that is not justified at launch scale.
+
+The exact JSON schema for manifest entries (field names, nested structures) is defined during the manifest build phase, informed by what data each agent actually reads. The spec establishes the semantic content (confidence score, maturity tier, adoption signals, platform compatibility, EOL date, CVE flags) — the schema maps these to fields.
 
 ---
 
@@ -682,11 +695,17 @@ The Technical Writer produces the architecture diagram as part of Pass 1 synthes
 - Abstraction level: decision-maker, not implementation detail. Major components and flows; related components grouped into subgraphs; implementation detail omitted. The Technical Writer decides what to include and at what level of abstraction for the Pass 1 audience — the same judgment it applies to the executive summary. Full component detail is reserved for Pass 2.
 - Caveated components are visually distinguished (e.g., border style or label) so the diagram and the caveat tier callouts in the executive summary are legible together
 
+**Skeptic debate summary (included in Pass 1 executive summary):**
+The Technical Writer receives the Skeptic's cycle count, concern count, resolution count, and caveat tier assignments as structured input. It produces a one-sentence debate summary for the executive summary: e.g. "The system raised 4 concerns during analysis — 3 were resolved by the domain agents with documented tradeoffs, 1 remains as an Advisory." This makes the rigor visible without exposing internal debate transcripts.
+
 **Tone and framing:**
 - Plain English, jargon-light, intellectually respectful throughout
 - Caveat tiers from The Skeptic are framed in plain language; tier determines prominence: Advisory surfaces as a footnote; Blocking Condition surfaces as a named callout; Do Not Build This leads the document and prompts the user to refine their description and re-run
 - Scope statement included in the executive summary (agentic architecture only; what is out of scope and why)
 - Non-established components called out briefly in the executive summary with a reference to the validated tool manifest for detail
+
+**Voice directive:**
+Direct and specific. Name components. Describe what they do and why they were chosen for this architecture. State tradeoffs plainly. No marketing language, no generic optimism, no reassurance. A senior engineer reading this should feel the system understood their specific problem — not that it generated a document about agentic architecture in general. If two components were considered and one was rejected, say so and say why. If a tradeoff has a real cost, name the cost.
 
 **Faithfulness constraint:**
 The Technical Writer does not editorialize. Its judgment calls are structural — what to show, at what abstraction level, how to frame for the audience — not substantive. Concern strength, tradeoff weight, and caveat severity are determined by earlier agents and The Skeptic; the Technical Writer represents them faithfully in plain language.
@@ -702,10 +721,11 @@ CV's work is further decomposed into independently checkpointable sub-tasks (per
 
 **Cross-run checkpoint reuse:**
 
-A persistent checkpoint is valid for reuse on a subsequent run when all three conditions hold:
+A persistent checkpoint is valid for reuse on a subsequent run when all four conditions hold:
 1. Verified context hash is identical -- same description, confirmed selections, and hard constraints
 2. Agent version is unchanged since the checkpoint was created
 3. The manifest has not been refreshed since the checkpoint was created (applies to agents that read from the manifest)
+4. All upstream checkpoint hashes match -- if any upstream agent re-ran and produced different output, this checkpoint is stale even if conditions 1-3 hold. Each checkpoint stores the hashes of all checkpoints it depended on (stored in the upstream_hashes field). Reuse is only valid when all upstream hashes are identical.
 
 When a run starts, the system checks for a valid persistent checkpoint for each agent. Agents with valid checkpoints are skipped; only agents without valid checkpoints execute. This directly reduces cost and latency for users iterating toward a stable description -- the expected behavior for the primary audience.
 
@@ -784,7 +804,7 @@ The Compatibility Validator handles user-scoped tools via live lookup, the same 
 Contains:
 - Executive summary — includes a brief callout if any non-established components are in the recommendation set (e.g. "two components in this architecture are emerging patterns — see the tool manifest for detail"); includes a plain-language scope statement making clear that this recommendation covers the agentic architecture only. Traditional software concerns — hosting, deployment, UI, standard observability infrastructure — are outside scope and assumed to be within the builder's existing capabilities. Where those concerns intersect with agentic-specific behavior in ways that may surprise an experienced engineer, they are explicitly flagged in the relevant section.
 - Architecture diagram — Mermaid flowchart rendered in the frontend, exportable as SVG or PNG. Decision-maker abstraction level: major components and flows, implementation detail omitted. See Technical Writer spec for diagram constraints.
-- Validated tool manifest — each tool and pattern carries a maturity label derived from its manifest state: **Established** (full inclusion), **Emerging** (probationary), **Experimental** (flagged/confidence declining), or **User-specified** (not in manifest, live-researched). Labels are manifest-derived, not agent-generated.
+- Validated tool manifest — each tool and pattern carries a maturity label derived from its manifest state: **Established** (full inclusion), **Emerging** (probationary), **Experimental** (flagged/confidence declining), or **User-specified** (not in manifest, live-researched). Labels are manifest-derived, not agent-generated. Each label includes a click-to-expand explanation sourced from the manifest entry's confidence scoring data: adoption signal count, source tier breakdown, time-without-contradicting-evidence, and what would be needed to reach the next tier. This makes the confidence scoring system a visible trust signal, not a hidden mechanism.
 - Cost estimates (ongoing operational cost, surfaced here because almost every stakeholder needs to speak to it)
 - Security summary (trust boundaries defined, controls in place — reassuring without reading like a pentest report)
 - Failure modes summary (key agentic failure risks identified for this architecture, eval approach for non-deterministic outputs, where reasoning chain tracing applies — what can go wrong and how the architecture addresses it, at decision-maker abstraction level)
@@ -836,8 +856,8 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Tier | What the user receives | Price |
 |---|---|---|
 | Free | Exec summary + validated tool list with maturity labels (Established / Emerging / Experimental / User-specified); CV category titles visible, values blurred; up to 3 runs/day | $0 |
-| Run Pack | 10 additional free-tier runs (same limited output as the free tier); purchasable when the daily limit is reached; for the description iteration phase | $TBD / pack |
-| Pass 1 | Full Pass 1 output: architectural diagram, full CV detail (version, CVE, license, EOL, cost estimates), security summary | $49 / run |
+| Run Pack | 5 additional free-tier runs (same limited output as the free tier); purchasable when the daily limit is reached; for the description iteration phase | $9 / pack |
+| Pass 1 | Full Pass 1 output: architectural diagram, full CV detail (version, CVEs, license, EOL, breaking changes, pricing and tier data, regional availability, vendor documentation links), cost estimates, security summary | $49 / run |
 | Pass 2 | Full Pass 2 output: ADRs, configuration, specs | $199 / run (requires Pass 1) |
 
 **Free tier rate limit:**
@@ -857,18 +877,50 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 - $49 is impulse-purchase territory for the primary audience (senior technical builders who expense tools)
 - Pass 2 is episodic use, not a daily driver — per-run pricing is honest and aligns cost with value delivered
 - Every Pass 1 run executes the full pipeline regardless of tier. Tier determines which parts of the output are shown, blurred, or hidden, not the quality of the underlying analysis. This keeps the architecture simple and ensures free tier output is genuinely trustworthy.
-- The Run Pack exists because even expert users need multiple iterations to land a stable description. The 3 free runs/day limit is a cost control mechanism, not a conversion driver. Capping high-intent users at 3 attempts per day creates friction without benefit.
+- The Run Pack (5 runs for $9) exists because even expert users need a large number of iterations to land a stable description — observed behavior from the primary audience (senior technical builders) before the Spec Scaffold was introduced is 15-20+ attempts on mid-flight projects. The Spec Scaffold reduces this, but the Run Pack serves the gap between "still iterating" and "ready to pay $49 for the full recommendation." It is not a conversion driver — it is a retention mechanism for high-intent users who aren't ready to commit to Pass 1 yet. The 3 free runs/day limit is a cost control mechanism; the Run Pack removes friction for users who hit it. Run Pack pricing targets cost coverage at launch; adjust based on measured per-run cost from initial production runs.
 
 ---
 
 ## Settled decisions
 
+### Data model
+
+Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe queries. Every table carries `created_at timestamp default now()`. Multi-tenancy forward: `owner text default 'global'` on tables that will support per-tenant overrides.
+
+| Table | Primary purpose | Key columns |
+|---|---|---|
+| `users` | Auth + billing | id, email, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
+| `runs` | Run storage and state | id, user_id, status, tier, verified_context (jsonb), verified_context_hash, wave0_domain_tag, pass1_output (jsonb), pass2_output (jsonb nullable), maturity_label_distribution (jsonb), charged |
+| `run_checkpoints` | Cross-run reuse | id, run_id, agent_name, wave, status, output_jsonb, upstream_hashes (jsonb), agent_version, manifest_version, context_hash, expires_at |
+| `cv_result_cache` | Cross-user tool cache | id, tool_name, tool_version (UNIQUE pair), cve_status, compat_status, pricing, eol_date, license, breaking_changes, regional_availability, source_url, cached_at, ttl_seconds |
+| `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), platform_compat (jsonb), model_compat (jsonb), last_refreshed_at, owner |
+| `org_list` | Practitioner org registry | id, org_name, tier, signals (jsonb), maintenance_active, last_reviewed_at, owner, status |
+| `org_list_proposals` | Pending org changes | id, org_id, action (add/remove/tier-change), justification, sources (jsonb), status, second_pass_findings (jsonb nullable) |
+| `vendor_relationship_cache` | Affiliate/parent relationships | id, vendor_name, parent_org, affiliates (jsonb), cached_at |
+| `config` | All runtime-configurable thresholds | key, value, owner — PRIMARY KEY (key, owner) |
+| `user_holds` | Per-user org holds | id, user_id, org_id, lifted_at nullable, research_findings (jsonb nullable) |
+| `admin_holds` | Admin-level org holds | id, org_id, resolved_at nullable, resolution, flagged_by |
+| `jobs` | BullMQ job metadata mirror | id, type, status, payload (jsonb), run_id nullable — primary job state lives in Redis/BullMQ; this table is for admin observability only |
+
+**Required indexes in initial migration** (see settled decisions — Database indexes).
+
 ### System architecture
 
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
+| Language and runtime | TypeScript throughout (Node.js) | Frontend is React/TypeScript; TypeScript backend keeps shared types across frontend, workers, and agent layer; Anthropic TS SDK is feature-identical to Python SDK for this use case; single language for code review | 2026-04-27 |
+| Web framework | Next.js (App Router) | Full-stack TypeScript; React frontend; API routes for quick endpoints (auth, intake submission, run history); long-running pipeline execution handled by separate BullMQ workers, not API routes | 2026-04-27 |
+| Job queue | BullMQ v5 + Redis | TypeScript-first; FlowProducer API maps directly to the wave structure (Wave 1 children run in parallel, Wave 2 depends on Wave 1 outputs, etc.); OpenTelemetry support; durable across server restarts | 2026-04-27 |
+| Database | PostgreSQL | Industry standard for this relational workload; handles run history, manifest entries, org list, checkpoint state, CV result cache, and job state | 2026-04-27 |
+| Prompt caching | Three-layer cache breakpoints per agent, explicit cache_control in every SDK call | Layer 1: system prompt + specialist instructions (cache_control: ephemeral, 5-min TTL); Layer 2: full manifest as context (cache_control: ephemeral); Layer 3: verified context + upstream outputs (no cache, changes per run). Cache reads at 10% of input token cost — reduces per-run LLM cost 60-90% within TTL. Must be implemented from day 1 on every agent caller — retrofitting later touches every file. The admin dashboard's cached token split is the primary cache health signal. | 2026-04-27 |
+| Monorepo structure | packages/ with web/, workers/, agents/, shared/, evals/ | web/ = Next.js App Router; workers/ = BullMQ workers (pipeline execution, no timeout limits); agents/ = prompt template files (versioned by file hash) + Zod output schemas + Anthropic SDK callers; shared/ = TypeScript types, DB client (Drizzle ORM), config resolution; evals/ = LLM quality evals (Vitest + real API calls, manual trigger only, never in CI) | 2026-04-27 |
+| Agent versioning | Date prefix + file hash: YYYY-MM-DD-{sha256_8chars} of the prompt template file | Automatic — no manual version bumping; readable in logs and dashboards; hash changes when prompt changes, guaranteeing checkpoint invalidity on prompt update | 2026-04-27 |
+| Agent output schemas | Zod schema per agent, validated on every SDK call before output is returned | Catches structural drift (wrong field names, missing required fields, extra nesting) immediately at the inter-agent boundary rather than propagating corrupt data into downstream waves | 2026-04-27 |
+| BullMQ wave mapping | BullMQ FlowProducer for the wave structure | Wave 1 agents are FlowProducer children; Wave 2 is the parent job that waits for all Wave 1 children; Wave 2.5 waits for Wave 2; Wave 3 waits for Wave 2.5. No custom parallel orchestration needed — FlowProducer handles it natively. | 2026-04-27 |
+| Database indexes | Four composite indexes in the initial migration | run_checkpoints(context_hash, agent_name, agent_version, manifest_version) for checkpoint reuse lookups; cv_result_cache(tool_name, tool_version) unique constraint covers cache lookups; runs(user_id, created_at DESC) for run history; manifest_entries(maturity_tier, platform_compat) for intake options. Must be in the initial migration — retrofitting after data accumulates requires a blocking table rewrite. | 2026-04-27 |
 | Pipeline runs | Two separate runs | Single pass optimizes for two audiences simultaneously and does neither well | 2026-04-14 |
 | Reasoning layer | Agent layer only | UI displays and captures; reasoning must not split into the frontend | 2026-04-14 |
+| Pipeline execution durability | Durable job queue (e.g., BullMQ + Redis or Celery + Redis) | Pipeline is fully server-side and must survive server restarts; checkpoints are the recovery mechanism but require a job queue to detect and retry uncompleted jobs from their last checkpoint | 2026-04-26 |
 | System configuration | Admin dashboard with runtime-configurable thresholds | Refresh cadences, confidence thresholds, and cycle caps change as demand and the tooling landscape evolve — hardcoding them requires a deploy to tune | 2026-04-20 |
 | Config data model | All thresholds stored with an owner identifier; global default is `owner = global` | Per-tenant config overrides are additional rows with `owner = tenant_id` — no schema change needed when multi-tenancy is added | 2026-04-20 |
 | Config resolution pattern | Always check for tenant-specific override first, fall back to global default | Builds the lookup pattern now so adding per-tenant config later is a data change, not a code change | 2026-04-20 |
@@ -906,6 +958,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
 | Intake inference | Single stateful agent, sequential reasoning across steps | Inter-step dependencies handled naturally; 85% accuracy bar does not justify per-step specialist agents; users can correct any wrong inference | 2026-04-14 |
+| Intake inference malformed output | Schema-validated before UI presentation; malformed output falls back to low-confidence state (nothing pre-selected) for affected step(s) | User experience is identical to a legitimate low-confidence inference; avoids silent crashes on the highest-visibility surface in the system | 2026-04-26 |
 | Step inference states | Three states: high confidence (pre-selected), low confidence (nothing selected), not applicable (nothing selected, brief message); more info accordion collapsed by default in all states | Anchoring users on weak inferences is worse than showing nothing; auto-expanding the accordion is condescending for senior technical builders | 2026-04-25 |
 | Constraint collection and classification | Collected with project description, before inference runs; classified as binary exclusion or optimization target | Binary exclusions filter the option set before inference; optimization targets are weighting signals passed to agents — near-zero run cost addition, closes the gap where cost/overhead preferences would otherwise be ignored or incorrectly treated as exclusions | 2026-04-25 |
 | Binary exclusion exhaustion | Step still surfaces with a warning; user can add manually, adjust constraints, or proceed; agents attempt to find viable options outside the manifest; The Skeptic assigns caveat tier if irreconcilable | Suppressing an exhausted step hides the problem; agents are better positioned than intake to reason about options outside the manifest | 2026-04-25 |
@@ -918,6 +971,8 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
+| Intake trust boundary | User description is wrapped in an explicit trust boundary in the intake agent prompt (XML tags or clear delimiter with a system-level instruction that content between delimiters is user-provided text, not instructions) | Prevents prompt injection via project description; the intake agent must treat user text as data to reason about, not as instructions to follow | 2026-04-26 |
+| Skeptic eval harness | A fixed eval set of architecture descriptions with known failure modes and expected caveat tiers; runs on every Skeptic prompt change; managed separately from the recommendation pipeline | The Skeptic is the primary quality gatekeeper; non-deterministic output requires a structured eval set to detect regression — manual QA cannot catch prompt-change degradation reliably | 2026-04-26 |
 | Domain-specific expertise | Wave 0 plugin — produces typed constraint brief before Wave 1 | Domain agents produce constraints, not recommendations; Wave 0 narrows the solution space before other agents reason into it; downstream agents receive brief as context with no modification | 2026-04-20 |
 | Domain agent interface | Standardized schema (typed constraint brief); tenant supplies endpoint or Claude API tool definition | Structured output lets downstream agents reason reliably; free text would require each agent to re-parse domain requirements | 2026-04-20 |
 | Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer | 2026-04-14 |
@@ -943,6 +998,7 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Cost visibility | Surfaced in Pass 1 | Every stakeholder needs to speak to ongoing cost | 2026-04-14 |
 | Pass 1 synthesis | Technical Writer agent, runs after Wave 3 | Synthesis-to-critique and synthesis-to-document are different tasks; The Skeptic produces validated debate output, not a readable document; keeping them separate prevents the critique lens from coloring the Pass 1 framing | 2026-04-23 |
 | Architecture diagram format | Mermaid flowchart, produced by Technical Writer | Agent-producible text that renders without image generation; familiar to the target audience; exportable as SVG or PNG; abstraction level is a judgment call made by the Technical Writer for the decision-maker audience | 2026-04-23 |
+| Architecture diagram render failure | Technical Writer validates Mermaid syntax before Pass 1 finalizes; if validation fails, retries once with the error as feedback; if retry fails, Pass 1 renders a placeholder: "Architecture diagram unavailable — view the component list below" | Broken diagrams in the primary conversion surface are worse than missing diagrams — they signal system failure to the target audience | 2026-04-26 |
 | Pass 2 trigger | User-initiated | Only pays for deep run when user explicitly wants it | 2026-04-14 |
 | Pass 2 architecture | Dedicated synthesis agents, one per recommendation domain | Expanding validated output is a different job than producing recommendations; re-running the wave model would re-derive what is already settled | 2026-04-14 |
 | Pass 2 input | Raw agent outputs from all waves + verified intake context | Rendered Pass 1 is for humans; synthesis agents need the underlying detail | 2026-04-14 |
