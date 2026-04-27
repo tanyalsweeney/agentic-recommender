@@ -1,10 +1,10 @@
 # Agentic Architecture Recommender — Product Spec
 
-## What this system does
+## What Agent12 Does
 
-The system's job is to produce an agentic architecture recommendation that actually solves what the user is building. Technical correctness and compatibility are necessary but not sufficient — a recommendation that is technically sound but doesn't fit the user's specific system is a failure.
+The user describes the agentic system they want to build, optionally using a guided checklist. Agent12 infers key architectural decisions from that description, including agent structure, autonomy level, memory, failure handling, deployment platform, run volume, concurrency, model preference, budget, permissions, and security posture. Inferences are presented for review; the user confirms or adjusts each with a single click, then clicks Generate Architecture Spec.
 
-A user describes what they're building. The system walks them through a guided intake flow, inferring their agentic architecture at each step and adapting remaining steps based on prior confirmations. Once intake is complete, verified context is handed to a team of specialist agents that produce a structured recommendation in two passes.
+Confirmed decisions are passed to a team of specialist agents, each working from their own area of expertise. High-quality, fully compatible tools are table stakes. Every agent's primary directive is suitability to the user's intent.
 
 ---
 
@@ -89,7 +89,7 @@ Read-only view of all core agents with rollback capability. No prompt editing �
 
 ### Org list approval workflow
 
-The org list is a tiered registry of AI-forward organizations whose adoption of a tool or pattern is treated as a credible confidence signal in the recommendation engine. A compromised entry has outsized downstream impact: unlike a single bad tool recommendation, a bad org entry corrupts the adoption signals that underpin confidence scoring across every tool that org has ever touched. All changes require human approval — the Org List Gatekeeper proposes modifications, but cannot act unilaterally; all proposed additions, removals, and tier changes surface here for admin review.
+The org list is a tiered registry of AI-forward organizations whose adoption of a tool or pattern is treated as a credible confidence signal in the recommendation engine. A compromised entry has outsized downstream impact: unlike a single bad tool recommendation, a bad org entry corrupts the adoption signals that underpin confidence scoring across every tool that org has ever touched. All changes require human approval. The Org List Gatekeeper proposes modifications, but cannot act unilaterally; all proposed additions, removals, and tier changes surface here for admin review.
 
 **Pending modifications queue:**
 - Each proposed addition, removal, or tier change is listed with the Gatekeeper's written justification and links to source material reviewed
@@ -141,13 +141,31 @@ All views support time filtering: presets (today / this week / this month) and a
 **Run duration distribution:**
 - Fastest and slowest run on record
 - Percentile breakdown: p5 / p25 / p50 / p75 / p95
+- Per-agent duration: median and p95 per agent — see per-agent breakdown below
+
+**Per-agent breakdown:**
+
+One row per agent. Supports the same time filtering as all other pipeline observability views. Cycle count shown only for agents that run debate loops.
+
+| Agent | Wave | Duration median | Duration p95 | Input tokens | Output tokens | Cached tokens | Web search calls | Cycles |
+|---|---|---|---|---|---|---|---|---|
+| Domain agent(s) | 0 | | | | | | — | — |
+| Orchestration | 1 | | | | | | — | — |
+| Security | 1 | | | | | | — | — |
+| Memory & State | 1 | | | | | | — | — |
+| Tool & Integration | 1 | | | | | | — | — |
+| Failure & Observability | 2 | | | | | | — | 1–2 |
+| Trust & Control | 2 | | | | | | — | 1–2 |
+| Compatibility Validator | 2.5 | | | | | | per tool researched | — |
+| The Skeptic | 3 | | | | | | — | 1–4 |
+| Technical Writer | Pass 1 | | | | | | — | — |
 
 **Cost per run:**
 
 | Line item | Granularity |
 |---|---|
-| Token costs | Per agent: input / output / cached tokens split |
-| Web search costs | Per run total (CV-driven); reported separately from token costs |
+| Token costs | Per agent: input / output / cached tokens split — see per-agent breakdown above |
+| Web search costs | Per agent (CV only in the recommendation pipeline); reported separately from token costs |
 | Wave subtotals | Rolled up from agent lines for Wave 0–3 |
 | Run total | All-in cost for the run |
 
