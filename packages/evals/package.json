@@ -1,0 +1,20 @@
+{
+  "name": "@agent12/evals",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "eval:intake": "vitest run src/intake",
+    "eval:skeptic": "vitest run src/skeptic",
+    "eval:technical-writer": "vitest run src/technical-writer",
+    "eval:agents": "vitest run src/agents"
+  },
+  "dependencies": {
+    "@agent12/agents": "workspace:*",
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
+}
