@@ -2,51 +2,29 @@
 
 ## What we accomplished this session
 
-- Closed all 20 original checklist items from the previous handoff
-- Added fitness-to-purpose framing as the system's opening paragraph and guiding principle
-- Added F&O and T&C contributions explicitly to the Pass 1 output Contains list
-- Specified domain brief merging rules and conflict detection in Wave 0
-- Added Domain Conflict Resolution as a conditional cooperative step (CV detects, agents resolve, 1-cycle cap)
-- Decomposed CV into independently checkpointable sub-tasks; added user-scoped tools section and documentation links per tool
-- Specified two-tier checkpointing: transient (within-run retry) and persistent (cross-run reuse)
-- Added pipeline failure handling with a failure escalation table and cross-run checkpoint reuse validity conditions
-- Defined Skeptic early exit threshold (no concerns at or above Advisory tier 1)
-- Added constraint classification to intake: binary exclusion vs. optimization target; exhaustion handling for all-binary-exclusion scenarios
-- Added three-state step model to intake: high confidence, low confidence, not applicable
-- Fixed org list second-pass inconsistency: queue view and full review screen coexist
-- Added free tier abuse prevention: email verification on signup and per-IP rate limiting on account creation
-- Added unusual usage pattern signals to pipeline observability section
-- Added manifest refresh failure handling with retry logic, max staleness threshold, and silent-proceed-within-tolerance behavior
-- Fixed admin config table: Emerging band added (derived, read-only), Experimental/Drop overlap resolved, max staleness threshold added
-- Added export and sharing sections for Pass 1 and Pass 2 output
-- Added org list seed list bootstrapping note
-- Added session expiry handling section
-- Removed "Resolved: agent scope" from pipeline section; converted to two Settled Decisions rows
-- Rewrote agent pipeline guiding principle around fitness-to-purpose north star
-- Terminology fix: "collapsible" updated to "expandable" throughout
+- Completed the token reduction pass on spec.md (was the top priority from last session)
+- Added per-agent breakdown table to pipeline observability: duration (median + p95), token split (input/output/cached), web search calls, and cycle count per agent
+- Updated Cost per run table: web search costs now attributed per agent (CV only) rather than "per run total"
+- Created branch tsweeney/process-efficiency for ongoing process efficiency work
+- Added .gitignore to exclude .DS_Store
+- Added two system design SVGs to design diagrams/
+- User reframed "What this system does" as "What Agent12 Does" directly in the spec
 
 ## Key decisions made this session
 
-- **Fitness-to-purpose as north star.** Technical correctness and compatibility are necessary but not sufficient. A recommendation that doesn't fit the user's specific system is a failure. This now opens the spec and drives the pipeline guiding principle.
-- **Domain Conflict Resolution is agent-led.** CV detects constraint violations as part of its existing cross-agent conflict checks. CV does not research or attempt resolution. The relevant agents cooperatively resolve; 1-cycle cap; unresolvable mutual exclusions (e.g., strict GDPR data residency + cloud-native tool that violates it) pass to The Skeptic flagged for resolution.
-- **Two-tier checkpointing.** Transient checkpoints live in-memory for the current run (retry without re-running completed agents). Persistent checkpoints store per-agent structured output to durable storage, keyed by intake hash. Cross-run reuse is valid when intake hasn't changed in ways that would invalidate a prior agent's conclusions. Failed runs are not stored at the run level but per-agent outputs can be reused if valid.
-- **CV decomposed into sub-tasks.** Per-tool compatibility, cross-tool compatibility, cross-agent constraint aggregation, and cost aggregation are independently checkpointable. Allows partial CV reuse on re-runs.
-- **Binary exclusion vs. optimization target.** Two distinct constraint types. Binary exclusions eliminate options entirely (e.g., "must be open source"). Optimization targets rank options (e.g., "prefer lower cost"). If all options are eliminated by binary exclusions before a category is resolved, the system surfaces the conflict and asks the user to relax a constraint.
-- **Three-state intake step model.** Steps can be high confidence (pre-populated, user confirms), low confidence (options shown with expandable more info, no auto-selection), or not applicable (step skipped with a note explaining why).
-- **Shareability.** Pass 1: view-only link, no account required, always shows the owner's tier output. Pass 2: account required to view, owner controls sharing.
-- **Stale manifest within tolerance: silent proceed.** No user notification when the manifest is stale but within the max staleness threshold. Staleness within tolerance doesn't affect output quality or user cost. Admin is notified; user is not.
-- **Session expiry during long pipeline runs.** Pipeline execution is server-side and continues regardless of session state. User receives an email notification with a link back to results when the run completes.
+- **Per-agent observability is comprehensive.** The per-agent breakdown table captures everything needed to debug cost and latency: duration (median + p95), full token split, web search calls (CV only), and cycle count for agents that run debate loops. Collapsible in the UI if the volume is too much.
+- **Web search costs attributed per agent, not per run.** CV is the only agent in the recommendation pipeline that runs web searches; attribution at the agent level makes this explicit and leaves the door open for future agents that might also search.
 
 ## Checklist status
 
-All 20 original checklist items closed. All additional items identified this session closed.
+All items from the previous session closed. Token reduction pass complete.
 
 ## What's immediately next
 
-1. **Token reduction pass on spec.md** — full pass looking for opportunities to reduce token use without losing fidelity. Started this session but interrupted; not yet complete.
-2. **Resolve manifest data structure and query pattern** — full load, filtered lookup, or embedding search; last remaining open spec question; blocks CLAUDE.md.
-3. **Write CLAUDE.md** — architectural guardrails for Claude.
-4. **Curate manifest seed list** — can proceed in parallel with CLAUDE.md.
+1. **Resolve manifest data structure and query pattern** — full load, filtered lookup, or embedding search; last remaining open spec question; blocks CLAUDE.md
+2. **Write CLAUDE.md** — architectural guardrails for Claude
+3. **Curate manifest seed list** — can proceed in parallel with CLAUDE.md
+4. **Continue process efficiency work** — branch tsweeney/process-efficiency is open; not yet merged to main
 
 ## Open questions (remaining)
 
@@ -68,4 +46,4 @@ All 20 original checklist items closed. All additional items identified this ses
 - User follows general-audience AI news, not deep technical press — frame deep-cut tooling references accordingly
 - Simplification pass is still on the list — hold that lens as remaining spec work continues; the goal is the lightest system that produces high-quality results
 - No em dashes in any written output (spec, README, handoff, conversation). Use commas, colons, or parentheses instead. Watch for em dashes when using user-provided text verbatim.
-- User's husband (an award-winning data scientist at Microsoft) raised a brownfield/GitHub integration idea this session — briefly explored, then deliberately abandoned. Out of scope for now; not worth spec space until the current build is shippable.
+- User's husband (an award-winning data scientist at Microsoft) raised a brownfield/GitHub integration idea in a prior session — briefly explored, then deliberately abandoned. Out of scope for now; not worth spec space until the current build is shippable.
