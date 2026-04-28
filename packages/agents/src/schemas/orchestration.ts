@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CostSignals } from "./shared.js";
+import { CostSignals, TripHazard } from "./shared.js";
 
 export const OrchestrationPattern = z.enum([
   "pipeline",
@@ -26,6 +26,9 @@ export const OrchestrationAgentOutput = z.object({
     coordinationMechanism: z.string(),
     stateSharing: z.string(),
   }),
+  // Gotchas from the manifest filtered for relevance to this specific architecture.
+  // Severity-ranked; surfaced in Pass 1 and expanded in Pass 2 ADRs.
+  implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
 });
 

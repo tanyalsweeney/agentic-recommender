@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+// Implementation trip hazard — named gotcha with mitigation, used across all recommendation agents.
+// Surfaced in Pass 1 summary and expanded in Pass 2 ADRs.
+export const TripHazard = z.object({
+  hazard: z.string(),                              // what the gotcha is, specific to this architecture
+  mitigation: z.string(),                          // how to avoid or reduce the impact
+  severity: z.enum(["low", "medium", "high"]),     // how costly if you hit this without mitigation
+});
+export type TripHazard = z.infer<typeof TripHazard>;
+
 // Cost signals every Wave 1 and Wave 2 agent produces for CV at Wave 2.5
 export const CostSignals = z.object({
   estimatedMonthlyApiCalls: z.number().nullish(),

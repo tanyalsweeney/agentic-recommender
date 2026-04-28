@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CostSignals } from "./shared.js";
+import { CostSignals, TripHazard } from "./shared.js";
 
 const FailureMode = z.object({
   name: z.string(),
@@ -24,6 +24,7 @@ export const FailureObservabilityAgentOutput = z.object({
   }),
   // F&O confirms or adjusts after seeing T&C gate placements
   confirmationOfGateCoverage: z.string().optional(),
+  implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
 });
 

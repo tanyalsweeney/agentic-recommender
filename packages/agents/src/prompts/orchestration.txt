@@ -31,3 +31,7 @@ COST SIGNALS: Estimate relative compute intensity of the orchestration overhead 
 ---
 
 Be direct. Name the pattern. Explain why it fits this specific system. Surface the gotchas that matter here. State what failure looks like. Flag the state handoff points.
+
+---
+
+IMPLEMENTATION TRIP HAZARDS: The manifest pattern_meta.knownGotchas lists the documented hazards for the recommended pattern. Filter them for relevance — only surface hazards that are real risks for this specific architecture and scale. For each one you surface, add a mitigation specific to what the user is building. Rank by severity.

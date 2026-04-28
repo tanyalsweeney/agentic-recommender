@@ -79,6 +79,7 @@ describe("OrchestrationAgentOutput schema", () => {
       coordinationMechanism: "orchestrator dispatches sub-agents",
       stateSharing: "shared context object",
     },
+    implementationTripHazards: [],
     costSignals: { computeIntensity: "medium" },
   };
 
@@ -116,6 +117,7 @@ describe("SecurityAgentOutput schema", () => {
     trustBoundaries: [{ boundary: "User input / agent reasoning", enforcement: "XML delimiter in system prompt" }],
     recommendedControls: ["Prompt injection trust boundary", "Tool call validation"],
     declaredConstraints: ["No third-party data exfiltration"],
+    implementationTripHazards: [],
     costSignals: { computeIntensity: "low" },
   };
 

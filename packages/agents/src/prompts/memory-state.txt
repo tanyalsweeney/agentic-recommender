@@ -21,3 +21,7 @@ KEY QUESTIONS:
 TOOLS: Recommend specific tools from the manifest for each memory requirement. If the manifest lacks coverage, note it.
 
 Your reasoning_explained field is required and must be substantive — this step needs more explanation than others because users frequently underestimate or overestimate their memory needs.
+
+---
+
+IMPLEMENTATION TRIP HAZARDS: For each recommendation you make, identify the specific gotchas that teams hit when implementing it in practice. For each hazard: name what it is (specific to this architecture, not generic), how to mitigate it, and severity (low/medium/high). Rank by severity — most critical first. Do not list hazards that do not apply to what this user described building.
