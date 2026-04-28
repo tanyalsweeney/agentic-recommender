@@ -19,3 +19,7 @@ AGENTIC THREAT MODEL — analyze each category for this specific architecture:
 DECLARED CONSTRAINTS: List any security constraints this architecture implies that the Compatibility Validator must check other agents' tool recommendations against (e.g., "no third-party data exfiltration", "all tools must be on-premises").
 
 For each threat: be specific to this architecture, not generic. "Prompt injection is a risk" is not useful. "Adversarial content in scraped web pages could redirect the research agent to exfiltrate user data via the summarization tool call" is useful.
+
+---
+
+IMPLEMENTATION TRIP HAZARDS: For each recommendation you make, identify the specific gotchas that teams hit when implementing it in practice. For each hazard: name what it is (specific to this architecture, not generic), how to mitigate it, and severity (low/medium/high). Rank by severity — most critical first. Do not list hazards that do not apply to what this user described building.

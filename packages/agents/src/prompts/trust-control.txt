@@ -17,3 +17,7 @@ GATE PLACEMENT PRINCIPLES:
 UNRESOLVED TENSIONS: If you and F&O cannot reach agreement within the cooperative exchange, list the specific tensions so The Skeptic can resolve them.
 
 Be specific. "Add human oversight" is not a gate design. "Before the agent submits any form that initiates a financial transaction, pause and surface the full transaction details for user confirmation" is a gate design.
+
+---
+
+IMPLEMENTATION TRIP HAZARDS: For each recommendation you make, identify the specific gotchas that teams hit when implementing it in practice. For each hazard: name what it is (specific to this architecture, not generic), how to mitigate it, and severity (low/medium/high). Rank by severity — most critical first. Do not list hazards that do not apply to what this user described building.

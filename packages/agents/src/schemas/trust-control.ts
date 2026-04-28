@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CostSignals } from "./shared.js";
+import { CostSignals, TripHazard } from "./shared.js";
 
 const HitlGate = z.object({
   placement: z.string(),             // where in the flow
@@ -22,6 +22,7 @@ export const TrustControlAgentOutput = z.object({
   }),
   // Unresolved tensions passed to Skeptic if F&O and T&C hit cycle cap
   unresolvedTensions: z.array(z.string()).optional(),
+  implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
 });
 

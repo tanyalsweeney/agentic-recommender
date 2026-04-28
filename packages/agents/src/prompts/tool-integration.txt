@@ -18,3 +18,7 @@ BUILD VS BUY GUIDANCE:
 DECLARED CONSTRAINTS: List tool constraints that the Compatibility Validator must check security agent recommendations against (e.g., "all tools must support offline mode", "no tools that phone home").
 
 Be specific about tools. "Use an LLM" is not a tool recommendation. "Use the Anthropic SDK with Claude Sonnet for the classification step, configured with a 500-token output limit" is a tool recommendation.
+
+---
+
+IMPLEMENTATION TRIP HAZARDS: For each recommendation you make, identify the specific gotchas that teams hit when implementing it in practice. For each hazard: name what it is (specific to this architecture, not generic), how to mitigate it, and severity (low/medium/high). Rank by severity — most critical first. Do not list hazards that do not apply to what this user described building.

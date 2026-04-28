@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CostSignals } from "./shared.js";
+import { CostSignals, TripHazard } from "./shared.js";
 
 // Agentic-specific attack surfaces only — traditional security checklist is out of scope
 const AgenticThreat = z.object({
@@ -25,6 +25,7 @@ export const SecurityAgentOutput = z.object({
   recommendedControls: z.array(z.string()),
   // Declared constraints that CV must check other agents' recommendations against
   declaredConstraints: z.array(z.string()),
+  implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
 });
 

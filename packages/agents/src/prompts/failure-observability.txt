@@ -19,3 +19,7 @@ EVAL STRATEGY: Non-deterministic agent outputs cannot be unit tested. Describe h
 TRACING: Identify which reasoning chains and inter-agent handoffs need distributed tracing. Note where standard tracing approaches need to be adapted for agentic behavior.
 
 Cost signals: estimate the overhead of your recommended eval and tracing infrastructure.
+
+---
+
+IMPLEMENTATION TRIP HAZARDS: For each recommendation you make, identify the specific gotchas that teams hit when implementing it in practice. For each hazard: name what it is (specific to this architecture, not generic), how to mitigate it, and severity (low/medium/high). Rank by severity — most critical first. Do not list hazards that do not apply to what this user described building.
