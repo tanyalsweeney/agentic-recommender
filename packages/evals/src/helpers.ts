@@ -1,0 +1,151 @@
+import Anthropic from "@anthropic-ai/sdk";
+
+const apiKey = process.env.ANTHROPIC_API_KEY;
+if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set — check .env.local");
+
+export const anthropic = new Anthropic({ apiKey });
+
+// Minimal seed manifest for evals — enough for agents to reason with.
+// The real manifest will be built in Phase 6 (maintenance pipeline).
+export const SEED_MANIFEST = {
+  tools: [
+    { name: "langchain", category: "orchestration-framework", maturityTier: "Established", version: "0.3.0", platformCompat: ["aws", "gcp", "azure", "local"], modelCompat: ["all"] },
+    { name: "langgraph", category: "orchestration-framework", maturityTier: "Established", version: "0.2.0", platformCompat: ["aws", "gcp", "azure", "local"], modelCompat: ["all"] },
+    { name: "pinecone", category: "vector-db", maturityTier: "Established", version: "3.0.0", platformCompat: ["aws", "gcp", "azure"], modelCompat: ["all"] },
+    { name: "redis", category: "memory-cache", maturityTier: "Established", version: "5.0.0", platformCompat: ["all"], modelCompat: ["all"] },
+    { name: "anthropic-sdk", category: "llm-sdk", maturityTier: "Established", version: "0.39.0", platformCompat: ["all"], modelCompat: ["claude"] },
+    { name: "openai-sdk", category: "llm-sdk", maturityTier: "Established", version: "4.0.0", platformCompat: ["all"], modelCompat: ["gpt"] },
+    { name: "mcp-server-filesystem", category: "mcp-server", maturityTier: "Emerging", version: "1.0.0", platformCompat: ["local", "linux"], modelCompat: ["all"] },
+    { name: "chromadb", category: "vector-db", maturityTier: "Emerging", version: "0.5.0", platformCompat: ["local", "aws"], modelCompat: ["all"] },
+    { name: "playwright", category: "browser-automation", maturityTier: "Established", version: "1.44.0", platformCompat: ["all"], modelCompat: ["all"] },
+    { name: "bullmq", category: "job-queue", maturityTier: "Established", version: "5.0.0", platformCompat: ["node"], modelCompat: ["all"] },
+  ],
+  patterns: [
+    {
+      name: "pipeline",
+      maturityTier: "Established",
+      description: "Sequential agent chain — each agent receives the previous agent's output as its primary input.",
+      patternMeta: {
+        knownGotchas: [
+          "Handoff schema between stages must be explicitly defined before building — undocumented field names are the most common pipeline failure in production",
+          "Stage N failure after stage N-1 has written output leaves the system in a partial state; all stages must be idempotent for safe retry",
+          "A slow stage blocks all downstream stages — there is no parallelism to absorb latency variance",
+          "Context window accumulates across stages if each stage passes the full prior output; budget context per stage or implement summarization at handoff points",
+        ],
+        failurePosture: "Recoverable stage by stage — a failed stage can retry without re-running prior stages if outputs are checkpointed",
+        scaleConsiderations: [
+          "Throughput is bounded by the slowest stage — parallelism within a stage (batch processing) is the primary scale lever",
+          "Long pipelines accumulate latency linearly; profile each stage independently before assuming the pipeline meets SLA",
+        ],
+        stateHandoffPoints: [
+          "Each stage boundary is a state handoff — the output schema at each boundary must be agreed between the producing and consuming stage",
+          "Error state must be propagated explicitly across boundaries; do not rely on exceptions crossing stage boundaries",
+        ],
+        mixingNotes: "Pipelines are frequently used as the backbone with a supervisor or DAG handling a complex step internally. This is a common and well-understood hybrid.",
+      },
+    },
+    {
+      name: "dag",
+      maturityTier: "Established",
+      description: "Directed acyclic graph — some agents run in parallel, outputs converge at a merge step.",
+      patternMeta: {
+        knownGotchas: [
+          "Merge strategy for conflicting parallel outputs must be designed before building — 'we'll figure out conflicts at the merge step' is not a design",
+          "Parallel branches calling the same LLM API simultaneously amplify rate limit pressure proportionally to branch count; budget for concurrent calls explicitly",
+          "The merge step receives all branch outputs simultaneously — context window at the merge agent must budget for the combined output of all branches",
+          "Branch failure handling must be decided upfront: fail all, proceed with partial results, or wait with timeout; the default behavior is rarely the right behavior",
+          "DAGs are harder to debug than pipelines — a failing branch produces no output, and the merge step may not distinguish 'branch produced null' from 'branch was never called'",
+        ],
+        failurePosture: "Partial — individual branch failures can be isolated if the merge step is designed to handle missing inputs; without explicit handling, a branch failure often causes merge step failure",
+        scaleConsiderations: [
+          "Parallelism amplifies rate limit consumption — 5 parallel branches each making 3 LLM calls consumes 15 concurrent request slots",
+          "Branch count is the primary scale knob; adding branches adds parallelism but also adds merge complexity and rate limit pressure",
+        ],
+        stateHandoffPoints: [
+          "The merge step is the primary state convergence point — it must reconcile potentially conflicting branch outputs",
+          "Shared state written by parallel branches requires explicit conflict resolution; branches should write to isolated namespaces where possible",
+        ],
+        mixingNotes: "Each branch of a DAG can itself be a pipeline internally. This is a natural and common composition.",
+      },
+    },
+    {
+      name: "supervisor",
+      maturityTier: "Established",
+      description: "Central orchestrator dispatches sub-agents dynamically and aggregates their results.",
+      patternMeta: {
+        knownGotchas: [
+          "The supervisor is a single point of failure — if it crashes, all in-flight sub-agent work may be lost; the supervisor must be the most reliable component in the system",
+          "Timeout asymmetry: when one sub-agent is slow while others complete, the supervisor must decide whether to wait, proceed with partial results, or fail the run — this decision must be made before building",
+          "Supervisors tend to accumulate context across many sub-agent calls; context window pressure grows with the number of dispatches and is often underestimated",
+          "Dynamic dispatch is harder to test than static branching — the supervisor's routing logic must be separately tested with known inputs before relying on it in production",
+          "Sub-agent output quality variance is amplified — a weak sub-agent response can derail the supervisor's subsequent routing decisions",
+        ],
+        failurePosture: "Catastrophic without explicit mitigation — supervisor failure typically means all in-flight sub-agent work is lost; checkpoint sub-agent results as they complete",
+        scaleConsiderations: [
+          "Supervisor context window grows linearly with dispatches; long-running supervisors with many sub-agents will hit context limits before they hit other scale limits",
+          "Sub-agent concurrency is limited by rate limits; supervisors that dispatch aggressively in parallel need explicit concurrency caps",
+        ],
+        stateHandoffPoints: [
+          "The supervisor owns all state — it must maintain consistent context across potentially many sub-agent calls",
+          "Sub-agent results should be persisted as they arrive, not only when the supervisor finalizes its output",
+        ],
+        mixingNotes: "Supervisors are frequently used at the top level with pipeline or DAG handling structured sub-tasks. Avoid nested supervisors — debugging becomes exponentially harder.",
+      },
+    },
+    {
+      name: "event_driven",
+      maturityTier: "Emerging",
+      description: "Agents react to events or messages rather than being called directly.",
+      patternMeta: {
+        knownGotchas: [
+          "Message ordering is not guaranteed by default in most event systems — agents must be designed to handle out-of-order events or the queue must provide ordering guarantees explicitly",
+          "Dead letter queue design is mandatory, not optional — unhandled events silently disappear without it",
+          "At-least-once delivery means agents may process the same event multiple times; all event handlers must be idempotent",
+          "Debugging is significantly harder than synchronous patterns — a failure in one agent may not surface until a downstream agent processes a stale or missing event",
+        ],
+        failurePosture: "Isolated — individual event processing failures are contained if dead letter queues are in place; without them, failures are silent and data loss is likely",
+        scaleConsiderations: [
+          "Event queues can absorb traffic spikes that would overwhelm synchronous systems — this is the primary scale advantage",
+          "Consumer lag is the key health metric — monitor time-to-process, not just queue depth",
+        ],
+        stateHandoffPoints: [
+          "Event payload must carry all state the consuming agent needs — do not rely on shared state that the producer and consumer both read",
+          "Event schema versioning is required for any system that runs in production for more than a few weeks",
+        ],
+        mixingNotes: "Often used as the top-level coordination mechanism with pipeline or supervisor handling the processing of each event internally.",
+      },
+    },
+    {
+      name: "peer_to_peer",
+      maturityTier: "Emerging",
+      description: "Agents communicate directly with each other without a central coordinator.",
+      patternMeta: {
+        knownGotchas: [
+          "Emergent behavior is hard to predict and even harder to debug — agents interacting directly can produce coordination patterns that were never designed",
+          "Consensus is the core unsolved problem — when two agents disagree, there is no authority to resolve it without explicit consensus protocol design",
+          "Debugging is the hardest of any pattern — tracing which agent said what to which other agent requires purpose-built observability from day one",
+        ],
+        failurePosture: "Degraded rather than catastrophic if designed carefully — individual agent failures reduce capability but do not halt the system; in practice, emergent deadlocks are common without careful design",
+        scaleConsiderations: ["Communication overhead grows with agent count; peer-to-peer does not scale linearly"],
+        stateHandoffPoints: ["All agents share equal responsibility for consistency — this is a coordination problem that must be explicitly solved"],
+        mixingNotes: "Rarely used as a top-level pattern. Most production systems that appear to be peer-to-peer have an implicit supervisor coordinating them.",
+      },
+    },
+    {
+      name: "hierarchical",
+      maturityTier: "Emerging",
+      description: "Nested orchestrators managing sub-orchestrators, each responsible for a domain.",
+      patternMeta: {
+        knownGotchas: [
+          "Debugging failures across hierarchy levels requires purpose-built distributed tracing — standard logging is insufficient",
+          "Context window pressure at the top-level orchestrator grows with the number of sub-orchestrators it must coordinate",
+          "Latency compounds at each level — a hierarchy that looks manageable in design often has unacceptable p95 latency in production",
+        ],
+        failurePosture: "Domain-isolated — a failing sub-orchestrator affects only its domain if the top-level orchestrator is designed to handle partial results",
+        scaleConsiderations: ["Each level of hierarchy adds coordination overhead; three or more levels require careful latency budgeting"],
+        stateHandoffPoints: ["State handoffs between orchestrator levels must be explicitly designed; do not assume state flows automatically across boundaries"],
+        mixingNotes: "Appropriate for genuinely multi-domain systems where domains have independent lifecycles. Avoid hierarchical patterns for systems that can be expressed as a flat DAG.",
+      },
+    },
+  ],
+};

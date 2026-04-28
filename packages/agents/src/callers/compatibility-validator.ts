@@ -6,7 +6,7 @@ import { CompatibilityValidatorOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/compatibility-validator.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/compatibility-validator.txt"),
   "utf-8"
 );
 

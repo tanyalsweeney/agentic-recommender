@@ -6,7 +6,7 @@ import { MemoryStateAgentOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/memory-state.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/memory-state.txt"),
   "utf-8"
 );
 

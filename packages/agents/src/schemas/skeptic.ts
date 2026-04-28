@@ -6,12 +6,12 @@ const SkepticConcern = z.object({
   description: z.string(),
   targetAgent: z.string(),           // which agent's output is being challenged
   resolved: z.boolean(),
-  resolution: z.string().optional(), // how it was resolved, or why it couldn't be
+  resolution: z.string().nullish(),  // how it was resolved, or why it couldn't be
   acceptedOverride: z.object({       // when the challenged agent counter-argued successfully
     counterArgument: z.string(),
     tradeoffReasoning: z.string(),   // feeds directly into Pass 2 ADRs
-  }).optional(),
-  caveatTier: CaveatTier.optional(), // assigned at cycle cap if unresolved
+  }).nullish(),
+  caveatTier: CaveatTier.nullish(), // assigned at cycle cap if unresolved
 });
 
 export const SkepticOutput = z.object({

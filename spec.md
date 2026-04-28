@@ -333,6 +333,18 @@ Re-inference runs only on the affected steps. Unaffected selections are preserve
 **Constraints field:**
 The constraints field is prominently surfaced on the review screen as an explicit prompt — users frequently discover constraints they hadn't articulated while walking through the domain steps. Any constraints added here are classified (binary exclusion or optimization target) and folded into verified context before the run proceeds.
 
+**Intake analysis signals:**
+
+The intake agent produces three categories of analysis beyond step inferences. Each surfaces in a different part of the flow.
+
+*Contradictions* — detected conflicts between confirmed selections, or between a selection and a constraint (e.g., "fully autonomous" autonomy level with financial transaction data; a platform selection that conflicts with a stated "no cloud" binary exclusion). These surface **inline during step confirmation** at the first step where the conflict becomes apparent, with language that names both sides so the user never needs to navigate backward. The message direction matches the conflict direction: if the conflict is with an earlier step or the description, "you described X earlier — this may conflict"; if the conflict is with a future step, "note that this choice will conflict with your later selection of Y." The user sees the conflict as they confirm and can resolve it before moving forward.
+
+*Gaps summary* — when the intake agent cannot infer five or more steps with high confidence due to description ambiguity (not because those steps genuinely don't apply), a note appears at the top of the review screen: "N steps are unanswered — agents will reason from your description for these. Refining your description before running will reduce iterations and cost." The individual low-confidence steps are already visible as blank in the flow; this is a summary prompt to reconsider before spending a run.
+
+*Implied requirements* — things the description logically implies that the user did not explicitly state and that a senior engineer would flag before implementation (e.g., "an agent that browses arbitrary web pages implies sandboxing requirements and prompt injection risk"). These appear on the review screen in a **"Before you run"** section, fully visible below the full verified context — not behind an accordion. This section delivers real value before the user spends one of their free runs, and the primary audience will engage with it.
+
+The agent ranks implied requirements by severity, most critical first. Display rule: if there are 4 or fewer, all are shown. If there are 5 or more, the first 3 are shown and the remainder collapse behind a "Show N more..." control. This ensures the most important items are always visible without creating a wall of text for architectures that generate many implications. Each implied requirement is one punchy sentence, naming the domain it affects and the specific gotcha or failure mode it connects to.
+
 ### Intake steps
 
 | # | Step | Notes |
@@ -373,6 +385,24 @@ All thresholds are configurable via the admin dashboard and take effect immediat
 > Note: The Compatibility Validator performs live web search per run for version, CVE, and pricing data. Manifest staleness does not affect compatibility accuracy — only which tools surface in intake and confidence score freshness.
 
 **Agents both consume and maintain the manifest.** To prevent drift, a Manifest Gatekeeper reviews all proposed updates before they go live.
+
+### Architecture pattern entries
+
+Architecture pattern entries (category = 'pattern') carry a `pattern_meta` field in addition to the standard manifest entry fields. This stores engineering knowledge specific to each coordination pattern — knowledge that would otherwise need to be hardcoded in the orchestration agent's prompt and updated via code change whenever it evolved.
+
+The Manifest Gatekeeper maintains this knowledge without code changes. The orchestration agent reads it from the manifest at query time and contextualises it to the specific user's architecture.
+
+**pattern_meta schema:**
+
+| Field | Type | Description |
+|---|---|---|
+| `knownGotchas` | string[] | Implementation trip hazards for this pattern — ranked by severity, most critical first. The orchestration agent surfaces the most relevant for the user's specific system. |
+| `failurePosture` | string | How this pattern fails — gracefully (stage by stage) or catastrophically (all-or-nothing). Determines recovery strategy and HITL gate placement. |
+| `scaleConsiderations` | string[] | Known constraints that emerge at scale. Rate limit pressure under parallelism, merge step bottlenecks, supervisor state growth. |
+| `stateHandoffPoints` | string[] | Where state must be explicitly managed at the pattern level — flagged for the Memory & State agent to address. |
+| `mixingNotes` | string | Whether and how this pattern can be combined with others in a single system. Many real systems use pipeline in one subgraph and supervisor in another. |
+
+**Seed entries** for the six core patterns (pipeline, dag, supervisor, event_driven, peer_to_peer, hierarchical) are populated at system initialization. The Gatekeeper reviews and evolves these entries on the standard 4-week architecture pattern refresh cadence.
 
 ### Conflict resolution between proposing agent and Manifest Gatekeeper
 - Agents attempt to resolve conflicts between themselves

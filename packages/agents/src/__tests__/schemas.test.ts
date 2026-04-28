@@ -41,6 +41,9 @@ describe("IntakeAgentOutput schema", () => {
       tools: { state: "high_confidence", selected: ["langchain", "pinecone"], rationale: "Mentioned explicitly" },
     },
     constraintClassifications: [],
+    contradictions: [],
+    impliedRequirements: [],
+    descriptionQualityNote: null,
   };
 
   it("accepts valid output", () => {

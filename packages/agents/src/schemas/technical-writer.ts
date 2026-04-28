@@ -7,7 +7,7 @@ const ToolManifestEntry = z.object({
   purpose: z.string(),
   // Click-to-expand confidence detail (accepted cherry-pick)
   confidenceDetail: z.object({
-    adoptionSignalCount: z.number().optional(),
+    adoptionSignalCount: z.number().nullish(),
     sourceTierBreakdown: z.string().optional(),
     timeWithoutContradiction: z.string().optional(),
     nextTierRequirement: z.string().optional(),

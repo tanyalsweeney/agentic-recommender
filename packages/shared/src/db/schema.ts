@@ -118,6 +118,9 @@ export const manifestEntries = pgTable(
     maintenanceSignals: jsonb("maintenance_signals").notNull().default({}),
     platformCompat: jsonb("platform_compat").notNull().default({}),
     modelCompat: jsonb("model_compat").notNull().default({}),
+    // Pattern-specific metadata — null for tool entries, populated for category = 'pattern'.
+    // Maintained by the Manifest Gatekeeper; no code change needed to update pattern knowledge.
+    patternMeta: jsonb("pattern_meta"),
     lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
     owner: text("owner").notNull().default("global"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),

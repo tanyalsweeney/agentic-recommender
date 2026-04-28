@@ -6,7 +6,7 @@ import { IntakeAgentOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/intake.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/intake.txt"),
   "utf-8"
 );
 

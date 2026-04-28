@@ -1,16 +1,6 @@
-/**
- * Orchestration agent eval — 1 case.
- * Unskip and wire callOrchestrationAgent() in Phase 2c.
- */
 import { describe, it, expect } from "vitest";
-import { OrchestrationAgentOutput } from "@agent12/agents";
-
-async function callOrchestrationAgent(_verifiedContext: object): Promise<OrchestrationAgentOutput> {
-  throw new Error("callOrchestrationAgent not implemented — Phase 2c");
-}
-
-// A system with parallel research sub-agents converging to synthesis should get DAG,
-// not pipeline (sequential only) or supervisor (single controller).
+import { callOrchestrationAgent } from "@agent12/agents";
+import { anthropic, SEED_MANIFEST } from "../helpers.js";
 
 const parallelResearchContext = {
   description:
@@ -23,18 +13,18 @@ const parallelResearchContext = {
 };
 
 describe("Orchestration eval 4: parallel research → DAG pattern", () => {
-  it.skip("recommends DAG pattern for parallel independent sub-agents", async () => {
-    const output = await callOrchestrationAgent(parallelResearchContext);
+  it("recommends DAG pattern for parallel independent sub-agents", async () => {
+    const output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, anthropic);
     expect(output.recommendedPattern).toBe("dag");
   });
 
-  it.skip("does not recommend pipeline for a system with parallel execution", async () => {
-    const output = await callOrchestrationAgent(parallelResearchContext);
+  it("does not recommend pipeline for a system with parallel execution", async () => {
+    const output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, anthropic);
     expect(output.recommendedPattern).not.toBe("pipeline");
   });
 
-  it.skip("acknowledges parallelism in the agent structure description", async () => {
-    const output = await callOrchestrationAgent(parallelResearchContext);
+  it("acknowledges parallelism in the agent structure description", async () => {
+    const output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, anthropic);
     const structureText = JSON.stringify(output.agentStructure).toLowerCase();
     expect(structureText).toMatch(/parallel|concurrent|simultaneous/);
   });
