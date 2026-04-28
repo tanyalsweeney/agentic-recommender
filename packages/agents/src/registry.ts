@@ -3,7 +3,7 @@ import { readFileSync, statSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 
-const PROMPTS_DIR = resolve(fileURLToPath(import.meta.url), "../../prompts");
+const PROMPTS_DIR = resolve(fileURLToPath(import.meta.url), "../prompts");
 
 function fileVersion(filename: string): string {
   const path = resolve(PROMPTS_DIR, filename);

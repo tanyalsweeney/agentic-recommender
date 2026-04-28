@@ -3,7 +3,7 @@ import { z } from "zod";
 const PerToolResult = z.object({
   toolName: z.string(),
   version: z.string().optional(),
-  isCurrentVersion: z.boolean().optional(),
+  isCurrentVersion: z.boolean().nullish(),
   eolDate: z.string().nullable().optional(),
   cves: z.object({
     critical: z.array(z.string()),
@@ -11,7 +11,7 @@ const PerToolResult = z.object({
   }).optional(),
   breakingChanges: z.array(z.string()).optional(),
   license: z.string().nullable().optional(), // SPDX identifier
-  isCopyleft: z.boolean().optional(),
+  isCopyleft: z.boolean().nullish(),
   pricing: z.object({
     tier: z.string().optional(),
     cost: z.string().nullable().optional(),

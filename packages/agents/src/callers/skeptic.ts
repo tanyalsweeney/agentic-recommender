@@ -6,7 +6,7 @@ import { SkepticOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/skeptic.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/skeptic.txt"),
   "utf-8"
 );
 

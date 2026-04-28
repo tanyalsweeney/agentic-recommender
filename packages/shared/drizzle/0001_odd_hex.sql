@@ -1,0 +1,1 @@
+ALTER TABLE "manifest_entries" ADD COLUMN "pattern_meta" jsonb;

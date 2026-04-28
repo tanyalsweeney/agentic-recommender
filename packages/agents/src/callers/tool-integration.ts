@@ -6,7 +6,7 @@ import { ToolIntegrationAgentOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/tool-integration.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/tool-integration.txt"),
   "utf-8"
 );
 

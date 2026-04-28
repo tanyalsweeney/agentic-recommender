@@ -8,6 +8,13 @@
       "when": 1777293952305,
       "tag": "0000_nebulous_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777339516630,
+      "tag": "0001_odd_hex",
+      "breakpoints": true
     }
   ]
 }

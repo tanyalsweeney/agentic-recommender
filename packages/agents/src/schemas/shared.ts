@@ -2,10 +2,10 @@ import { z } from "zod";
 
 // Cost signals every Wave 1 and Wave 2 agent produces for CV at Wave 2.5
 export const CostSignals = z.object({
-  estimatedMonthlyApiCalls: z.number().optional(),
-  computeIntensity: z.enum(["low", "medium", "high"]).optional(),
-  humanReviewHoursPerRun: z.number().optional(),
-  notes: z.string().optional(),
+  estimatedMonthlyApiCalls: z.number().nullish(),
+  computeIntensity: z.enum(["low", "medium", "high"]).nullish(),
+  humanReviewHoursPerRun: z.number().nullish(),
+  notes: z.string().nullish(),
 });
 export type CostSignals = z.infer<typeof CostSignals>;
 

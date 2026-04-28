@@ -9,8 +9,9 @@ export default defineConfig({
     name: "evals",
     environment: "node",
     globals: false,
+    include: ["src/**/*.eval.ts"],
     // Evals make real Anthropic API calls — run manually only, never in CI.
     // Use: pnpm eval:skeptic (etc) to run specific suites.
-    testTimeout: 60_000,
+    testTimeout: 120_000,
   },
 });

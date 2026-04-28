@@ -6,7 +6,7 @@ import { SecurityAgentOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/security.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/security.txt"),
   "utf-8"
 );
 

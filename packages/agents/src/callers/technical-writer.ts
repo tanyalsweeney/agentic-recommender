@@ -6,7 +6,7 @@ import { TechnicalWriterOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/technical-writer.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/technical-writer.txt"),
   "utf-8"
 );
 

@@ -6,7 +6,7 @@ import { OrchestrationAgentOutput } from "../schemas/index.js";
 import { callAgent } from "./base.js";
 
 const PROMPT = readFileSync(
-  resolve(fileURLToPath(import.meta.url), "../../../prompts/orchestration.txt"),
+  resolve(fileURLToPath(import.meta.url), "../../prompts/orchestration.txt"),
   "utf-8"
 );
 
