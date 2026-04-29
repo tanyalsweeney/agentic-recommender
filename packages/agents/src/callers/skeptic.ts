@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ProviderConfig } from "../schemas/index.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -14,7 +14,7 @@ export async function callSkepticAgent(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { wave1: unknown; wave2: unknown; cv: unknown },
-  client: Anthropic
+  providerConfig: ProviderConfig
 ): Promise<SkepticOutput> {
   return callAgent({
     agentName: "skeptic",
@@ -23,6 +23,6 @@ export async function callSkepticAgent(
     verifiedContext,
     upstreamOutputs,
     zodSchema: SkepticOutput,
-    client,
+    providerConfig,
   });
 }

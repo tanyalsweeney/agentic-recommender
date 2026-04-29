@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { callTechnicalWriterAgent } from "@agent12/agents";
-import { anthropic, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 const upstreamOutputs = {
   wave1: {
@@ -48,32 +48,32 @@ function isValidMermaidSyntax(source: string): boolean {
 
 describe("Technical Writer eval 9: voice directive — no marketing language", () => {
   it("executive summary contains no banned marketing phrases", async () => {
-    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, anthropic);
+    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, DEFAULT_PROVIDER_CONFIGS.technical_writer);
     const summaryLower = output.executiveSummary.content.toLowerCase();
     const found = BANNED_PHRASES.filter(p => summaryLower.includes(p));
     expect(found).toHaveLength(0);
   });
 
   it("executive summary contains a debate summary sentence", async () => {
-    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, anthropic);
+    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, DEFAULT_PROVIDER_CONFIGS.technical_writer);
     expect(output.executiveSummary.debateSummary).toBeTruthy();
     expect(output.executiveSummary.debateSummary.length).toBeGreaterThan(10);
   });
 
   it("executive summary includes a scope statement", async () => {
-    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, anthropic);
+    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, DEFAULT_PROVIDER_CONFIGS.technical_writer);
     expect(output.executiveSummary.scopeStatement.toLowerCase()).toMatch(/agentic|architecture|scope|traditional/);
   });
 });
 
 describe("Technical Writer eval 10: Mermaid diagram syntax is valid", () => {
   it("architecture diagram source passes basic Mermaid syntax checks", async () => {
-    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, anthropic);
+    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, DEFAULT_PROVIDER_CONFIGS.technical_writer);
     expect(isValidMermaidSyntax(output.architectureDiagram.mermaidSource)).toBe(true);
   });
 
   it("diagram direction is a valid Mermaid direction", async () => {
-    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, anthropic);
+    const output = await callTechnicalWriterAgent(SEED_MANIFEST, { description: "Document processing pipeline, AWS Lambda, Claude Sonnet" }, upstreamOutputs, DEFAULT_PROVIDER_CONFIGS.technical_writer);
     expect(["LR", "TD", "BT", "RL"]).toContain(output.architectureDiagram.direction);
   });
 });

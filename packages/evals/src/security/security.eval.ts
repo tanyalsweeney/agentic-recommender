@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { callSecurityAgent } from "@agent12/agents";
-import { anthropic, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 const autonomousWebAgentContext = {
   description:
@@ -14,7 +14,7 @@ const autonomousWebAgentContext = {
 
 describe("Security eval 5: autonomous web agent → prompt injection flagged as high", () => {
   it("flags prompt injection via web content as a high-likelihood, high-impact risk", async () => {
-    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, anthropic);
+    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
     const risks = output.agenticAttackSurface.promptInjectionRisks;
     expect(risks.length).toBeGreaterThan(0);
 
@@ -30,12 +30,12 @@ describe("Security eval 5: autonomous web agent → prompt injection flagged as 
   });
 
   it("flags excessive autonomy as a risk", async () => {
-    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, anthropic);
+    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
     expect(output.agenticAttackSurface.excessiveAutonomyRisks.length).toBeGreaterThan(0);
   });
 
   it("includes at least one mitigation for prompt injection", async () => {
-    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, anthropic);
+    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
     const mitigations = output.agenticAttackSurface.promptInjectionRisks.flatMap(r => r.mitigations);
     expect(mitigations.length).toBeGreaterThan(0);
   });

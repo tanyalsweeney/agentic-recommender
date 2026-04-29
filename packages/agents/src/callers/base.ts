@@ -1,8 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { ProviderConfig } from "../schemas/index.js";
+import { PROVIDER_REGISTRY, ProviderName } from "../providers.js";
 
-const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 8192;
 
 export interface CallAgentOptions<T> {
@@ -12,15 +14,35 @@ export interface CallAgentOptions<T> {
   verifiedContext: unknown;
   upstreamOutputs?: unknown;
   zodSchema: z.ZodType<T>;
-  client: Anthropic;
+  providerConfig: ProviderConfig;
 }
 
 export async function callAgent<T>(opts: CallAgentOptions<T>): Promise<T> {
-  const { agentName, systemPrompt, manifest, verifiedContext, upstreamOutputs, zodSchema, client } = opts;
+  const entry = PROVIDER_REGISTRY[opts.providerConfig.provider as ProviderName];
+  if (!entry) {
+    throw new Error(
+      `Unknown provider "${opts.providerConfig.provider}". ` +
+      `Registered providers: ${Object.keys(PROVIDER_REGISTRY).join(", ")}`
+    );
+  }
+  if (entry.type === "anthropic") {
+    return callAnthropicAgent(opts, entry);
+  }
+  return callOpenAICompatibleAgent(opts, entry);
+}
+
+async function callAnthropicAgent<T>(
+  opts: CallAgentOptions<T>,
+  entry: typeof PROVIDER_REGISTRY[keyof typeof PROVIDER_REGISTRY] & { type: "anthropic" }
+): Promise<T> {
+  const { agentName, systemPrompt, manifest, verifiedContext, upstreamOutputs, zodSchema, providerConfig } = opts;
+
+  const apiKey = process.env[entry.systemApiKeyEnvVar];
+  if (!apiKey) throw new Error(`${entry.systemApiKeyEnvVar} is not set`);
+  const client = new Anthropic({ apiKey });
 
   const toolName = `${agentName.replace(/-/g, "_")}_output`;
   const inputSchema = zodToJsonSchema(zodSchema, { target: "openAi" });
-  // zodToJsonSchema wraps in { $schema, ... } — extract just the schema body
   const { $schema: _, ...schemaBody } = inputSchema as Record<string, unknown>;
 
   const upstreamBlock = upstreamOutputs
@@ -28,7 +50,7 @@ export async function callAgent<T>(opts: CallAgentOptions<T>): Promise<T> {
     : "";
 
   const response = await client.messages.create({
-    model: MODEL,
+    model: providerConfig.model,
     max_tokens: MAX_TOKENS,
     system: [
       {
@@ -72,4 +94,60 @@ export async function callAgent<T>(opts: CallAgentOptions<T>): Promise<T> {
   }
 
   return zodSchema.parse(toolUse.input);
+}
+
+async function callOpenAICompatibleAgent<T>(
+  opts: CallAgentOptions<T>,
+  entry: typeof PROVIDER_REGISTRY[keyof typeof PROVIDER_REGISTRY] & { type: "openai-compatible" }
+): Promise<T> {
+  const { agentName, systemPrompt, manifest, verifiedContext, upstreamOutputs, zodSchema, providerConfig } = opts;
+
+  const apiKey = process.env[entry.systemApiKeyEnvVar];
+  if (!apiKey) throw new Error(`${entry.systemApiKeyEnvVar} is not set`);
+  const client = new OpenAI({ apiKey, baseURL: entry.baseUrl });
+
+  const toolName = `${agentName.replace(/-/g, "_")}_output`;
+  const inputSchema = zodToJsonSchema(zodSchema, { target: "openAi" });
+  const { $schema: _, ...schemaBody } = inputSchema as Record<string, unknown>;
+
+  const upstreamBlock = upstreamOutputs
+    ? `\n\nUPSTREAM AGENT OUTPUTS:\n${JSON.stringify(upstreamOutputs, null, 2)}`
+    : "";
+
+  // No prompt caching on the OpenAI-compatible path. Manifest and system prompt
+  // are sent in full every call. Mitigated by checkpoint reuse; filtered manifest
+  // per agent is a planned fast follow to reduce token cost further.
+  const response = await client.chat.completions.create({
+    model: providerConfig.model,
+    max_tokens: MAX_TOKENS,
+    messages: [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content:
+          `MANIFEST (tool and pattern knowledge base):\n${JSON.stringify(manifest, null, 2)}\n\n` +
+          `VERIFIED CONTEXT (user's confirmed architecture decisions):\n${JSON.stringify(verifiedContext, null, 2)}` +
+          `${upstreamBlock}\n\nProvide your structured output using the ${toolName} function.`,
+      },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: toolName,
+          description: `Structured output for the ${agentName} agent`,
+          parameters: schemaBody as Record<string, unknown>,
+        },
+      },
+    ],
+    tool_choice: { type: "function", function: { name: toolName } },
+  });
+
+  const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+  if (!toolCall) {
+    throw new Error(`${agentName}: no tool call in response — model did not call the function`);
+  }
+
+  const parsed = JSON.parse(toolCall.function.arguments);
+  return zodSchema.parse(parsed);
 }

@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ProviderConfig } from "../schemas/index.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -13,7 +13,7 @@ const PROMPT = readFileSync(
 export async function callToolIntegrationAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  client: Anthropic
+  providerConfig: ProviderConfig
 ): Promise<ToolIntegrationAgentOutput> {
   return callAgent({
     agentName: "tool_integration",
@@ -21,6 +21,6 @@ export async function callToolIntegrationAgent(
     manifest,
     verifiedContext,
     zodSchema: ToolIntegrationAgentOutput,
-    client,
+    providerConfig,
   });
 }

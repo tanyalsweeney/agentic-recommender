@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ProviderConfig } from "../schemas/index.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -13,7 +13,7 @@ const PROMPT = readFileSync(
 export async function callOrchestrationAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  client: Anthropic
+  providerConfig: ProviderConfig
 ): Promise<OrchestrationAgentOutput> {
   return callAgent({
     agentName: "orchestration",
@@ -21,6 +21,6 @@ export async function callOrchestrationAgent(
     manifest,
     verifiedContext,
     zodSchema: OrchestrationAgentOutput,
-    client,
+    providerConfig,
   });
 }

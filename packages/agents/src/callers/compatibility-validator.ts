@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ProviderConfig } from "../schemas/index.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -16,7 +16,7 @@ export async function callCompatibilityValidator(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { wave1: unknown; wave2: unknown },
-  client: Anthropic
+  providerConfig: ProviderConfig
 ): Promise<CompatibilityValidatorOutput> {
   return callAgent({
     agentName: "compatibility_validator",
@@ -25,7 +25,7 @@ export async function callCompatibilityValidator(
     verifiedContext,
     upstreamOutputs,
     zodSchema: CompatibilityValidatorOutput,
-    client,
+    providerConfig,
   });
   // TODO Phase 3: add web_search_20250305 tool alongside the output tool
   // so CV can perform live research per tool before filling in the output schema.

@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+// Per-agent provider configuration — what is stored in the config table and
+// validated at write time by the dashboard. References a provider by name
+// (must be a key in PROVIDER_REGISTRY in providers.ts). Infrastructure details
+// (base URL, API key env var) live in the registry, not here.
+export const ProviderConfig = z.object({
+  provider: z.string(), // must be a key in PROVIDER_REGISTRY
+  model: z.string(),
+});
+export type ProviderConfig = z.infer<typeof ProviderConfig>;
+
 // Implementation trip hazard — named gotcha with mitigation, used across all recommendation agents.
 // Surfaced in Pass 1 summary and expanded in Pass 2 ADRs.
 export const TripHazard = z.object({

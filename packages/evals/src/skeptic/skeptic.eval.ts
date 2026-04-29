@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { callSkepticAgent } from "@agent12/agents";
-import { anthropic, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 const strongArchitectureOutput = {
   wave1: {
@@ -65,24 +65,24 @@ const dangerousArchitectureOutput = {
 
 describe("Skeptic eval 6: strong architecture → early exit", () => {
   it("exits early when no concerns rise to Advisory tier", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, anthropic);
+    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
     expect(output.earlyExit).toBe(true);
   });
 
   it("assigns no caveats for a sound architecture", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, anthropic);
+    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
     expect(output.assignedCaveats).toHaveLength(0);
   });
 
   it("uses 1-2 cycles at most for a strong architecture", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, anthropic);
+    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
     expect(output.cyclesUsed).toBeLessThanOrEqual(2);
   });
 });
 
 describe("Skeptic eval 7: dangerous architecture → Blocking Condition or DNBT", () => {
   it("assigns at least a Blocking Condition for direct production writes with no HITL", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, anthropic);
+    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
     const severe = output.assignedCaveats.some(c =>
       c.tier === "BlockingCondition" || c.tier === "DoNotBuildThis"
     );
@@ -90,20 +90,20 @@ describe("Skeptic eval 7: dangerous architecture → Blocking Condition or DNBT"
   });
 
   it("does not exit early when dangerous patterns are present", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, anthropic);
+    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
     expect(output.earlyExit).toBe(false);
   });
 });
 
 describe("Skeptic eval 8: debate summary is always present and populated", () => {
   it("debateSummary.totalConcerns is a non-negative integer", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, anthropic);
+    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
     expect(typeof output.debateSummary.totalConcerns).toBe("number");
     expect(output.debateSummary.totalConcerns).toBeGreaterThanOrEqual(0);
   });
 
   it("resolved + remaining === totalConcerns", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, anthropic);
+    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
     const { totalConcerns, resolved, remaining } = output.debateSummary;
     expect(resolved + remaining).toBe(totalConcerns);
   });

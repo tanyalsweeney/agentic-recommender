@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { callIntakeAgent } from "@agent12/agents";
-import { anthropic, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 // ── eval case 1: high-confidence inference ────────────────────────────────────
 
@@ -15,19 +15,19 @@ const highConfidenceInput = {
 
 describe("Intake eval 1: high-confidence inference", () => {
   it("infers orchestration pattern as pipeline with high confidence", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, highConfidenceInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, highConfidenceInput, DEFAULT_PROVIDER_CONFIGS.intake);
     expect(output.steps.orchestrationPattern.state).toBe("high_confidence");
     expect(output.steps.orchestrationPattern.selected).toMatch(/pipeline/i);
   });
 
   it("infers platform as AWS with high confidence", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, highConfidenceInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, highConfidenceInput, DEFAULT_PROVIDER_CONFIGS.intake);
     expect(output.steps.platformDeployment.state).toBe("high_confidence");
     expect(output.steps.platformDeployment.selected).toMatch(/aws|lambda/i);
   });
 
   it("infers model preference as Claude Sonnet with high confidence", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, highConfidenceInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, highConfidenceInput, DEFAULT_PROVIDER_CONFIGS.intake);
     expect(output.steps.modelPreferences.state).toBe("high_confidence");
     expect(output.steps.modelPreferences.selected).toMatch(/sonnet/i);
   });
@@ -42,13 +42,13 @@ const ambiguousInput = {
 
 describe("Intake eval 2: ambiguous description → low confidence", () => {
   it("does not pre-select orchestration pattern when description is vague", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, ambiguousInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, ambiguousInput, DEFAULT_PROVIDER_CONFIGS.intake);
     expect(output.steps.orchestrationPattern.state).toBe("low_confidence");
     expect(output.steps.orchestrationPattern.selected ?? null).toBeNull();
   });
 
   it("does not pre-select platform when description is vague", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, ambiguousInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, ambiguousInput, DEFAULT_PROVIDER_CONFIGS.intake);
     expect(output.steps.platformDeployment.state).toBe("low_confidence");
   });
 });
@@ -66,7 +66,7 @@ const constraintInput = {
 
 describe("Intake eval 3: constraint classification", () => {
   it("classifies 'open-source only' as binary_exclusion", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, constraintInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, constraintInput, DEFAULT_PROVIDER_CONFIGS.intake);
     const openSource = output.constraintClassifications.find(c =>
       c.constraint.toLowerCase().includes("open-source") ||
       c.constraint.toLowerCase().includes("open source")
@@ -76,7 +76,7 @@ describe("Intake eval 3: constraint classification", () => {
   });
 
   it("classifies 'minimize cost' as optimization_target", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, constraintInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, constraintInput, DEFAULT_PROVIDER_CONFIGS.intake);
     const cost = output.constraintClassifications.find(c =>
       c.constraint.toLowerCase().includes("cost") ||
       c.constraint.toLowerCase().includes("minim")
@@ -86,7 +86,7 @@ describe("Intake eval 3: constraint classification", () => {
   });
 
   it("classifies 'no data leaves VPC' as binary_exclusion", async () => {
-    const output = await callIntakeAgent(SEED_MANIFEST, constraintInput, anthropic);
+    const output = await callIntakeAgent(SEED_MANIFEST, constraintInput, DEFAULT_PROVIDER_CONFIGS.intake);
     const vpc = output.constraintClassifications.find(c =>
       c.constraint.toLowerCase().includes("vpc") ||
       c.constraint.toLowerCase().includes("leaves")
