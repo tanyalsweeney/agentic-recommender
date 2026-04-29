@@ -118,9 +118,11 @@ export const manifestEntries = pgTable(
     maintenanceSignals: jsonb("maintenance_signals").notNull().default({}),
     platformCompat: jsonb("platform_compat").notNull().default({}),
     modelCompat: jsonb("model_compat").notNull().default({}),
-    // Pattern-specific metadata — null for tool entries, populated for category = 'pattern'.
-    // Maintained by the Manifest Gatekeeper; no code change needed to update pattern knowledge.
-    patternMeta: jsonb("pattern_meta"),
+    // Domain knowledge payload — structure varies by category.
+    // category = 'pattern': knownGotchas, failurePosture, scaleConsiderations, stateHandoffPoints, mixingNotes
+    // category = 'failure_mode': description, likelihoodSignals, detectionApproach, mitigationApproaches, domainApplicability
+    // Maintained by the Manifest Gatekeeper; no code change needed to evolve domain knowledge.
+    domainKnowledgePayload: jsonb("domain_knowledge_payload"),
     lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
     vetted: boolean("vetted").notNull().default(true),
     owner: text("owner").notNull().default("global"),
