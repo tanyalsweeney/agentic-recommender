@@ -22,6 +22,13 @@
       "when": 1777427180708,
       "tag": "0002_remarkable_james_howlett",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777507200000,
+      "tag": "0003_rename_pattern_meta",
+      "breakpoints": true
     }
   ]
 }

@@ -386,23 +386,31 @@ All thresholds are configurable via the admin dashboard and take effect immediat
 
 **Agents both consume and maintain the manifest.** To prevent drift, a Manifest Gatekeeper reviews all proposed updates before they go live.
 
-### Architecture pattern entries
+### Domain knowledge payload
 
-Architecture pattern entries (category = 'pattern') carry a `pattern_meta` field in addition to the standard manifest entry fields. This stores engineering knowledge specific to each coordination pattern — knowledge that would otherwise need to be hardcoded in the orchestration agent's prompt and updated via code change whenever it evolved.
+Every manifest entry carries a `domainKnowledgePayload` jsonb field. The payload structure varies by category. This design means domain knowledge can be added, extended, or evolved by the Manifest Gatekeeper without any code change or prompt update.
 
-The Manifest Gatekeeper maintains this knowledge without code changes. The orchestration agent reads it from the manifest at query time and contextualises it to the specific user's architecture.
-
-**pattern_meta schema:**
+**category = 'pattern' payload schema:**
 
 | Field | Type | Description |
 |---|---|---|
-| `knownGotchas` | string[] | Implementation trip hazards for this pattern — ranked by severity, most critical first. The orchestration agent surfaces the most relevant for the user's specific system. |
+| `knownGotchas` | string[] | Implementation trip hazards for this pattern, ranked by severity. The orchestration agent reasons from first principles first, then cross-references these as a floor. |
 | `failurePosture` | string | How this pattern fails — gracefully (stage by stage) or catastrophically (all-or-nothing). Determines recovery strategy and HITL gate placement. |
 | `scaleConsiderations` | string[] | Known constraints that emerge at scale. Rate limit pressure under parallelism, merge step bottlenecks, supervisor state growth. |
 | `stateHandoffPoints` | string[] | Where state must be explicitly managed at the pattern level — flagged for the Memory & State agent to address. |
-| `mixingNotes` | string | Whether and how this pattern can be combined with others in a single system. Many real systems use pipeline in one subgraph and supervisor in another. |
+| `mixingNotes` | string | Whether and how this pattern can be combined with others in a single system. |
 
-**Seed entries** for the six core patterns (pipeline, dag, supervisor, event_driven, peer_to_peer, hierarchical) are populated at system initialization. The Gatekeeper reviews and evolves these entries on the standard 4-week architecture pattern refresh cadence.
+**category = 'failure_mode' payload schema:**
+
+| Field | Type | Description |
+|---|---|---|
+| `description` | string | What this failure mode is and why it is specific to agentic systems. |
+| `likelihoodSignals` | string[] | Architectural signals that increase the likelihood of this failure mode in a given system. |
+| `detectionApproach` | string | How to detect this failure mode in practice — runtime signals, logging patterns, test strategies. |
+| `mitigationApproaches` | string[] | Concrete mitigations, ordered by impact. |
+| `domainApplicability` | string[] | Which domains have heightened concern: "general", "finance", "hipaa", etc. New domains can be added by the Gatekeeper without a code change. |
+
+**Seed entries** for the six core patterns (pipeline, dag, supervisor, event_driven, peer_to_peer, hierarchical) and six core failure modes (cascading_agent_failures, reasoning_loops, tool_misuse_under_failure, nondeterministic_output_divergence, agent_memory_corruption, agent_handoff_schema_failures) are populated at system initialization. The Gatekeeper reviews and evolves these on the standard 4-week refresh cadence.
 
 ### Conflict resolution between proposing agent and Manifest Gatekeeper
 - Agents attempt to resolve conflicts between themselves

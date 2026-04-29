@@ -1,0 +1,1 @@
+ALTER TABLE "manifest_entries" RENAME COLUMN "pattern_meta" TO "domain_knowledge_payload";
