@@ -15,7 +15,7 @@ export const FailureObservabilityAgentOutput = z.object({
   evalStrategy: z.object({
     approach: z.string(),
     nonDeterministicHandling: z.string(),
-    suggestedEvalFramework: z.string().optional(),
+    suggestedEvalFramework: z.string().nullish(),
   }),
   tracingApproach: z.object({
     reasoningChainTracing: z.string(),
@@ -23,7 +23,7 @@ export const FailureObservabilityAgentOutput = z.object({
     intersectionsWithStandardTracing: z.array(z.string()),
   }),
   // F&O confirms or adjusts after seeing T&C gate placements
-  confirmationOfGateCoverage: z.string().optional(),
+  confirmationOfGateCoverage: z.string().nullish(),
   implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
 });

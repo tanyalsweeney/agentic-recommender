@@ -12,12 +12,12 @@ export const MemoryStateAgentOutput = z.object({
     strategy: z.string(),
     sharedAgentState: z.boolean(),
     sessionVsCrossSession: z.enum(["session_only", "cross_session", "both", "none"]),
-    memoryHorizon: z.string().optional(),
+    memoryHorizon: z.string().nullish(),
   }),
   recommendedTools: z.array(z.object({
     tool: z.string(),
     purpose: z.string(),
-    notes: z.string().optional(),
+    notes: z.string().nullish(),
   })),
   tradeoffs: z.object({
     advantages: z.array(z.string()),
@@ -25,7 +25,7 @@ export const MemoryStateAgentOutput = z.object({
   }),
   implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
-  manifestCandidates: z.array(ManifestCandidate).optional(),
+  manifestCandidates: z.array(ManifestCandidate).nullish(),
 });
 
 export type MemoryStateAgentOutput = z.infer<typeof MemoryStateAgentOutput>;
