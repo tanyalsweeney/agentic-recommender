@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { TrustControlAgentOutput } from "../schemas/index.js";
-import { callAgent } from "./base.js";
+import { callAgent, filterManifest } from "./base.js";
 
 const PROMPT = readFileSync(
   resolve(fileURLToPath(import.meta.url), "../../prompts/trust-control.txt"),
@@ -19,7 +19,7 @@ export async function callTrustControlAgent(
   return callAgent({
     agentName: "trust_control",
     systemPrompt: PROMPT,
-    manifest,
+    manifest: filterManifest(manifest, { failureModes: true }),
     verifiedContext,
     upstreamOutputs,
     zodSchema: TrustControlAgentOutput,

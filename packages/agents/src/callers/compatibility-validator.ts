@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { CompatibilityValidatorOutput } from "../schemas/index.js";
-import { callAgent } from "./base.js";
+import { callAgent, filterManifest } from "./base.js";
 
 const PROMPT = readFileSync(
   resolve(fileURLToPath(import.meta.url), "../../prompts/compatibility-validator.txt"),
@@ -21,7 +21,7 @@ export async function callCompatibilityValidator(
   return callAgent({
     agentName: "compatibility_validator",
     systemPrompt: PROMPT,
-    manifest,
+    manifest: filterManifest(manifest, { tools: true, patterns: true }),
     verifiedContext,
     upstreamOutputs,
     zodSchema: CompatibilityValidatorOutput,

@@ -7,6 +7,26 @@ import { PROVIDER_REGISTRY, ProviderName } from "../providers.js";
 
 const MAX_TOKENS = 8192;
 
+// Manifest section flags. Omitting a key defaults to false (exclude).
+// Each caller declares exactly what its agent needs — nothing more.
+// This reduces input tokens per call by 20-80% depending on the agent,
+// and is the primary cost mitigation for the OpenAI-compatible path.
+export interface ManifestSections {
+  tools?: boolean;
+  patterns?: boolean;
+  failureModes?: boolean;
+}
+
+export function filterManifest(manifest: unknown, sections: ManifestSections): unknown {
+  if (!manifest || typeof manifest !== "object") return manifest;
+  const m = manifest as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  if (sections.tools && m.tools !== undefined)       result.tools = m.tools;
+  if (sections.patterns && m.patterns !== undefined) result.patterns = m.patterns;
+  if (sections.failureModes && m.failureModes !== undefined) result.failureModes = m.failureModes;
+  return result;
+}
+
 export interface CallAgentOptions<T> {
   agentName: string;
   systemPrompt: string;
