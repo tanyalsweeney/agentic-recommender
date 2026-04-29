@@ -1,9 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const apiKey = process.env.ANTHROPIC_API_KEY;
-if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set — check .env.local");
-
-export const anthropic = new Anthropic({ apiKey });
+export { DEFAULT_PROVIDER_CONFIGS } from "@agent12/agents";
 
 // Minimal seed manifest for evals — enough for agents to reason with.
 // The real manifest will be built in Phase 6 (maintenance pipeline).

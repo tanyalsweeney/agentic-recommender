@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ProviderConfig } from "../schemas/index.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -14,7 +14,7 @@ export async function callTrustControlAgent(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { failureObservability: unknown },
-  client: Anthropic
+  providerConfig: ProviderConfig
 ): Promise<TrustControlAgentOutput> {
   return callAgent({
     agentName: "trust_control",
@@ -23,6 +23,6 @@ export async function callTrustControlAgent(
     verifiedContext,
     upstreamOutputs,
     zodSchema: TrustControlAgentOutput,
-    client,
+    providerConfig,
   });
 }

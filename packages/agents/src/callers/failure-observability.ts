@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ProviderConfig } from "../schemas/index.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -13,7 +13,7 @@ const PROMPT = readFileSync(
 export async function callFailureObservabilityAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  client: Anthropic
+  providerConfig: ProviderConfig
 ): Promise<FailureObservabilityAgentOutput> {
   return callAgent({
     agentName: "failure_observability",
@@ -21,6 +21,6 @@ export async function callFailureObservabilityAgent(
     manifest,
     verifiedContext,
     zodSchema: FailureObservabilityAgentOutput,
-    client,
+    providerConfig,
   });
 }

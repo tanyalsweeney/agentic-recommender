@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ProviderConfig } from "../schemas/index.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -14,7 +14,7 @@ export async function callTechnicalWriterAgent(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { wave1: unknown; wave2: unknown; cv: unknown; skeptic: unknown },
-  client: Anthropic
+  providerConfig: ProviderConfig
 ): Promise<TechnicalWriterOutput> {
   return callAgent({
     agentName: "technical_writer",
@@ -23,6 +23,6 @@ export async function callTechnicalWriterAgent(
     verifiedContext,
     upstreamOutputs,
     zodSchema: TechnicalWriterOutput,
-    client,
+    providerConfig,
   });
 }
