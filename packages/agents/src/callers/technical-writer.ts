@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { TechnicalWriterOutput } from "../schemas/index.js";
-import { callAgent } from "./base.js";
+import { callAgent, filterManifest } from "./base.js";
 
 const PROMPT = readFileSync(
   resolve(fileURLToPath(import.meta.url), "../../prompts/technical-writer.txt"),
@@ -19,7 +19,7 @@ export async function callTechnicalWriterAgent(
   return callAgent({
     agentName: "technical_writer",
     systemPrompt: PROMPT,
-    manifest,
+    manifest: filterManifest(manifest, { tools: true, patterns: true, failureModes: true }),
     verifiedContext,
     upstreamOutputs,
     zodSchema: TechnicalWriterOutput,

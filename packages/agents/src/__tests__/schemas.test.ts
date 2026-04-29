@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { filterManifest } from "../callers/base.js";
 import {
   IntakeAgentOutput,
   OrchestrationAgentOutput,
@@ -513,5 +514,53 @@ describe("TrustControlAgentOutput schema", () => {
   it("accepts output with unresolvedTensions present", () => {
     const withTensions = { ...valid, unresolvedTensions: ["F&O and T&C disagree on gate placement for summarization step"] };
     expectValid(TrustControlAgentOutput, withTensions);
+  });
+});
+
+// ── filterManifest ────────────────────────────────────────────────────────────
+
+describe("filterManifest", () => {
+  const full = {
+    tools: [{ name: "langchain" }, { name: "redis" }],
+    patterns: [{ name: "pipeline" }],
+    failureModes: [{ name: "reasoning_loops" }],
+  };
+
+  it("returns only requested sections", () => {
+    const result = filterManifest(full, { tools: true }) as typeof full;
+    expect(result.tools).toHaveLength(2);
+    expect(result).not.toHaveProperty("patterns");
+    expect(result).not.toHaveProperty("failureModes");
+  });
+
+  it("returns multiple sections when requested", () => {
+    const result = filterManifest(full, { patterns: true, failureModes: true }) as typeof full;
+    expect(result).not.toHaveProperty("tools");
+    expect(result.patterns).toHaveLength(1);
+    expect(result.failureModes).toHaveLength(1);
+  });
+
+  it("returns all sections when all requested", () => {
+    const result = filterManifest(full, { tools: true, patterns: true, failureModes: true }) as typeof full;
+    expect(result.tools).toHaveLength(2);
+    expect(result.patterns).toHaveLength(1);
+    expect(result.failureModes).toHaveLength(1);
+  });
+
+  it("returns empty object when no sections requested", () => {
+    const result = filterManifest(full, {}) as Record<string, unknown>;
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+
+  it("passes through non-object manifest unchanged", () => {
+    expect(filterManifest(null, { tools: true })).toBeNull();
+    expect(filterManifest("raw", { tools: true })).toBe("raw");
+  });
+
+  it("omits sections missing from manifest without error", () => {
+    const partial = { tools: [{ name: "redis" }] };
+    const result = filterManifest(partial, { tools: true, failureModes: true }) as Record<string, unknown>;
+    expect(result.tools).toBeDefined();
+    expect(result).not.toHaveProperty("failureModes");
   });
 });
