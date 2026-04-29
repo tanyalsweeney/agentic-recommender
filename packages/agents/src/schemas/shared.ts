@@ -35,6 +35,16 @@ export const MaturityLabel = z.enum([
 ]);
 export type MaturityLabel = z.infer<typeof MaturityLabel>;
 
+// Tool recommended by an agent that is not in the manifest.
+// Written to manifest_entries with vetted=false by the worker after the run.
+export const ManifestCandidate = z.object({
+  toolName: z.string(),
+  category: z.string(),
+  useCase: z.string(),     // why it was recommended for this specific architecture
+  tradeoffs: z.string(),   // known tradeoffs the agent surfaced
+});
+export type ManifestCandidate = z.infer<typeof ManifestCandidate>;
+
 // Step inference state for intake
 export const InferenceState = z.enum([
   "high_confidence",  // pre-selected

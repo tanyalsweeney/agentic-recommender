@@ -1,0 +1,1 @@
+ALTER TABLE "manifest_entries" ADD COLUMN "vetted" boolean DEFAULT true NOT NULL;

@@ -122,6 +122,7 @@ export const manifestEntries = pgTable(
     // Maintained by the Manifest Gatekeeper; no code change needed to update pattern knowledge.
     patternMeta: jsonb("pattern_meta"),
     lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+    vetted: boolean("vetted").notNull().default(true),
     owner: text("owner").notNull().default("global"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },

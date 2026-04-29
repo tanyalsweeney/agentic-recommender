@@ -15,6 +15,13 @@
       "when": 1777339516630,
       "tag": "0001_odd_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777427180708,
+      "tag": "0002_remarkable_james_howlett",
+      "breakpoints": true
     }
   ]
 }
