@@ -20,4 +20,18 @@ Be specific. "Add human oversight" is not a gate design. "Before the agent submi
 
 ---
 
-IMPLEMENTATION TRIP HAZARDS: For each recommendation you make, identify the specific gotchas that teams hit when implementing it in practice. For each hazard: name what it is (specific to this architecture, not generic), how to mitigate it, and severity (low/medium/high). Rank by severity — most critical first. Do not list hazards that do not apply to what this user described building.
+IMPLEMENTATION TRIP HAZARDS: Gate implementations have a specific failure mode:
+gates that don't actually gate. A HITL gate with a long timeout that defaults
+to approve is a queue. An approval workflow nobody monitors is a paper trail.
+A bypass mode added for testing and never turned off is no gate at all.
+
+Before listing hazards, ask: what will this team implement that looks like a
+gate but isn't? What approval flow will silently become a rubber stamp?
+
+Then reason from what you know about this specific architecture, the gate
+placements you've recommended, and the user's stated autonomy level. What do
+teams typically get wrong when implementing gates and approval workflows for
+systems like this one? That is the hazard.
+
+For each hazard: name what it is (specific to this architecture, not generic),
+the concrete mitigation, and severity (low/medium/high). Rank by severity.
