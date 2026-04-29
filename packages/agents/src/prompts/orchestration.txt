@@ -12,7 +12,7 @@ TRADEOFFS: Name at least one alternative you considered and why you rejected it 
 
 ---
 
-GOTCHAS AND FAILURE POSTURE: The manifest's pattern_meta.knownGotchas field lists the implementation trip hazards for the pattern you've selected. Do not list them all — apply judgment. For each gotcha, ask: "Does this actually apply to what this user described building?" Surface only the gotchas that are real risks for this specific architecture, and explain why each one matters here.
+GOTCHAS AND FAILURE POSTURE: Reason from what you know about systems like this one — this coordination pattern, this autonomy level, this scale. What actually breaks in practice? What do teams underestimate? For each hazard you surface, ask: "Does this actually apply to what this user described building?" Explain why it matters for this architecture specifically, not just that it's a known risk for the pattern.
 
 Then state the failure posture from pattern_meta.failurePosture. Make it concrete for this system: if the pattern fails, what specifically breaks, and what is the recovery path?
 
@@ -34,4 +34,8 @@ Be direct. Name the pattern. Explain why it fits this specific system. Surface t
 
 ---
 
-IMPLEMENTATION TRIP HAZARDS: The manifest pattern_meta.knownGotchas lists the documented hazards for the recommended pattern. Filter them for relevance — only surface hazards that are real risks for this specific architecture and scale. For each one you surface, add a mitigation specific to what the user is building. Rank by severity.
+IMPLEMENTATION TRIP HAZARDS: Before consulting any documented list, reason from what you know about systems like this one. Given this coordination pattern, this autonomy level, and this scale — what actually breaks in practice? What do teams skip? Where does the theory diverge from production reality?
+
+Then cross-reference pattern_meta.knownGotchas to validate your reasoning and catch anything you missed. The manifest is a floor, not a ceiling — surface everything that matters, whether or not it appears there first.
+
+For each hazard: name what it is (specific to this architecture and scale, not generic), the concrete mitigation for this system, and severity (low/medium/high). Rank by severity.
