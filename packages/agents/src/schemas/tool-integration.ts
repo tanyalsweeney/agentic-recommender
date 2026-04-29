@@ -7,7 +7,7 @@ const ToolRecommendation = z.object({
   buildVsBuy: z.enum(["build", "buy", "either"]),
   rationale: z.string(),
   // Tool dependencies this agent is assuming — CV checks these are covered
-  dependsOn: z.array(z.string()).optional(),
+  dependsOn: z.array(z.string()).nullish(),
 });
 
 export const ToolIntegrationAgentOutput = z.object({
@@ -19,17 +19,17 @@ export const ToolIntegrationAgentOutput = z.object({
   mcpUsage: z.object({
     recommended: z.boolean(),
     rationale: z.string(),
-    suggestedServers: z.array(z.string()).optional(),
+    suggestedServers: z.array(z.string()).nullish(),
   }),
   integrationPoints: z.array(z.object({
     system: z.string(),
     integrationApproach: z.string(),
-    notes: z.string().optional(),
+    notes: z.string().nullish(),
   })),
   declaredConstraints: z.array(z.string()), // for CV cross-agent conflict checks
   implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
-  manifestCandidates: z.array(ManifestCandidate).optional(),
+  manifestCandidates: z.array(ManifestCandidate).nullish(),
 });
 
 export type ToolIntegrationAgentOutput = z.infer<typeof ToolIntegrationAgentOutput>;

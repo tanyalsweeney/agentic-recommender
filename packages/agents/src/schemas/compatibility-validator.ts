@@ -2,24 +2,24 @@ import { z } from "zod";
 
 const PerToolResult = z.object({
   toolName: z.string(),
-  version: z.string().optional(),
+  version: z.string().nullish(),
   isCurrentVersion: z.boolean().nullish(),
-  eolDate: z.string().nullable().optional(),
+  eolDate: z.string().nullish(),
   cves: z.object({
     critical: z.array(z.string()),
     high: z.array(z.string()),
-  }).optional(),
-  breakingChanges: z.array(z.string()).optional(),
-  license: z.string().nullable().optional(), // SPDX identifier
+  }).nullish(),
+  breakingChanges: z.array(z.string()).nullish(),
+  license: z.string().nullish(), // SPDX identifier
   isCopyleft: z.boolean().nullish(),
   pricing: z.object({
-    tier: z.string().optional(),
-    cost: z.string().nullable().optional(),
-  }).optional(),
-  regionalAvailability: z.string().nullable().optional(),
-  sourceUrl: z.string().optional(),
+    tier: z.string().nullish(),
+    cost: z.string().nullish(),
+  }).nullish(),
+  regionalAvailability: z.string().nullish(),
+  sourceUrl: z.string().nullish(),
   fromCache: z.boolean(),
-  flaggedUnavailable: z.array(z.string()).optional(), // fields that shipped as unavailable
+  flaggedUnavailable: z.array(z.string()).nullish(), // fields that shipped as unavailable
   isUserSpecified: z.boolean(),
 });
 
@@ -41,7 +41,7 @@ export const CompatibilityValidatorOutput = z.object({
   crossToolCompatibility: z.array(CrossToolResult),
   crossAgentConflicts: z.array(CrossAgentConflict),
   costAggregation: z.object({
-    totalEstimatedMonthlyCost: z.string().optional(),
+    totalEstimatedMonthlyCost: z.string().nullish(),
     breakdown: z.array(z.object({
       component: z.string(),
       estimate: z.string(),

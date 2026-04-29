@@ -5,8 +5,8 @@ const HitlGate = z.object({
   placement: z.string(),             // where in the flow
   triggerCondition: z.string(),      // what causes it to activate
   rationale: z.string(),             // why here — references F&O failure mode if applicable
-  approvalLatencyEstimate: z.string().optional(),
-  linkedFailureMode: z.string().optional(), // F&O failure mode this gate addresses
+  approvalLatencyEstimate: z.string().nullish(),
+  linkedFailureMode: z.string().nullish(), // F&O failure mode this gate addresses
 });
 
 export const TrustControlAgentOutput = z.object({
@@ -18,10 +18,10 @@ export const TrustControlAgentOutput = z.object({
   }),
   approvalWorkflow: z.object({
     recommended: z.boolean(),
-    description: z.string().optional(),
+    description: z.string().nullish(),
   }),
   // Unresolved tensions passed to Skeptic if F&O and T&C hit cycle cap
-  unresolvedTensions: z.array(z.string()).optional(),
+  unresolvedTensions: z.array(z.string()).nullish(),
   implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
 });

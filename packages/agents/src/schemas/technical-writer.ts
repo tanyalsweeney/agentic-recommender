@@ -8,13 +8,13 @@ const ToolManifestEntry = z.object({
   // Click-to-expand confidence detail (accepted cherry-pick)
   confidenceDetail: z.object({
     adoptionSignalCount: z.number().nullish(),
-    sourceTierBreakdown: z.string().optional(),
-    timeWithoutContradiction: z.string().optional(),
-    nextTierRequirement: z.string().optional(),
-  }).optional(),
-  version: z.string().optional(),
+    sourceTierBreakdown: z.string().nullish(),
+    timeWithoutContradiction: z.string().nullish(),
+    nextTierRequirement: z.string().nullish(),
+  }).nullish(),
+  version: z.string().nullish(),
   isUserSpecified: z.boolean(),
-  caveats: z.array(z.string()).optional(),
+  caveats: z.array(z.string()).nullish(),
 });
 
 export const TechnicalWriterOutput = z.object({
@@ -23,7 +23,7 @@ export const TechnicalWriterOutput = z.object({
     // Skeptic debate summary in exec summary (accepted cherry-pick)
     debateSummary: z.string(),       // "N concerns raised, M resolved, K remain as [tier]"
     scopeStatement: z.string(),
-    nonEstablishedCallout: z.string().optional(),
+    nonEstablishedCallout: z.string().nullish(),
   }),
   // Mermaid flowchart as text — validated before Pass 1 finalizes
   architectureDiagram: z.object({
