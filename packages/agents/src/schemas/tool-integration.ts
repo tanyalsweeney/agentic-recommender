@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CostSignals, TripHazard } from "./shared.js";
+import { CostSignals, ManifestCandidate, TripHazard } from "./shared.js";
 
 const ToolRecommendation = z.object({
   tool: z.string(),
@@ -29,6 +29,7 @@ export const ToolIntegrationAgentOutput = z.object({
   declaredConstraints: z.array(z.string()), // for CV cross-agent conflict checks
   implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
+  manifestCandidates: z.array(ManifestCandidate).optional(),
 });
 
 export type ToolIntegrationAgentOutput = z.infer<typeof ToolIntegrationAgentOutput>;

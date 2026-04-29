@@ -10,6 +10,7 @@ import {
   CompatibilityValidatorOutput,
   SkepticOutput,
   TechnicalWriterOutput,
+  ManifestCandidate,
 } from "../schemas/index.js";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -269,5 +270,248 @@ describe("CompatibilityValidatorOutput schema", () => {
   it("rejects invalid conflict type", () => {
     const badConflict = { type: "vibes_mismatch", agentsInvolved: ["security"], description: "...", severity: "low" };
     expectInvalid(CompatibilityValidatorOutput, { ...valid, crossAgentConflicts: [badConflict] });
+  });
+});
+
+// ── manifest candidate ────────────────────────────────────────────────────────
+
+describe("ManifestCandidate schema", () => {
+  const valid = {
+    toolName: "mem0",
+    category: "memory-framework",
+    useCase: "Cross-session memory with automatic summarization for a long-running research assistant",
+    tradeoffs: "Managed service with data leaving the VPC; self-hosted option exists but requires more ops",
+  };
+
+  it("accepts valid candidate", () => {
+    expectValid(ManifestCandidate, valid);
+  });
+
+  it("rejects missing toolName", () => {
+    const { toolName: _, ...missing } = valid;
+    expectInvalid(ManifestCandidate, missing);
+  });
+
+  it("rejects missing useCase", () => {
+    const { useCase: _, ...missing } = valid;
+    expectInvalid(ManifestCandidate, missing);
+  });
+
+  it("rejects missing tradeoffs", () => {
+    const { tradeoffs: _, ...missing } = valid;
+    expectInvalid(ManifestCandidate, missing);
+  });
+});
+
+// ── memory state ──────────────────────────────────────────────────────────────
+
+describe("MemoryStateAgentOutput schema", () => {
+  const valid = {
+    memoryPattern: {
+      recommended: "cross_session_with_in_run_shared_state",
+      rationale: "Research assistant builds on prior sessions; multiple agents share a scratchpad during a run",
+      reasoningExplained: "Cross-session is required because the user described a system that improves its answers based on prior research. In-run shared state is needed because the planner and executor agents must exchange intermediate findings within a single run.",
+    },
+    persistence: {
+      strategy: "PostgreSQL for cross-session summaries, Redis for in-run shared state",
+      sharedAgentState: true,
+      sessionVsCrossSession: "both",
+      memoryHorizon: "30 days",
+    },
+    recommendedTools: [
+      { tool: "redis", purpose: "In-run shared agent state with TTL-based expiry per run" },
+      { tool: "pinecone", purpose: "Semantic retrieval of prior research sessions" },
+    ],
+    tradeoffs: {
+      advantages: ["Prior context improves answer quality over time", "In-run state reduces repeated LLM calls"],
+      limitations: ["Cross-session storage requires data retention policy", "PII risk if user content is stored verbatim"],
+    },
+    implementationTripHazards: [],
+    costSignals: { computeIntensity: "medium" },
+  };
+
+  it("accepts valid output without manifestCandidates", () => {
+    expectValid(MemoryStateAgentOutput, valid);
+  });
+
+  it("accepts valid output with manifestCandidates", () => {
+    const withCandidates = {
+      ...valid,
+      manifestCandidates: [{
+        toolName: "mem0",
+        category: "memory-framework",
+        useCase: "Automatic cross-session summarization with built-in retrieval",
+        tradeoffs: "Managed service; data leaves VPC unless self-hosted",
+      }],
+    };
+    expectValid(MemoryStateAgentOutput, withCandidates);
+  });
+
+  it("rejects a manifest candidate missing toolName", () => {
+    const badCandidate = { category: "memory-framework", useCase: "...", tradeoffs: "..." };
+    expectInvalid(MemoryStateAgentOutput, { ...valid, manifestCandidates: [badCandidate] });
+  });
+
+  it("rejects missing memoryPattern", () => {
+    const { memoryPattern: _, ...missing } = valid;
+    expectInvalid(MemoryStateAgentOutput, missing);
+  });
+
+  it("rejects invalid sessionVsCrossSession value", () => {
+    expectInvalid(MemoryStateAgentOutput, {
+      ...valid,
+      persistence: { ...valid.persistence, sessionVsCrossSession: "sometimes" },
+    });
+  });
+});
+
+// ── tool integration ──────────────────────────────────────────────────────────
+
+describe("ToolIntegrationAgentOutput schema", () => {
+  const valid = {
+    toolAgentBoundary: {
+      principle: "Tools are deterministic and reversible; agents exercise judgment",
+      applicationToThisSystem: "Web scraper is a tool; research synthesis agent is an agent",
+    },
+    recommendedTools: [{
+      tool: "playwright",
+      purpose: "Headless browser scraping of research sources",
+      buildVsBuy: "buy",
+      rationale: "Established library with strong agentic community support and MCP integration",
+    }],
+    mcpUsage: {
+      recommended: true,
+      rationale: "MCP standardizes tool calling and simplifies adding new tools without agent code changes",
+      suggestedServers: ["mcp-server-filesystem"],
+    },
+    integrationPoints: [{
+      system: "Google Scholar",
+      integrationApproach: "HTTP scraping via Playwright",
+      notes: "Rate limiting and robots.txt compliance required",
+    }],
+    declaredConstraints: ["No tool may write to external systems without HITL approval"],
+    implementationTripHazards: [],
+    costSignals: { computeIntensity: "medium" },
+  };
+
+  it("accepts valid output without manifestCandidates", () => {
+    expectValid(ToolIntegrationAgentOutput, valid);
+  });
+
+  it("accepts valid output with manifestCandidates", () => {
+    const withCandidates = {
+      ...valid,
+      manifestCandidates: [{
+        toolName: "firecrawl",
+        category: "web-scraping",
+        useCase: "Managed web scraping with built-in JS rendering and rate limit handling",
+        tradeoffs: "Paid managed service; removes ops burden but adds vendor dependency",
+      }],
+    };
+    expectValid(ToolIntegrationAgentOutput, withCandidates);
+  });
+
+  it("rejects a manifest candidate missing tradeoffs", () => {
+    const badCandidate = { toolName: "firecrawl", category: "web-scraping", useCase: "..." };
+    expectInvalid(ToolIntegrationAgentOutput, { ...valid, manifestCandidates: [badCandidate] });
+  });
+
+  it("rejects invalid buildVsBuy value", () => {
+    const badTool = { ...valid.recommendedTools[0], buildVsBuy: "outsource" };
+    expectInvalid(ToolIntegrationAgentOutput, { ...valid, recommendedTools: [badTool] });
+  });
+
+  it("rejects missing toolAgentBoundary", () => {
+    const { toolAgentBoundary: _, ...missing } = valid;
+    expectInvalid(ToolIntegrationAgentOutput, missing);
+  });
+});
+
+// ── failure observability ─────────────────────────────────────────────────────
+
+describe("FailureObservabilityAgentOutput schema", () => {
+  const valid = {
+    failureModes: [{
+      name: "Reasoning loop",
+      description: "Research agent enters a loop requesting the same sources repeatedly",
+      likelihood: "medium",
+      mitigations: ["Iteration cap at 10", "Deduplicate source URLs before fetching"],
+      isHighRiskHandoff: false,
+    }],
+    evalStrategy: {
+      approach: "LLM-as-judge scoring research output quality on relevance and coverage",
+      nonDeterministicHandling: "Run each eval case 3 times, flag if variance exceeds 20%",
+      suggestedEvalFramework: "Vitest with Anthropic SDK",
+    },
+    tracingApproach: {
+      reasoningChainTracing: "Structured logging at each agent step with run ID and step index",
+      interAgentHandoffTracing: "Handoff payloads logged with producing and consuming agent IDs",
+      intersectionsWithStandardTracing: ["OpenTelemetry spans for external API calls"],
+    },
+    implementationTripHazards: [],
+    costSignals: { computeIntensity: "low" },
+  };
+
+  it("accepts valid output", () => {
+    expectValid(FailureObservabilityAgentOutput, valid);
+  });
+
+  it("rejects invalid likelihood on a failure mode", () => {
+    const badMode = { ...valid.failureModes[0], likelihood: "certain" };
+    expectInvalid(FailureObservabilityAgentOutput, { ...valid, failureModes: [badMode] });
+  });
+
+  it("rejects missing isHighRiskHandoff on a failure mode", () => {
+    const { isHighRiskHandoff: _, ...noFlag } = valid.failureModes[0];
+    expectInvalid(FailureObservabilityAgentOutput, { ...valid, failureModes: [noFlag] });
+  });
+
+  it("rejects missing evalStrategy", () => {
+    const { evalStrategy: _, ...missing } = valid;
+    expectInvalid(FailureObservabilityAgentOutput, missing);
+  });
+});
+
+// ── trust control ─────────────────────────────────────────────────────────────
+
+describe("TrustControlAgentOutput schema", () => {
+  const valid = {
+    hitlGates: [{
+      placement: "Before any external API write operation",
+      triggerCondition: "Agent attempts to POST to an external endpoint",
+      rationale: "External writes are irreversible; human approval required per security agent constraint",
+      approvalLatencyEstimate: "2-5 minutes",
+      linkedFailureMode: "Unauthorized external data write",
+    }],
+    autonomyEnforcement: {
+      capturedLevel: "semi_autonomous",
+      enforcementMechanism: "All external writes gated by HITL approval queue",
+      overrideConditions: ["Admin override with audit log entry"],
+    },
+    approvalWorkflow: {
+      recommended: true,
+      description: "Slack notification to approver with approve/reject buttons; 15-minute timeout defaults to reject",
+    },
+    implementationTripHazards: [],
+    costSignals: { computeIntensity: "low" },
+  };
+
+  it("accepts valid output", () => {
+    expectValid(TrustControlAgentOutput, valid);
+  });
+
+  it("rejects missing placement on a HITL gate", () => {
+    const { placement: _, ...noPlacement } = valid.hitlGates[0];
+    expectInvalid(TrustControlAgentOutput, { ...valid, hitlGates: [noPlacement] });
+  });
+
+  it("rejects missing autonomyEnforcement", () => {
+    const { autonomyEnforcement: _, ...missing } = valid;
+    expectInvalid(TrustControlAgentOutput, missing);
+  });
+
+  it("accepts output with unresolvedTensions present", () => {
+    const withTensions = { ...valid, unresolvedTensions: ["F&O and T&C disagree on gate placement for summarization step"] };
+    expectValid(TrustControlAgentOutput, withTensions);
   });
 });

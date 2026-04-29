@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CostSignals, TripHazard } from "./shared.js";
+import { CostSignals, ManifestCandidate, TripHazard } from "./shared.js";
 
 export const MemoryStateAgentOutput = z.object({
   memoryPattern: z.object({
@@ -25,6 +25,7 @@ export const MemoryStateAgentOutput = z.object({
   }),
   implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
+  manifestCandidates: z.array(ManifestCandidate).optional(),
 });
 
 export type MemoryStateAgentOutput = z.infer<typeof MemoryStateAgentOutput>;
