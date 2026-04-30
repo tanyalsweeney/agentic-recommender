@@ -17,24 +17,24 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Architecture
 
-**Tech stack:** TypeScript monorepo: Next.js (frontend), BullMQ + Redis (pipeline job queue), PostgreSQL (all persistent data), Anthropic SDK.
+**Tech stack:** TypeScript monorepo: Next.js (frontend), BullMQ + Redis (pipeline job queue), PostgreSQL (all persistent data), multi-provider LLM layer (Anthropic by default; OpenAI-compatible providers supported via registry for per-agent routing).
 
-**Pipeline:** Multi-wave agent system. Wave 1 runs four specialist agents in parallel (Orchestration, Security, Memory & State, Tool & Integration). Wave 2 is a cooperative exchange between Failure & Observability and Trust & Control. Wave 2.5 runs the Compatibility Validator: live web research per tool for version, CVE, pricing, and license data. Wave 3 is The Skeptic, which challenges the full recommendation set before output ships.
+**Pipeline:** Multi-wave agent system. Wave 1 runs four specialist agents in parallel (Orchestration, Security, Memory & State, Tool & Integration). Wave 2 is a cooperative exchange between Failure & Observability and Trust & Control. Wave 2.5 runs the Compatibility Validator: per-tool research for version, CVE, pricing, and license data, plus first-principles compatibility analysis — the manifest provides facts and minimum requirements as a floor, the CV derives compatibility conclusions from the specific architecture. Wave 3 is The Skeptic, which challenges the full recommendation set before output ships.
 
-**Output:** Pass 1 is a decision-layer document for stakeholders (executive summary, architecture diagram, validated tool manifest, cost estimates). Pass 2 is a full implementation layer (ADRs, configuration, specs) generated on user request.
+**Output:** Pass 1 is a decision-layer document written for two simultaneous audiences: executives deciding whether to approve funding and headcount, and engineers evaluating whether Pass 2 ADRs would add value for their specific situation. Pass 2 is a full implementation layer (ADRs, configuration, specs) generated on user request.
 
 **Pricing:** Free (3 runs/day, blurred CV detail), Run Pack ($9 / 5 additional runs), Pass 1 ($49/run, full output), Pass 2 ($199/run).
 
 ## Status
 
-**Active development.** Design complete, implementation underway.
+**Active development.** Design complete, agent layer complete, pipeline workers next.
 
 | Phase | Description | Status |
 |---|---|---|
 | 0 | Monorepo scaffolding (pnpm workspaces, TypeScript, Vitest) | Done |
-| 1 | Database schema — 12 tables, 4 indexes, config resolution | Done |
-| 2 | Agent layer — Zod schemas, Anthropic SDK callers, prompt caching | Next |
-| 3 | Pipeline workers — BullMQ wave orchestration, checkpointing | Upcoming |
+| 1 | Database schema — 12 tables, config resolution | Done |
+| 2 | Agent layer — Zod schemas, multi-provider callers, prompt caching, full prompt review | Done |
+| 3 | Pipeline workers — BullMQ wave orchestration, checkpointing | Next |
 | 4 | Web frontend — Next.js intake flow, Pass 1 output rendering | Upcoming |
 | 5 | Admin dashboard, progressive CV disclosure, email notifications | Upcoming |
 | 6 | Maintenance pipeline — manifest refresh, Org List Gatekeeper | Upcoming |
@@ -43,4 +43,6 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ---
 
-*Following the build? I'm documenting the design decisions as a LinkedIn series — link coming soon.*
+*Following the build? I'm documenting the design decisions as a LinkedIn series:
+[Why I Scrapped Two Months of Work](https://www.linkedin.com/pulse/why-i-scrapped-two-months-work-tanya-sweeney-c90jc/) |
+[Before the Agents Run](https://www.linkedin.com/pulse/before-agents-run-tanya-sweeney-y2ayc/)*
