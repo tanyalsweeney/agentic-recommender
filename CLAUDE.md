@@ -118,7 +118,9 @@ async function getConfig(key: string, tenantId?: string): Promise<string> {
 ## Agent pipeline (summary)
 
 ```
-Wave 0   Domain agents (conditional, tenant-registered)
+Tenant context (conditional, pre-run): tenant-registered domain context
+  injected into verified context before Wave 1. Not a pipeline wave.
+  See packages/workers/src/tenant-context.ts.
 Wave 1   Orchestration | Security | Memory & State | Tool & Integration  (parallel)
 Wave 2   Failure & Observability + Trust & Control  (cooperative, 2-cycle cap)
 Wave 2.5 Compatibility Validator:

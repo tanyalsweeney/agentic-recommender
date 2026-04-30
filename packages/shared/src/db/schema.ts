@@ -39,7 +39,7 @@ export const runs = pgTable(
     tier: text("tier").notNull(), // free | pass1 | pass2
     verifiedContext: jsonb("verified_context").notNull().default({}),
     verifiedContextHash: text("verified_context_hash").notNull(),
-    wave0DomainTag: text("wave0_domain_tag"),
+    tenantContextTag: text("tenant_context_tag"),
     pass1Output: jsonb("pass1_output"),
     pass2Output: jsonb("pass2_output"),
     maturityLabelDistribution: jsonb("maturity_label_distribution"),

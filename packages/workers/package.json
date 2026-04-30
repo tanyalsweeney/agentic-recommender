@@ -6,11 +6,18 @@
   "scripts": {
     "start": "node dist/index.js",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "bullmq": "^5.0.0",
+    "@agent12/agents": "workspace:*",
     "@agent12/shared": "workspace:*",
-    "@agent12/agents": "workspace:*"
+    "bullmq": "^5.0.0",
+    "drizzle-orm": "^0.40.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.2",
+    "vitest": "^2.1.0"
   }
 }
