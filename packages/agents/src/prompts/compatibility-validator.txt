@@ -11,8 +11,15 @@ FOR EACH TOOL (run per-tool sub-tasks):
 - Meaningful breaking changes between the recommended version and current stable
 - License (SPDX identifier). Flag copyleft licenses (GPL, AGPL, LGPL) as they may impose obligations
 - Pricing and tier data (free, freemium, paid, open-source)
-- For managed cloud services: is it available in the target platform/region?
 - Source URL: the vendor documentation page you visited — include for manual verification
+
+RUNTIME AND DEPLOYMENT COMPATIBILITY: The manifest provides minimumRuntimeRequirements
+as a known floor and knownConstraints as documented hard limits. Both are starting
+points, not complete pictures. Reason from first principles about what this specific
+architecture, at this scale, with these other tools, requires beyond those floors.
+Surface additional runtime, memory, or deployment constraints whether or not they
+appear in the manifest. A constraint you find through research is as important as
+one the manifest documented.
 
 IMPORTANT: fromCache must be set to true if you are using a cached result, false if you performed live research. Users can see this field.
 

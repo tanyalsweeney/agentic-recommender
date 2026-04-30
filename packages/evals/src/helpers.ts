@@ -4,16 +4,66 @@ export { DEFAULT_PROVIDER_CONFIGS } from "@agent12/agents";
 // The real manifest will be built in Phase 6 (maintenance pipeline).
 export const SEED_MANIFEST = {
   tools: [
-    { name: "langchain", category: "orchestration-framework", maturityTier: "Established", version: "0.3.0", platformCompat: ["aws", "gcp", "azure", "local"], modelCompat: ["all"] },
-    { name: "langgraph", category: "orchestration-framework", maturityTier: "Established", version: "0.2.0", platformCompat: ["aws", "gcp", "azure", "local"], modelCompat: ["all"] },
-    { name: "pinecone", category: "vector-db", maturityTier: "Established", version: "3.0.0", platformCompat: ["aws", "gcp", "azure"], modelCompat: ["all"] },
-    { name: "redis", category: "memory-cache", maturityTier: "Established", version: "5.0.0", platformCompat: ["all"], modelCompat: ["all"] },
-    { name: "anthropic-sdk", category: "llm-sdk", maturityTier: "Established", version: "0.39.0", platformCompat: ["all"], modelCompat: ["claude"] },
-    { name: "openai-sdk", category: "llm-sdk", maturityTier: "Established", version: "4.0.0", platformCompat: ["all"], modelCompat: ["gpt"] },
-    { name: "mcp-server-filesystem", category: "mcp-server", maturityTier: "Emerging", version: "1.0.0", platformCompat: ["local", "linux"], modelCompat: ["all"] },
-    { name: "chromadb", category: "vector-db", maturityTier: "Emerging", version: "0.5.0", platformCompat: ["local", "aws"], modelCompat: ["all"] },
-    { name: "playwright", category: "browser-automation", maturityTier: "Established", version: "1.44.0", platformCompat: ["all"], modelCompat: ["all"] },
-    { name: "bullmq", category: "job-queue", maturityTier: "Established", version: "5.0.0", platformCompat: ["node"], modelCompat: ["all"] },
+    {
+      name: "langchain", category: "orchestration-framework", maturityTier: "Established", version: "0.3.0",
+      deploymentModel: "framework",
+      minimumRuntimeRequirements: { language: "python", minVersion: "3.9" },
+      knownConstraints: null,
+    },
+    {
+      name: "langgraph", category: "orchestration-framework", maturityTier: "Established", version: "0.2.0",
+      deploymentModel: "framework",
+      minimumRuntimeRequirements: { language: "python", minVersion: "3.9" },
+      knownConstraints: null,
+    },
+    {
+      name: "pinecone", category: "vector-db", maturityTier: "Established", version: "3.0.0",
+      deploymentModel: "managed_cloud",
+      minimumRuntimeRequirements: null,
+      knownConstraints: null,
+    },
+    {
+      name: "redis", category: "memory-cache", maturityTier: "Established", version: "5.0.0",
+      deploymentModel: "self_hosted",
+      minimumRuntimeRequirements: { memory: "64MB" },
+      knownConstraints: null,
+    },
+    {
+      name: "anthropic-sdk", category: "llm-sdk", maturityTier: "Established", version: "0.39.0",
+      deploymentModel: "sdk",
+      minimumRuntimeRequirements: { language: "python", minVersion: "3.7" },
+      knownConstraints: null,
+    },
+    {
+      name: "openai-sdk", category: "llm-sdk", maturityTier: "Established", version: "4.0.0",
+      deploymentModel: "sdk",
+      minimumRuntimeRequirements: { language: "python", minVersion: "3.7" },
+      knownConstraints: null,
+    },
+    {
+      name: "mcp-server-filesystem", category: "mcp-server", maturityTier: "Emerging", version: "1.0.0",
+      deploymentModel: "self_hosted",
+      minimumRuntimeRequirements: { runtime: "nodejs", minVersion: "18" },
+      knownConstraints: ["Requires access to local filesystem — not viable in sandboxed or serverless environments without volume mounts"],
+    },
+    {
+      name: "chromadb", category: "vector-db", maturityTier: "Emerging", version: "0.5.0",
+      deploymentModel: "self_hosted",
+      minimumRuntimeRequirements: { language: "python", minVersion: "3.8", memory: "512MB" },
+      knownConstraints: null,
+    },
+    {
+      name: "playwright", category: "browser-automation", maturityTier: "Established", version: "1.44.0",
+      deploymentModel: "framework",
+      minimumRuntimeRequirements: { runtime: "nodejs", minVersion: "18" },
+      knownConstraints: ["Requires headless browser binaries (~300MB). Lambda zip deployment not viable — use container image. Allocate minimum 1GB memory for headless Chrome."],
+    },
+    {
+      name: "bullmq", category: "job-queue", maturityTier: "Established", version: "5.0.0",
+      deploymentModel: "framework",
+      minimumRuntimeRequirements: { runtime: "nodejs", minVersion: "18" },
+      knownConstraints: ["Requires Redis 6+ as backing store. Redis must be persistent (AOF or RDB) if job durability across restarts is required."],
+    },
   ],
   patterns: [
     {

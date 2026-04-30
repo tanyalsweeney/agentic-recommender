@@ -116,8 +116,17 @@ export const manifestEntries = pgTable(
     confidenceScore: integer("confidence_score").notNull().default(5),
     adoptionSignals: jsonb("adoption_signals").notNull().default({}),
     maintenanceSignals: jsonb("maintenance_signals").notNull().default({}),
-    platformCompat: jsonb("platform_compat").notNull().default({}),
-    modelCompat: jsonb("model_compat").notNull().default({}),
+    // How this tool is consumed. Values: managed_cloud | self_hosted | sdk | framework | saas | cli
+    // CV reasons about deployment compatibility from this fact — does not pre-store conclusions.
+    deploymentModel: text("deployment_model"),
+    // Floor requirements to run this tool at baseline. Use case adds on top.
+    // CV directive: treat this as the known minimum, reason about what this specific
+    // architecture adds beyond the floor. Example: { "runtime": "nodejs", "minVersion": "18" }
+    minimumRuntimeRequirements: jsonb("minimum_runtime_requirements"),
+    // Documented hard constraints that affect architectural decisions regardless of use case.
+    // Example: ["Cannot exceed 15min execution on Lambda", "No ARM64 support before v2.1"]
+    // Only populated when a constraint is documented and architecturally significant.
+    knownConstraints: jsonb("known_constraints"),
     // Domain knowledge payload — structure varies by category.
     // category = 'pattern': knownGotchas, failurePosture, scaleConsiderations, stateHandoffPoints, mixingNotes
     // category = 'failure_mode': description, likelihoodSignals, detectionApproach, mitigationApproaches, domainApplicability
@@ -128,7 +137,7 @@ export const manifestEntries = pgTable(
     owner: text("owner").notNull().default("global"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (t) => [index("manifest_entries_tier_platform_idx").on(t.maturityTier, t.platformCompat)]
+  (t) => [index("manifest_entries_tier_deployment_idx").on(t.maturityTier, t.deploymentModel)]
 );
 
 // ── org_list ──────────────────────────────────────────────────────────────────
