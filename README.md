@@ -8,12 +8,12 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## What's in this repo
 
-- [spec.md](spec.md): full product and architecture specification, including all settled decisions
-- [PLAN.md](PLAN.md): phased build sequence with TDD approach
-- [TODOS.md](TODOS.md): deferred work with context and priority
+- [docs/spec.md](docs/spec.md): full product and architecture specification, including all settled decisions
+- [docs/PLAN.md](docs/PLAN.md): phased build sequence with TDD approach
+- [docs/TODOS.md](docs/TODOS.md): deferred work with context and priority
 - [CLAUDE.md](CLAUDE.md): development guidelines and architectural guardrails
 - [docs/handoff.md](docs/handoff.md): running context document maintained across sessions
-- [design diagrams/](design%20diagrams/): architecture diagrams
+- [docs/design-diagrams/](docs/design-diagrams/): architecture diagrams
 
 ## Architecture
 

@@ -266,7 +266,7 @@ Once the user clicks Analyze and the pipeline begins, the UI streams Compatibili
 
 On free tier runs, the blur is applied to CV values as they stream in — the user sees the category name and that a result arrived, but the value is blurred in real time. This preserves the streaming effect (visible progress, trust-building) while maintaining the free-tier gate.
 
-Makes the wait productive: users watch real validation work completing rather than a progress spinner, building confidence before they see the final output. Streaming requires server-sent events or WebSocket on the CV output path. Validate that per-tool sub-task P50 latency justifies the streaming infrastructure before committing (see TODOS.md).
+Makes the wait productive: users watch real validation work completing rather than a progress spinner, building confidence before they see the final output. Streaming requires server-sent events or WebSocket on the CV output path. Validate that per-tool sub-task P50 latency justifies the streaming infrastructure before committing (see TODOS.md in this directory).
 
 ### Session expiry and long-running pipelines
 
