@@ -1,90 +1,73 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-04-29)
+## Current state (2026-04-30)
 
-Implementation underway. Phases 0, 1, and Phase 2 (a, b, c) complete and on main.
+Implementation underway. Phases 0, 1, 2, and 3 (a, b, c) complete and in PR #31 (pending merge).
 
 **What's built:**
 - Monorepo scaffolded: pnpm workspaces, TypeScript, Vitest workspace
-- Database schema: 12 tables, migrations applied, config resolution tested
-- Agent layer: 10 Zod output schemas, 10 callers with 3-layer prompt caching
-- Prompt templates for all 10 agents — full prompt review pass complete (2026-04-29)
+- Database schema: 12 tables, 5 migrations applied, config resolution tested
+- Agent layer: 10 Zod output schemas, 10 callers, 3-layer prompt caching, multi-provider dispatch
+- Prompt templates for all 10 agents -- full prompt review pass complete (2026-04-29)
 - Agent version registry (YYYY-MM-DD-{sha256_8chars} of prompt file)
-- `implementationTripHazards` as first-class structured output on all 6 recommendation agents
-- `domainKnowledgePayload` on `manifest_entries`: stores per-category knowledge for
-  patterns and failure modes (renamed from `pattern_meta`)
-- Six core failure modes seeded into `SEED_MANIFEST` as `category = 'failure_mode'`
+- `domainKnowledgePayload` on `manifest_entries`: patterns and failure modes
+- Six core failure modes seeded into `SEED_MANIFEST`
 - `ManifestCandidate` structured output on memory-state and tool-integration agents
-- `vetted` boolean on `manifest_entries` (default true; unvetted candidates written false)
-- Multi-provider abstraction layer: `PROVIDER_REGISTRY`, `ProviderConfig` schema,
-  per-agent `DEFAULT_PROVIDER_CONFIGS`, Anthropic and OpenAI-compatible dispatch in
-  `base.ts`. All 10 callers updated. CV ready to swap to Kimi (see providers.ts comment).
-- Filtered manifest per agent: `filterManifest()` in `base.ts`, each caller receives
-  only the sections its agent needs (20-80% token reduction per call)
-- `manifest_entries` schema rethought: `platformCompat` and `modelCompat` removed (they
-  invited CV to shortcut true tool-pair validation). Replaced with:
-  - `deploymentModel` (text): how the tool is consumed -- fact, not conclusion
-  - `minimumRuntimeRequirements` (jsonb): floor the CV reasons beyond, not a ceiling
-  - `knownConstraints` (jsonb): documented hard limits; CV also surfaces its own findings
-- CV prompt updated: manifest fields are floors, CV reasons beyond them from first principles
-- 58 unit tests passing
+- `vetted` boolean on `manifest_entries`
+- Multi-provider abstraction layer: `PROVIDER_REGISTRY`, `ProviderConfig`, `DEFAULT_PROVIDER_CONFIGS`,
+  Anthropic and OpenAI-compatible dispatch. CV ready to swap to Kimi.
+- Filtered manifest per agent: `filterManifest()`, 20-80% token reduction per call
+- `manifest_entries`: `deploymentModel`, `minimumRuntimeRequirements`, `knownConstraints`
+  replaced `platformCompat` / `modelCompat` (those invited CV to shortcut tool-pair validation)
+- CV prompt: manifest fields are floors, CV reasons beyond them from first principles
+- Phase 3 workers (PR #31):
+  - `checkpoint.ts`: readCheckpoint/writeCheckpoint, 4-condition reuse, model in agentVersion
+  - `key-resolution.ts`: getApiKey, tenant key first, system env fallback
+  - `flows/pipeline.ts`: buildPipelineFlowSpec, correct BullMQ FlowProducer hierarchy
+  - `runner.ts`: shared runAgent() -- provider resolution, checkpoint check, agent call, write
+  - `workers/wave1–4, pass1`: all wave processors
+  - `queues.ts`: dispatcher + submitRun()
+  - `tenant-context.ts`: loadTenantContext(), injectTenantContext(), computeTenantContextVersion()
+  - `startup.ts`: seedProviderConfigs() on worker startup
+- Tenant context injection replaces Wave 0 concept entirely (migration 0005, spec.md updated)
+- 77 unit tests passing (shared: 11, agents: 47, workers: 19)
 
 **Local dev:** Docker running (Postgres :5432, Redis :6379). `.env.local` complete.
 
 ## What's immediately next
 
-**Phase 3: BullMQ pipeline workers.** Wave orchestration, checkpoint logic. Workers must:
-- Seed `DEFAULT_PROVIDER_CONFIGS` into config table on first startup
-  (key format: `agent.provider.{agentName}` | owner: `'global'`)
-- Append model to `agentVersion` when writing checkpoints:
-  format `YYYY-MM-DD-{hash}/{model}` so model changes invalidate checkpoint reuse
-- Implement `getApiKey(provider, tenantId)` as the single API key resolution point
-- Apply migration 0004 to prod DB before deploy (`pnpm db:migrate`)
+**Phase 3d: Run evals against live callers, establish baselines.**
+This must happen before Phase 4 (frontend). Reasons:
+- Evals establish baselines. Frontend development will trigger prompt changes.
+  Without baselines, prompt changes are blind -- no regression detection.
+- Pipeline output shape must be validated before frontend is built on it.
+- CLAUDE.md requirement: every Skeptic prompt change validated against baseline before merging.
 
-**Deployment requirement -- Redis AOF persistence:** Production Redis must have AOF
-(Append-Only File) persistence enabled. This is what backs the BullMQ durability
-guarantee -- jobs survive worker restarts because Redis preserves job state to disk.
-Without it, an in-flight run is lost on restart. Configure in Railway Redis settings
-before any production traffic. Application-level checkpoint reuse is tested; this is
-the infrastructure requirement that makes it hold end-to-end.
+To run: `pnpm --filter evals eval:skeptic` (P1 baseline), then each other eval suite.
+Eval cases are in `packages/evals/src/`. Each suite has a `vitest.config.ts` entry.
 
-**Manifest pipeline -- prerequisite for any working product.** Agreed scope: tools a
-cloud engineer sees when logging into AWS or Azure. Cloud-native managed services plus
-major third-party ecosystem tools at the same documentation and stability bar.
-Maintenance: quarterly with event-driven updates for GA announcements and CVEs.
-Seeding approach: a Manifest Seeder runs against cloud provider catalogs, produces
-draft entries, flags each for Gatekeeper review before `vetted` is set true. CV's
-capability set is the right foundation for the seeder.
+**After 3d baseline established:** Phase 4 (web frontend).
 
-**Multi-tenancy -- sleeping on it.** Structural work is solid (owner columns, config
-resolution). Application is not yet multi-tenant. Three things close the gap: `tenants`
-table, `tenant_id` on `users`, tenant context threaded from auth to every `getConfig`
-and agent call. Decision deferred to next session.
+## Deployment requirements
 
-## Product design decisions (2026-04-29)
+- Apply migration 0005 to prod DB before any production traffic: `pnpm db:migrate`
+- **Redis AOF persistence must be enabled** in Railway Redis settings before production traffic.
+  BullMQ job durability depends on it. Without it, in-flight runs are lost on worker restart.
 
-**Communication context templates.** The Technical Writer's output is shaped by
-audience x purpose, not audience alone. A Slalom consultant presenting to an exec to
-win a contract needs a different document than a CSM helping a low-tech exec integrate
-a product -- same audience, different purpose, different document. The unit is a named
-communication context template (e.g., "Consulting / Client Deliverable", "Executive /
-Architecture Approval"), curated by Agent12, selected by tenant. Tenants do not write
-free-form prompts -- they select from the library or commission a custom template.
+## Architecture decisions made this session (2026-04-30)
 
-Pass 1 default: exec as primary, engineering as close second.
-Pass 2 default: engineering as primary.
+**Tenant context (formerly Wave 0):** Wave 0 as a pipeline concept is retired. Tenant-specific
+domain context is pre-registered structured data (regulatory controls, prohibited tools,
+certifications) injected into verifiedContext before Wave 1. Not a BullMQ job. Versioned using
+the same `YYYY-MM-DD-{hash8}` pattern as agent versions, stored at write time, validated in
+checkpoint `upstreamHashes`. Block update automatically invalidates affected checkpoints.
 
-**Branding and white-labeling.** Three tiers:
-- Standard: "powered by Agent12" attribution required
-- Premium: optional attribution
-- Enterprise: full white-label, liability transfer in contract
+**Manifest facts vs conclusions:** `platformCompat` and `modelCompat` removed permanently.
+CV derives compatibility conclusions from first principles; manifest stores facts
+(`deploymentModel`, `minimumRuntimeRequirements`, `knownConstraints`) as floors, not answers.
 
-Before BYOK and white-label ship: `tenant_secrets` table with field-level encryption
-(not the config table), key validation at intake, data residency flagging, audit trail.
-
-**CV as core differentiator -- no pre-stored compatibility conclusions.** `platformCompat`
-and `modelCompat` removed permanently. Manifest stores facts; CV derives conclusions.
-This is non-negotiable design.
+**Multi-provider:** All agents default to Anthropic Sonnet. CV entry in `providers.ts` is
+copy/paste ready to swap to Kimi swarm when API key is available.
 
 ## BYOK design (bring your own key)
 
@@ -99,29 +82,36 @@ This is non-negotiable design.
 3. Data residency flagging (Kimi = Moonshot AI, China)
 4. Audit trail: log platform key vs. tenant key per run (never log the key itself)
 
-## Prompt review -- complete
+## Product design decisions (sleeping on / not yet implemented)
 
-All 10 agent prompts reviewed and merged. Key changes applied across all:
+**Multi-tenancy schema:** Structural work solid (owner columns, config resolution).
+Application not yet multi-tenant. Three things close the gap: `tenants` table,
+`tenant_id` on `users`, tenant context threaded from auth to every `getConfig` and agent call.
+Decision deferred -- user wanted to sleep on this.
+
+**Communication context templates:** The Technical Writer's output is shaped by
+audience x purpose, not audience alone. Named communication context templates
+(e.g., "Consulting / Client Deliverable") curated by Agent12, selected by tenant.
+Design agreed. No templates built yet.
+
+**Branding / white-label:** Three tiers: Standard (attribution required), Premium
+(optional), Enterprise (full white-label, liability transfer in contract).
+Design agreed. Not implemented.
+
+## Prompt review -- complete (2026-04-29)
+
+All 10 agents reviewed. Key changes:
 - Prime directive: cover what senior engineers anticipate (completeness), then surface
   what they would not find until deep into implementation (value). Both matter.
 - First-principles trip hazard reasoning: manifest as floor, not ceiling
-- Domain-specific failure modes named for each agent
-
-Individual agent notes:
-- Orchestration: hazard reasoning flipped to first-principles-first
-- Security: enterprise signal detection, conservative posture, Pass 1 / Pass 2 structure
-- Memory & State: over-persistence as named failure mode, PII/retention, agent state seams
-- Tool & Integration: over-tooling as named failure mode, manifest candidates, MCP guidance
-- F&O: failure modes as cross-reference floor, cooperative T&C cycle, eval strategy example
-- Trust & Control: gates-that-don't-gate as named failure mode
-- Skeptic: cross-agent tension standard, 4-cycle cap, counter-argument guidance
-- Technical Writer: dual-audience prime directive (exec: approve? engineer: need Pass 2?)
+- Domain-specific failure mode named for each agent
 
 ## Open questions
 
-- Multi-tenancy schema: sleeping on it. Revisit next session.
-- Manifest seeder: design agreed, implementation not started.
-- Communication context template library: design agreed, no templates built yet.
+- Multi-tenancy schema: sleeping on it.
+- Communication context template library: design agreed, not built.
+- Manifest seeder: design agreed (cloud engineer tool catalog scope), not started.
+  Prerequisite for production quality output. Build after Phase 3d baselines.
 
 ## Collaboration notes
 
