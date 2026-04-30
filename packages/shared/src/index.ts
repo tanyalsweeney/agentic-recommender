@@ -1,3 +1,3 @@
 // shared package exports
-// db schema, config resolution, and shared types live here
-export {};
+export * from "./db/schema.js";
+export * from "./db/config-resolution.js";

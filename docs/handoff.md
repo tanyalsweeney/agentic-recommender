@@ -41,6 +41,13 @@ Implementation underway. Phases 0, 1, and Phase 2 (a, b, c) complete and on main
 - Implement `getApiKey(provider, tenantId)` as the single API key resolution point
 - Apply migration 0004 to prod DB before deploy (`pnpm db:migrate`)
 
+**Deployment requirement -- Redis AOF persistence:** Production Redis must have AOF
+(Append-Only File) persistence enabled. This is what backs the BullMQ durability
+guarantee -- jobs survive worker restarts because Redis preserves job state to disk.
+Without it, an in-flight run is lost on restart. Configure in Railway Redis settings
+before any production traffic. Application-level checkpoint reuse is tested; this is
+the infrastructure requirement that makes it hold end-to-end.
+
 **Manifest pipeline -- prerequisite for any working product.** Agreed scope: tools a
 cloud engineer sees when logging into AWS or Azure. Cloud-native managed services plus
 major third-party ecosystem tools at the same documentation and stability bar.
