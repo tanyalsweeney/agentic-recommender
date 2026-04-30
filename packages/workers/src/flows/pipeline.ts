@@ -5,11 +5,21 @@ import type { FlowChildJob } from "bullmq";
 //   Wave 1 (x4, parallel) → Wave 2 (cooperative) → Wave 2.5 (CV) → Wave 3 (Skeptic) → Pass 1 (TW)
 //
 // Pass this spec to FlowProducer.add() to submit a run to the queue.
-export function buildPipelineFlowSpec(runId: string): FlowChildJob & { queueName: string } {
+export function buildPipelineFlowSpec(
+  runId: string,
+  tenantId?: string,
+  tenantContextVersion?: string
+): FlowChildJob & { queueName: string } {
+  const data = {
+    runId,
+    ...(tenantId ? { tenantId } : {}),
+    ...(tenantContextVersion ? { tenantContextVersion } : {}),
+  };
+
   const job = (name: string, children?: FlowChildJob[]): FlowChildJob => ({
     name,
     queueName: "pipeline",
-    data: { runId },
+    data,
     ...(children ? { children } : {}),
   });
 

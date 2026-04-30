@@ -166,7 +166,7 @@ One row per agent. Supports the same time filtering as all other pipeline observ
 |---|---|
 | Token costs | Per agent: input / output / cached tokens split — see per-agent breakdown above |
 | Web search costs | Per agent (CV only in the recommendation pipeline); reported separately from token costs |
-| Wave subtotals | Rolled up from agent lines for Wave 0–3 |
+| Wave subtotals | Rolled up from agent lines for Waves 1–3 |
 | Run total | All-in cost for the run |
 
 > The input / output / cached token split is load-bearing: if prompt cache hit rate degrades, costs spike without an obvious cause at the wave level.
@@ -227,7 +227,7 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 - Median time between first Pass 1 and Pass 2 purchase for return converters
 
 *Domain correlation:*
-- Conversion rate and run volume segmented by whether Wave 0 was active and which domain agent ran
+- Conversion rate and run volume segmented by whether tenant context was active and which context tag was used
 - Surfaces whether domain-specific runs convert differently from general runs
 
 **Unusual usage patterns:**
@@ -251,7 +251,7 @@ Reported separately from recommendation pipeline costs — maintenance spend is 
 
 ### Run history
 - Every completed run is stored per user account
-- Stored per run: original inference per intake step, verified context (final confirmed selections + hard constraints), maturity label distribution of the recommendation set, Wave 0 domain agent tag (if active), and Pass 1 output
+- Stored per run: original inference per intake step, verified context (final confirmed selections + hard constraints), maturity label distribution of the recommendation set, tenant context tag (if active), and Pass 1 output
 - Pass 2 output stored only if the user generates it
 - Users can browse past runs and review previous recommendations
 - Users can load a past run's verified context as a starting point for a new run, modify the description or selections, and re-run from scratch
@@ -349,7 +349,7 @@ The agent ranks implied requirements by severity, most critical first. Display r
 
 | # | Step | Notes |
 |---|---|---|
-| 0 | Domain context | Conditional — only surfaces when domain agents are registered for the tenant. Asks whether the project operates in a regulated or specialized domain (e.g., healthcare, government contracting). Selecting a domain activates the corresponding Wave 0 agent(s). Suppressed entirely in the general-purpose product where no domain agents are registered. |
+| 0 | Domain context | Conditional — only surfaces when tenant context blocks are registered. Asks whether the project operates in a regulated or specialized domain (e.g., healthcare, government contracting). Selecting a domain activates the corresponding tenant context block(s). Suppressed entirely in the general-purpose product where no tenant context is registered. |
 | 1 | Orchestration pattern | Agent count, structure (orchestrator + subagents, pipeline, directed acyclic graph, etc.) |
 | 2 | Platform & deployment | Constrains model selection and available tooling downstream |
 | 3 | External integrations | Systems the agent touches — APIs, databases, cloud services, etc. |
@@ -561,31 +561,28 @@ User-level holds are surfaced to the owner/admin in aggregate on next run — no
 ### Guiding principle
 Every agent's ultimate test is whether the recommendation solves what the user described building. Technical correctness and compatibility are table stakes. The scope constraint follows from this: agentic-specific concerns are what agents are uniquely equipped to get right — traditional software architecture concerns (APIs, databases, auth, deployment infrastructure) are out of scope because they are not where the system adds distinctive value.
 
-### Wave 0 — Domain context (conditional)
+### Tenant context (conditional, pre-run)
 
-Runs before Wave 1, only when a domain agent is active for the tenant. Produces a structured constraint brief that is appended to verified context before Wave 1 begins. All downstream agents (Waves 1, 2, and 2.5, The Skeptic, synthesis agents) receive it as additional context without modification.
+Tenant context is pre-registered, structured domain context that is injected into verified context before Wave 1 runs. It is not a pipeline wave and does not involve an agent call — it is loaded from the tenant's registered context blocks and merged into the verified context at run submission time. All downstream agents receive it as part of verified context without modification.
 
-**Constraint brief schema (typed, not free text):**
+**Tenant context schema (typed, not free text):**
 - Required regulatory controls
 - Prohibited tools or patterns
 - Mandatory certifications or compliance frameworks
 - Scope of applicability (e.g., applies to data handling only, applies to all components)
 
-**Domain agent interface (standardized):**
-- Input: verified intake context
-- Output: constraint brief conforming to the schema above
-- Registration: tenant supplies an API endpoint or Claude API tool definition; the system calls it at Wave 0
+**Registration:** Tenants pre-register named context blocks via the admin dashboard. Each block conforms to the schema above. A run may activate one or more blocks via `tenant_context_tag`.
 
-Multiple domain agents can be active on a single run (e.g., a system that is both HIPAA-scoped and deployed on a government platform). Each produces a constraint brief; briefs are merged before being passed downstream.
+Multiple context blocks can be active on a single run (e.g., a system that is both HIPAA-scoped and deployed on a government platform). Blocks are merged before being passed downstream.
 
-**Brief merging rules:**
-- Required regulatory controls, mandatory certifications: union of all requirements across all briefs
-- Prohibited tools or patterns: union of all prohibitions — if any brief prohibits something, it is prohibited in the merged brief
+**Merging rules:**
+- Required regulatory controls, mandatory certifications: union across all active blocks
+- Prohibited tools or patterns: union of all prohibitions — if any block prohibits something, it is prohibited in the merged context
 - Scope of applicability: merged to the broadest applicable scope
 
-**Conflict detection:** A conflict exists when a tool or pattern appears as required in one brief and prohibited in another. Detected conflicts are flagged in the merged brief with the names of the contributing domain agents and the specific constraint pair. All downstream agents receive the merged brief including any conflict flags.
+**Conflict detection:** A conflict exists when a tool or pattern appears as required in one block and prohibited in another. Detected conflicts are flagged in the merged context. All downstream agents receive the merged context including any conflict flags.
 
-Domain agents are tenant-registered and not part of the default pipeline. The general-purpose product has no Wave 0.
+Tenant context is optional. The general-purpose product has no default tenant context.
 
 ### Wave 1 — Parallel
 All four agents run in parallel on the verified context. All produce domain recommendations **plus structured cost signals** for their area. Cost signals feed into the Compatibility Validator at Wave 2.5.
@@ -779,7 +776,7 @@ Persistent checkpoints carry a TTL configurable via the admin dashboard. The def
 
 | Component | On retry exhaustion |
 |---|---|
-| Wave 0, Wave 1, Wave 2 agents | Run fails entirely — no partial output, no charge |
+| Wave 1, Wave 2 agents | Run fails entirely — no partial output, no charge |
 | Domain Conflict Resolution agents | Run fails entirely |
 | CV — cross-tool and cross-agent checks | Run fails entirely — safety-critical |
 | CV — per-tool sub-tasks: CVE, compatibility | Run fails entirely — safety-critical |
@@ -932,7 +929,7 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | Table | Primary purpose | Key columns |
 |---|---|---|
 | `users` | Auth + billing | id, email, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
-| `runs` | Run storage and state | id, user_id, status, tier, verified_context (jsonb), verified_context_hash, wave0_domain_tag, pass1_output (jsonb), pass2_output (jsonb nullable), maturity_label_distribution (jsonb), charged |
+| `runs` | Run storage and state | id, user_id, status, tier, verified_context (jsonb), verified_context_hash, tenant_context_tag, pass1_output (jsonb), pass2_output (jsonb nullable), maturity_label_distribution (jsonb), charged |
 | `run_checkpoints` | Cross-run reuse | id, run_id, agent_name, wave, status, output_jsonb, upstream_hashes (jsonb), agent_version, manifest_version, context_hash, expires_at |
 | `cv_result_cache` | Cross-user tool cache | id, tool_name, tool_version (UNIQUE pair), cve_status, compat_status, pricing, eol_date, license, breaking_changes, regional_availability, source_url, cached_at, ttl_seconds |
 | `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), platform_compat (jsonb), model_compat (jsonb), last_refreshed_at, owner |
@@ -1015,8 +1012,8 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 |---|---|---|---|
 | Intake trust boundary | User description is wrapped in an explicit trust boundary in the intake agent prompt (XML tags or clear delimiter with a system-level instruction that content between delimiters is user-provided text, not instructions) | Prevents prompt injection via project description; the intake agent must treat user text as data to reason about, not as instructions to follow | 2026-04-26 |
 | Skeptic eval harness | A fixed eval set of architecture descriptions with known failure modes and expected caveat tiers; runs on every Skeptic prompt change; managed separately from the recommendation pipeline | The Skeptic is the primary quality gatekeeper; non-deterministic output requires a structured eval set to detect regression — manual QA cannot catch prompt-change degradation reliably | 2026-04-26 |
-| Domain-specific expertise | Wave 0 plugin — produces typed constraint brief before Wave 1 | Domain agents produce constraints, not recommendations; Wave 0 narrows the solution space before other agents reason into it; downstream agents receive brief as context with no modification | 2026-04-20 |
-| Domain agent interface | Standardized schema (typed constraint brief); tenant supplies endpoint or Claude API tool definition | Structured output lets downstream agents reason reliably; free text would require each agent to re-parse domain requirements | 2026-04-20 |
+| Tenant context injection | Pre-registered, structured domain context (typed constraint brief) injected into verified context before Wave 1. Not a pipeline wave — loaded at run submission time. Narrows the solution space before agents reason into it; all downstream agents receive it as part of verified context with no modification. | 2026-04-20, updated 2026-04-30 |
+| Tenant context schema | Standardized typed schema (required regulatory controls, prohibited tools/patterns, mandatory certifications, scope). Free text not accepted. | Structured output lets downstream agents reason reliably; free text would require each agent to re-parse domain requirements | 2026-04-20 |
 | Security scope | Agentic-specific attack surface only | Traditional security checklist is out of scope for the agent layer | 2026-04-14 |
 | Trust & Control placement | Wave 2 (cooperative with Failure & Observability) | T&C and F&O have a bidirectional dependency; cooperative exchange resolves it without forcing a sequential ordering that benefits one at the expense of the other | 2026-04-23 |
 | Wave 2 cooperative model | F&O leads the exchange; 2-cycle cap; unresolved tensions pass to The Skeptic | F&O → T&C is the stronger dependency direction; gate placement should incorporate failure mode context; cycle cap keeps cost bounded | 2026-04-23 |

@@ -1,6 +1,7 @@
 export * from "./schemas/index.js";
 export * from "./registry.js";
 export * from "./providers.js";
+export * from "./callers/base.js";
 export * from "./callers/intake.js";
 export * from "./callers/orchestration.js";
 export * from "./callers/security.js";
