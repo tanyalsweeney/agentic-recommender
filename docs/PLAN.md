@@ -199,6 +199,30 @@ infrastructure will emit per-tool results as sub-tasks complete.
 Unit tests: partial chunk accumulation produces valid JSON; mid-stream error
 surfaces as a thrown exception; complete stream matches non-streaming output.
 
+### 3h. CV API integration layer and worker decomposition `[Upcoming]`
+
+Two related pieces of work that ship together. The current CV implementation is a single agent call that relies on the model's training knowledge for version and CVE data. This phase replaces it with a decomposed, API-backed implementation.
+
+**API integration layer** (`packages/workers/src/cv-apis/`):
+- GHSA client: query GitHub Advisory Database by ecosystem and package name
+- PyPI client: fetch current version, release history, license from PyPI JSON API
+- npm client: fetch current version, release history, license from npm Registry API
+- GitHub Releases client: fetch latest release and release history for GitHub-hosted tools
+- NVD client: fetch CVEs by CPE or keyword; used as fallback when GHSA has no entry
+- Credential requirements: `GITHUB_TOKEN` (free) and `NVD_API_KEY` (free) — both required before production traffic; add to `.env.example` and deployment docs
+
+**CV worker decomposition** (`packages/workers/src/workers/wave2_5.ts`):
+
+Replace the single `runAgent` call with the full decomposed structure:
+- Spawn N parallel BullMQ child jobs (one per tool in the recommendation set); each sub-task runs API calls + LLM web search for data points without a structured source (pricing, regional availability); each sub-task writes its own checkpoint
+- Cross-agent conflict checks: sequential, after all per-tool sub-tasks complete; when a version conflict or constraint violation is found, CV does additional API or web lookup to identify a mutually compatible version to recommend back to the relevant Wave 1 and Wave 2 agents as part of the rejection message — surfacing a resolution path, not just a flag
+- Cross-tool compatibility checks: sequential, after conflict checks, scoped to surviving tool set; same resolution-seeking behavior for version conflicts between tool pairs
+- Cost aggregation: runs after compatibility checks, consumes Wave 1 and Wave 2 cost signals
+
+Failure escalation applied per sub-task: CVE and compatibility failures fail the run; pricing, EOL, and license failures ship flagged with the source reference.
+
+Integration tests: GHSA returns known advisory for a real package; NVD fallback triggers when GHSA entry is absent; conflict check surfaces a compatible alternative version, not just a rejection; per-tool sub-task failure with flaggable data point ships flagged rather than failing the run; per-tool checkpoint survives failure of a sibling sub-task.
+
 ---
 
 ## Phase 4 — Web frontend `[Upcoming]`

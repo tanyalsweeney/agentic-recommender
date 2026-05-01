@@ -621,7 +621,7 @@ Failure & Observability and Trust & Control run together in a structured exchang
 
 ### Wave 2.5 — Compatibility Validator
 
-Runs a fresh web search per tool and integration point; does not rely on cached manifest data — versions, compatibility issues, and patches change on short cycles.
+Runs a fresh lookup per tool and integration point; does not rely on cached manifest data — versions, compatibility issues, and patches change on short cycles.
 
 CV's work is decomposed into independently checkpointable sub-tasks (see Pipeline failure handling). Each sub-task persists its output as it completes; a failure in one sub-task retries only that sub-task without losing any other CV work.
 
@@ -633,13 +633,33 @@ CV's work is decomposed into independently checkpointable sub-tasks (see Pipelin
 - License (SPDX identifier; copyleft licenses flagged for legal review)
 - Pricing and tier data
 - For managed cloud services: availability in the target cloud provider and region — whether specified by the user or recommended by the system
-- Direct link to the vendor documentation page visited — included in CV's report as the source reference and as a manual verification path if any data is flagged as unavailable
+- Direct link to the source visited — included in CV's report as the source reference and as a manual verification path if any data is flagged as unavailable
+
+*Data source hierarchy (per-tool sub-tasks):*
+
+CV uses structured APIs for high-accuracy, high-stakes data points and LLM web search for the remainder. API calls run within the per-tool sub-task alongside any LLM web search; the two are not sequential phases.
+
+| Data point | Primary source | Fallback |
+|---|---|---|
+| CVEs (packages with ecosystem entry) | GitHub Advisory Database (GHSA) via GitHub API — maps directly to package ecosystem and name; no CPE translation required | NVD API — used when GHSA has no entry for the tool; requires CPE lookup which is error-prone for some tools |
+| CVEs (infrastructure tools, managed services) | NVD API | LLM web search if NVD CPE match fails |
+| Current version (Python packages) | PyPI JSON API | LLM web search |
+| Current version (Node packages) | npm Registry API | LLM web search |
+| Current version (GitHub-hosted tools) | GitHub Releases API | LLM web search |
+| EOL date | PyPI / npm / GitHub Releases (where exposed) | LLM web search |
+| License | Package manifest (PyPI classifiers, npm `license` field) | LLM web search |
+| Pricing and tier data | LLM web search (no structured API) | — |
+| Regional availability (managed cloud services) | LLM web search (no structured API) | — |
+
+API calls are one tool, one call — no batch endpoints exist on any of these APIs. Parallel per-tool sub-tasks mean all API calls across the tool set run concurrently.
+
+**Required credentials (free):** GitHub token (5,000 req/hour; without token: 60/hour — insufficient for parallel sub-tasks at production scale); NVD API key (50 req/30s; without key: 5 req/30s). Both are free to obtain and must be provisioned before production traffic. Add to `.env.example` alongside existing credentials.
 
 *Cross-agent conflict checks (run after all per-tool sub-tasks complete):*
 - Constraint violations: checks whether any tool or decision recommended by one agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
 - Integration gaps: verifies that every tool dependency an agent assumes is actually accounted for by some agent in the set
 
-These checks are structural comparisons against data already collected from the per-tool sub-tasks — no additional web search required. Any tools or tool combinations definitively eliminated here are removed from scope before the cross-tool compatibility checks run, avoiding unnecessary web research on rejected candidates.
+These checks are primarily structural comparisons against data already collected from the per-tool sub-tasks. Where a version conflict or constraint violation is found, CV performs additional API or web lookup to identify a mutually compatible version or alternative — the rejection message includes a resolution path, not just a flag. Definitive elimination applies only where no resolution exists: binary constraint violations with no workaround (e.g., SaaS-only tool against a no-cloud constraint), platform incompatibilities with no compatible version, or unpatched CVEs affecting all available stable versions. Any tools definitively eliminated here are removed from scope before the cross-tool compatibility checks run, avoiding unnecessary research on rejected candidates.
 
 *Cross-tool compatibility checks (run after cross-agent conflict checks complete, scoped to the surviving tool set):*
 - Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
@@ -1054,8 +1074,12 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 
 | Decision | Choice | Reason | Decided |
 |---|---|---|---|
-| Compatibility Validator freshness | Live web search per run | Ensures version, compatibility, and pricing data is current at evaluation time — the manifest does not serve as a source for CV checks | 2026-04-15 |
+| Compatibility Validator freshness | API-first lookup + LLM web search per run | Ensures version, compatibility, and pricing data is current at evaluation time — the manifest does not serve as a source for CV checks | 2026-04-15, updated 2026-05-01 |
 | Compatibility Validator in Pass 2 | Shared input to all synthesis agents, no synthesis counterpart | Cross-cutting data; not a domain with its own ADRs or specs | 2026-04-14 |
+| CV data sourcing strategy | Structured APIs for high-accuracy data; LLM web search for unstructured remainder | Structured APIs (GHSA, PyPI, npm, GitHub) return authoritative, citation-quality data for CVEs and versions. LLM web search is reserved for data points with no structured source (pricing, regional availability). Accuracy and provenance requirements for CVE data make LLM-only sourcing unacceptable. | 2026-05-01 |
+| CVE primary source | GitHub Advisory Database (GHSA) via GitHub API | GHSA maps directly to package ecosystem and name — no CPE translation required. NVD indexes by CPE, which requires a vendor-name translation that is error-prone for some packages. GHSA covers the majority of Tier 1 platform tools in the manifest. | 2026-05-01 |
+| CVE fallback source | NVD API (free key, 50 req/30s) | Used when GHSA has no entry — primarily infrastructure tools and managed services without a clean ecosystem mapping. NVD rate limits are not a practical constraint at expected tool set sizes. | 2026-05-01 |
+| Version data sources | PyPI JSON API (Python), npm Registry API (Node), GitHub Releases API (GitHub-hosted tools) | All three are free, unauthenticated or free-key, and return authoritative version data directly from the package's canonical source. More reliable than LLM web search for this data point. | 2026-05-01 |
 
 ### Output
 
