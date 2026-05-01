@@ -2,15 +2,17 @@
 
 ## Current state (2026-05-01)
 
-Phases 0, 1, 2, and 3a-3d complete. Phase 3e (maintenance workers) is next.
+Phases 0, 1, 2, and 3a-3d complete. Phase 3e (maintenance workers) is next,
+followed by 3f (multi-tenancy schema), 3g (streaming), and 3h (CV API
+integration and worker decomposition).
 
 **What's built:**
 - Monorepo scaffolded: pnpm workspaces, TypeScript, Vitest workspace
-- Database schema: 19 tables, 6 migrations applied
-  - Phases 0-1 original 12 tables
-  - Migration 0006: `manifest_entries` split into three typed tables:
+- Database schema: 14 tables, 6 migrations applied
+  - Original 12 tables from Phases 0-1
+  - Migration 0006: `manifest_entries` retired; replaced by three typed tables:
     `manifest_tools`, `manifest_patterns`, `manifest_failure_modes`
-  - `manifest_proposals` table (for Gatekeeper review queue)
+  - NOTE: 7 spec tables are not yet built — see "Schema gaps" below
 - Agent layer: 12 Zod output schemas, 12 callers, 3-layer prompt caching, multi-provider dispatch
   - 10 pipeline agents (intake through technical-writer)
   - Manifest Gatekeeper and Org List Gatekeeper (Phase 2e)
@@ -19,8 +21,6 @@ Phases 0, 1, 2, and 3a-3d complete. Phase 3e (maintenance workers) is next.
   three typed tables. Run: `pnpm --filter shared db:seed`
 - `loadManifest()` in `packages/shared/src/db/manifest.ts` -- unified query helper
   returning `{ tools, patterns, failureModes }` for agents and workers
-- All type errors fixed across workers: wave1 agent map typed, wave2/2_5 arg
-  order corrected, base.ts OpenAI union type narrowed
 - Agent call logger: set `AGENT_CALL_LOG=packages/evals/logs/agent-calls.csv`
   to capture timing, token counts (with cache breakdown), and estimated cost
   per call. Appends CSV rows; committed to git for trend tracking.
@@ -31,21 +31,45 @@ Phases 0, 1, 2, and 3a-3d complete. Phase 3e (maintenance workers) is next.
   - Technical Writer: 5/5
   - Security: 6/6 (split into two scenarios -- see below)
   - Gatekeeper: 26/26
-  - Cooperative, CV: placeholder suites, no tests yet
+  - Cooperative, CV: placeholder suites, all tests skipped -- wiring needed
+- Wave 2 cooperative exchange fully implemented (2026-05-01):
+  - Full 2-cycle F&O/T&C exchange with early exit when uncoveredRisks is empty
+  - `checkpointName` field on `RunAgentOpts` for distinct checkpoints per cycle
+  - See PLAN.md Phase 3d note and wave2.ts for implementation
+
+**Schema gaps (7 tables in spec not yet built):**
+
+| Table | Needed for |
+|---|---|
+| `manifest_proposals` | Phase 3e maintenance workers (queue for Gatekeeper review) |
+| `agent_call_log` | Phase 5 admin dashboard (logger currently writes CSV only) |
+| `tenants` | Phase 3f multi-tenancy |
+| `tenant_secrets` | Phase 3f BYOK (keys currently stored plaintext in config table -- not production-safe) |
+| `themes` | Phase 3f branding |
+| `theme_assignments` | Phase 3f branding |
+| `user_theme_preferences` | Phase 3f (stub only) |
 
 **Local dev:** Docker needed for DB (Postgres :5432, Redis :6379). `.env.local` complete.
 
 ## What's immediately next
 
-**Phase 3e: Maintenance workers.** BullMQ workers for manifest refresh and
-Gatekeeper runs. Schema additions: `last_refreshed` on manifest tables,
-`manifest_proposals` table already exists. See PLAN.md Phase 3e.
+**Phase 3e: Maintenance workers.** Before writing any worker code, add two
+schema items that do not yet exist: `last_refreshed_at` on the three typed
+manifest tables, and the `manifest_proposals` table. See PLAN.md Phase 3e for
+the full column list. Do not assume either exists.
 
-**Phase 3f: Multi-tenancy schema.** Tenants table, tenant_id on users,
-themes, theme_assignments, BYOK secrets. See PLAN.md Phase 3f.
+**Phase 3f: Multi-tenancy schema.** Must land before any Phase 4 API routes
+that touch `users` or `runs`. tenant_id is a FK column on both tables; routes
+written without it will need rewriting when 3f lands.
 
 **Phase 3g: Streaming in agent caller.** Must complete before production
 traffic. See below and PLAN.md Phase 3g.
+
+**Phase 3h: CV API integration and worker decomposition.** Replace the current
+single-call CV with a decomposed, API-backed implementation. GHSA primary for
+CVEs, NVD fallback, PyPI/npm/GitHub Releases for version data, LLM web search
+for pricing and regional availability. See PLAN.md Phase 3h and spec.md CV
+section for full data source hierarchy.
 
 ## Deployment requirements
 
@@ -53,8 +77,44 @@ traffic. See below and PLAN.md Phase 3g.
 - Run seeder after migrations: `pnpm --filter shared db:seed`
 - **Redis AOF persistence must be enabled** in Railway Redis settings before
   production traffic. BullMQ job durability depends on it.
+- **GITHUB_TOKEN** (free) and **NVD_API_KEY** (free) required before production
+  traffic for CV API integration (Phase 3h). Add to `.env.example`.
 
-## Architecture decisions made this session (2026-05-01)
+## Architecture decisions made this session (2026-05-01 session 2)
+
+**Wave 2 cooperative exchange implemented:** Full 2-cycle F&O/T&C exchange.
+F&O runs initial analysis, T&C places gates, F&O checks coverage and populates
+`uncoveredRisks`. Empty `uncoveredRisks` = early exit. Non-empty = T&C gets a
+second pass; remaining risks after cycle 2 pass to The Skeptic as
+`unresolvedTensions`. `checkpointName` field added to `RunAgentOpts` so the
+same agent caller can produce distinct checkpoints across cycles.
+
+**AgentKey registry bug fixed:** All multi-word agent keys in the worker layer
+used snake_case while the version registry and `DEFAULT_PROVIDER_CONFIGS` used
+camelCase. Version lookup would throw at runtime for every multi-word agent.
+The worker layer had never been exercised end-to-end. All worker keys now
+camelCase. Same fix applied to Skeptic cycle keys in wave3.ts.
+
+**CV data sourcing strategy settled:** API-first for structured data (GHSA for
+CVEs, NVD fallback, PyPI/npm/GitHub Releases for versions), LLM web search for
+pricing and regional availability. CV worker decomposition deferred to Phase 3h.
+Current CV implementation is a single agent call -- not production-quality but
+functional for eval purposes. See spec.md Settled Decisions (Compatibility
+Validator) for full rationale.
+
+**Kimi evaluated and scoped:** Kimi K2.6 swarm is not suitable for CV (black-box
+aggregation incompatible with per-tool checkpointing and granular failure
+escalation; $7-100+ per swarm execution). Kimi K2.6 non-swarm via the existing
+OpenAI-compatible path is worth evaluating as a cheaper provider for individual
+agent calls ($0.74/M input vs $3.00/M for Sonnet). Not yet wired. Kimi entry
+already exists in PROVIDER_REGISTRY.
+
+**Cooperative and CV evals need wiring:** Both eval suites exist but all tests
+are `it.skip`'d. The callers now exist and work. Wiring is straightforward but
+has not been done. These should be completed before the next prompt change to
+either agent.
+
+## Architecture decisions made this session (2026-05-01 session 1)
 
 **Manifest table split:** `manifest_entries` retired. Three typed tables replace
 it: `manifest_tools` (tool-specific columns present), `manifest_patterns`
