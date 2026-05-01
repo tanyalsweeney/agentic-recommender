@@ -38,7 +38,7 @@ The schema is the foundation. Everything downstream reads or writes to it.
 
 ---
 
-## Phase 2 — Agent layer `[In Progress]`
+## Phase 2 — Agent layer `[Done]`
 
 **Write Zod schemas and eval cases first, then implement callers.**
 
@@ -71,7 +71,7 @@ Implement Anthropic SDK callers for each agent with 3-layer prompt caching:
 Agent version format: `YYYY-MM-DD-{sha256_8chars}` of the prompt template file.
 Computed at startup and stored in an in-memory registry.
 
-### 2e. Maintenance agents `[Upcoming]`
+### 2e. Maintenance agents `[Done]`
 The manifest and org list stay current through agentic gatekeepers. Same
 structure as existing agents: Zod schema, prompt template, caller, eval cases,
 3-layer prompt caching.
@@ -86,11 +86,10 @@ Same approve/reject/escalate pattern. Human escalation on schema changes.
 Eval cases for both: known proposed changes paired with expected
 approve/reject/escalate outcomes.
 
-### 2f. Manifest seeder `[Upcoming]`
-Seeds the initial `manifest_entries` with a cloud engineer tool catalog.
-Each entry includes domainKnowledgePayload, deploymentModel,
-minimumRuntimeRequirements, and knownConstraints. All seeded entries
-marked vetted = true. Prerequisite for production quality output.
+### 2f. Manifest seeder `[Done]`
+Seeds the three typed manifest tables (manifest_tools, manifest_patterns,
+manifest_failure_modes) with a cloud engineer tool catalog. 15 tools,
+6 patterns, 6 failure modes. All seeded entries marked vetted = true.
 
 ---
 
@@ -118,13 +117,23 @@ controls, prohibited tools, certifications) injected into verifiedContext before
 Wave 1. Not a BullMQ job. Versioned using the `YYYY-MM-DD-{hash8}` pattern,
 stored at write time, validated in checkpoint upstreamHashes.
 
-### 3d. Run evals `[Next]`
+### 3d. Run evals `[Done]`
 Execute the 12 eval cases from Phase 2c against the live agent callers.
 Establish baselines. Any prompt change that breaks a baseline must be caught
 before merging.
 
 Run: `pnpm --filter evals eval:skeptic` (P1 baseline required), then each
 other eval suite. Pipeline output verified by reading the database — no UI needed.
+
+**Baselines established (2026-05-01):** Skeptic 6/6, Intake 8/8,
+Orchestration 3/3, Technical Writer 5/5, Security 6/6, Gatekeeper 26/26.
+Cooperative and CV are placeholder suites with no tests yet.
+
+Eval suites refactored to `beforeAll` per scenario — one API call per unique
+input shared across all assertions. Security split into two sequential scenarios
+(read-only web + write-access web) to avoid TCP timeout on complex responses.
+Agent call logger added (`AGENT_CALL_LOG` env var) — appends timing, token
+counts, cache breakdown, and estimated cost per call to a CSV file.
 
 ### 3e. Maintenance workers `[Upcoming]`
 BullMQ workers for manifest refresh and Gatekeeper runs. Same infrastructure
@@ -173,6 +182,22 @@ any Phase 4 frontend work begins.
 10. Integration tests: tenant isolation; theme version updates when token_map or
     custom_css changes; mode lock when one assignment present; time-bounded
     assignment inactive outside valid_from/valid_until window
+
+### 3g. Streaming in agent caller `[Upcoming]`
+Without streaming, complex user systems trigger responses long enough to drop
+the underlying TCP connection before the full response arrives (~6 min
+confirmed via security eval). Must be resolved before any production traffic.
+
+Switch `callAnthropicAgent` in `base.ts` from `client.messages.create()` to
+`client.messages.stream()`. Accumulate `input_json_delta` chunks on
+`content_block_start` events; parse assembled JSON on `content_block_stop`.
+OpenAI-compatible path: same pattern via `stream: true`.
+
+This also unblocks CV progressive disclosure in Phase 4e — the same streaming
+infrastructure will emit per-tool results as sub-tasks complete.
+
+Unit tests: partial chunk accumulation produces valid JSON; mid-stream error
+surfaces as a thrown exception; complete stream matches non-streaming output.
 
 ---
 
