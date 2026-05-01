@@ -38,7 +38,7 @@ The schema is the foundation. Everything downstream reads or writes to it.
 
 ---
 
-## Phase 2 — Agent layer `[Done]`
+## Phase 2 — Agent layer `[In Progress]`
 
 **Write Zod schemas and eval cases first, then implement callers.**
 
@@ -70,6 +70,27 @@ Implement Anthropic SDK callers for each agent with 3-layer prompt caching:
 
 Agent version format: `YYYY-MM-DD-{sha256_8chars}` of the prompt template file.
 Computed at startup and stored in an in-memory registry.
+
+### 2e. Maintenance agents `[Upcoming]`
+The manifest and org list stay current through agentic gatekeepers. Same
+structure as existing agents: Zod schema, prompt template, caller, eval cases,
+3-layer prompt caching.
+
+**Manifest Gatekeeper:** Reviews proposed manifest entry changes (new tools,
+updated descriptions, version bumps, deprecations). Approves, rejects, or
+escalates. Rejection drops the entry; next refresh cycle is the retry.
+
+**Org List Gatekeeper:** Reviews proposed org list additions and modifications.
+Same approve/reject/escalate pattern. Human escalation on schema changes.
+
+Eval cases for both: known proposed changes paired with expected
+approve/reject/escalate outcomes.
+
+### 2f. Manifest seeder `[Upcoming]`
+Seeds the initial `manifest_entries` with a cloud engineer tool catalog.
+Each entry includes domainKnowledgePayload, deploymentModel,
+minimumRuntimeRequirements, and knownConstraints. All seeded entries
+marked vetted = true. Prerequisite for production quality output.
 
 ---
 
@@ -129,6 +150,26 @@ any Phase 4 frontend work begins.
 10. Integration tests: tenant isolation; theme version updates when token_map or
     custom_css changes; mode lock when one assignment present; time-bounded
     assignment inactive outside valid_from/valid_until window
+
+### 3f. Maintenance workers `[Upcoming]`
+BullMQ workers for manifest refresh and Gatekeeper runs. Same infrastructure
+as the wave workers — new job types on the existing queue.
+
+**Manifest refresh worker:** Lazy trigger — fires when a tool is referenced by
+a run and last_refreshed exceeds the staleness threshold (tier-based, configurable
+via admin dashboard). Fetches updated data, proposes changes, hands to Manifest
+Gatekeeper worker.
+
+**Manifest Gatekeeper worker:** Runs the Manifest Gatekeeper agent against each
+proposed change. Writes approved entries, drops rejected entries, escalates to
+admin hold queue on ambiguous cases.
+
+**Org List Gatekeeper worker:** Same pattern for org list proposals from
+org_list_proposals table.
+
+Integration tests: lazy trigger fires on reference past staleness threshold;
+Gatekeeper rejection drops entry without affecting existing approved entries;
+human escalation creates an admin hold correctly.
 
 ---
 
@@ -230,15 +271,6 @@ Tenant-facing interface for run management and configuration. Admin dashboard
 - White-label tier settings: Standard (Agent12 attribution required), Premium
   (attribution optional), Enterprise (custom domain, full attribution removal,
   liability transfer in contract)
-
----
-
-## Phase 7 — Maintenance pipeline `[Upcoming]`
-
-Manifest refresh (lazy trigger), Manifest Gatekeeper, Org List Gatekeeper.
-
-Run on a hardcoded seed manifest through Phase 6. Build the maintenance
-pipeline when there is enough usage data to know which tools need refreshing.
 
 ---
 
