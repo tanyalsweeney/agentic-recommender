@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { callOrgListGatekeeperAgent } from "@agent12/agents";
+import type { OrgListGatekeeperOutput } from "@agent12/agents";
 import { DEFAULT_PROVIDER_CONFIGS } from "../helpers.js";
 
 // Minimal current org list for context — enough for independence checks.
@@ -41,87 +42,89 @@ const staleOrgProposal = {
   lastKnownActivity: "2024-02-01",
 };
 
+// One call per unique input — shared across all assertions for that input.
+let strongOutput: OrgListGatekeeperOutput;
+let weakOutput: OrgListGatekeeperOutput;
+let affiliateOutput: OrgListGatekeeperOutput;
+let staleOutput: OrgListGatekeeperOutput;
+let secondPassOutput: OrgListGatekeeperOutput;
+
+beforeAll(async () => {
+  strongOutput    = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal,    DEFAULT_PROVIDER_CONFIGS.skeptic);
+  weakOutput      = await callOrgListGatekeeperAgent(SEED_ORG_LIST, weakOrgProposal,      DEFAULT_PROVIDER_CONFIGS.skeptic);
+  affiliateOutput = await callOrgListGatekeeperAgent(SEED_ORG_LIST, affiliateOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
+  staleOutput     = await callOrgListGatekeeperAgent(SEED_ORG_LIST, staleOrgProposal,     DEFAULT_PROVIDER_CONFIGS.skeptic);
+  secondPassOutput = await callOrgListGatekeeperAgent(
+    SEED_ORG_LIST,
+    strongOrgProposal,
+    DEFAULT_PROVIDER_CONFIGS.skeptic,
+    { humanOverrideReasoning: "We have a direct relationship with this org and know their internal agentic engineering depth exceeds what is publicly visible." },
+  );
+}, 1200_000);
+
 describe("Org List Gatekeeper eval 1: strong multi-signal org → add recommendation", () => {
-  it("recommends adding a well-evidenced org", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.recommendation).toBe("add");
+  it("recommends adding a well-evidenced org", () => {
+    expect(strongOutput.recommendation).toBe("add");
   });
 
-  it("assigns a tier for an add recommendation", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.recommendedTier).not.toBeNull();
+  it("assigns a tier for an add recommendation", () => {
+    expect(strongOutput.recommendedTier).not.toBeNull();
   });
 
-  it("lists sources reviewed", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.sourcesReviewed.length).toBeGreaterThan(0);
+  it("lists sources reviewed", () => {
+    expect(strongOutput.sourcesReviewed.length).toBeGreaterThan(0);
   });
 });
 
 describe("Org List Gatekeeper eval 2: weak signals org → no-action", () => {
-  it("recommends no-action for an org with minimal signals", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, weakOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.recommendation).toBe("no-action");
+  it("recommends no-action for an org with minimal signals", () => {
+    expect(weakOutput.recommendation).toBe("no-action");
   });
 
-  it("provides justification for no-action", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, weakOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.justification.length).toBeGreaterThan(0);
+  it("provides justification for no-action", () => {
+    expect(weakOutput.justification.length).toBeGreaterThan(0);
   });
 });
 
 describe("Org List Gatekeeper eval 3: affiliate of existing member → independence check fails", () => {
-  it("flags independence failure for an affiliate org", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, affiliateOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.independenceVerified).toBe(false);
+  it("flags independence failure for an affiliate org", () => {
+    expect(affiliateOutput.independenceVerified).toBe(false);
   });
 
-  it("does not recommend adding a non-independent org", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, affiliateOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.recommendation).not.toBe("add");
+  it("does not recommend adding a non-independent org", () => {
+    expect(affiliateOutput.recommendation).not.toBe("add");
   });
 });
 
 describe("Org List Gatekeeper eval 4: org with no recent activity → recency flag", () => {
-  it("flags recency failure for an org with no recent activity", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, staleOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.recentActivityVerified).toBe(false);
+  it("flags recency failure for an org with no recent activity", () => {
+    expect(staleOutput.recentActivityVerified).toBe(false);
   });
 
-  it("does not recommend tier upgrade for a stale org", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, staleOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.recommendation).not.toBe("tier-change");
+  it("does not recommend tier upgrade for a stale org", () => {
+    expect(staleOutput.recommendation).not.toBe("tier-change");
   });
 });
 
 describe("Org List Gatekeeper eval 5: second pass responds to human override", () => {
-  it("populates secondPassFindings on second pass", async () => {
-    const output = await callOrgListGatekeeperAgent(
-      SEED_ORG_LIST,
-      strongOrgProposal,
-      DEFAULT_PROVIDER_CONFIGS.skeptic,
-      { humanOverrideReasoning: "We have a direct relationship with this org and know their internal agentic engineering depth exceeds what is publicly visible." },
-    );
-    expect(output.isSecondPass).toBe(true);
-    expect(output.secondPassFindings).toBeTruthy();
+  it("populates secondPassFindings on second pass", () => {
+    expect(secondPassOutput.isSecondPass).toBe(true);
+    expect(secondPassOutput.secondPassFindings).toBeTruthy();
   });
 });
 
 describe("Org List Gatekeeper eval 6: output contract always satisfied", () => {
-  it("signalAnalysis always covers all four signals", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.signalAnalysis.engineeringPublications).toBeDefined();
-    expect(output.signalAnalysis.openSourceTooling).toBeDefined();
-    expect(output.signalAnalysis.platformOfferings).toBeDefined();
+  it("signalAnalysis always covers all four signals", () => {
+    expect(strongOutput.signalAnalysis.engineeringPublications).toBeDefined();
+    expect(strongOutput.signalAnalysis.openSourceTooling).toBeDefined();
+    expect(strongOutput.signalAnalysis.platformOfferings).toBeDefined();
   });
 
-  it("orgName matches the proposed org", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.orgName).toBe("Cohere");
+  it("orgName matches the proposed org", () => {
+    expect(strongOutput.orgName).toBe("Cohere");
   });
 
-  it("justification is always populated", async () => {
-    const output = await callOrgListGatekeeperAgent(SEED_ORG_LIST, weakOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.justification.length).toBeGreaterThan(0);
+  it("justification is always populated", () => {
+    expect(weakOutput.justification.length).toBeGreaterThan(0);
   });
 });

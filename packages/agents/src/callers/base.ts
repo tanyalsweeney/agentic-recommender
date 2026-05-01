@@ -4,6 +4,7 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ProviderConfig } from "../schemas/index.js";
 import { PROVIDER_REGISTRY, ProviderName } from "../providers.js";
+import { logAgentCall } from "../logger.js";
 
 const MAX_TOKENS = 8192;
 
@@ -69,6 +70,7 @@ async function callAnthropicAgent<T>(
     ? `\n\nUPSTREAM AGENT OUTPUTS:\n${JSON.stringify(upstreamOutputs, null, 2)}`
     : "";
 
+  const startMs = Date.now();
   const response = await client.messages.create({
     model: providerConfig.model,
     max_tokens: MAX_TOKENS,
@@ -108,6 +110,17 @@ async function callAnthropicAgent<T>(
     ],
   });
 
+  logAgentCall({
+    agentName,
+    provider: "anthropic",
+    model: providerConfig.model,
+    durationMs: Date.now() - startMs,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheReadTokens: (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0,
+    cacheWriteTokens: (response.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0,
+  });
+
   const toolUse = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
   if (!toolUse) {
     throw new Error(`${agentName}: no tool_use block in response — model did not call the tool`);
@@ -137,6 +150,7 @@ async function callOpenAICompatibleAgent<T>(
   // No prompt caching on the OpenAI-compatible path. Manifest and system prompt
   // are sent in full every call. Mitigated by checkpoint reuse; filtered manifest
   // per agent is a planned fast follow to reduce token cost further.
+  const startMs = Date.now();
   const response = await client.chat.completions.create({
     model: providerConfig.model,
     max_tokens: MAX_TOKENS,
@@ -161,6 +175,17 @@ async function callOpenAICompatibleAgent<T>(
       },
     ],
     tool_choice: { type: "function", function: { name: toolName } },
+  });
+
+  logAgentCall({
+    agentName,
+    provider: entry.type,
+    model: providerConfig.model,
+    durationMs: Date.now() - startMs,
+    inputTokens: response.usage?.prompt_tokens ?? 0,
+    outputTokens: response.usage?.completion_tokens ?? 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
   });
 
   const toolCall = response.choices[0]?.message?.tool_calls?.[0];

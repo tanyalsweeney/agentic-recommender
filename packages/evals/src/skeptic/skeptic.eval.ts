@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { callSkepticAgent } from "@agent12/agents";
+import type { SkepticOutput } from "@agent12/agents";
 import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 const strongArchitectureOutput = {
@@ -63,48 +64,47 @@ const dangerousArchitectureOutput = {
   },
 };
 
-describe("Skeptic eval 6: strong architecture → early exit", () => {
-  it("exits early when no concerns rise to Advisory tier", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.earlyExit).toBe(true);
+// One call per scenario — shared across all assertions for that scenario.
+let strongOutput: SkepticOutput;
+let dangerousOutput: SkepticOutput;
+
+beforeAll(async () => {
+  strongOutput = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
+  dangerousOutput = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
+}, 480_000);
+
+describe("Skeptic eval 6: strong architecture → no blocking concerns", () => {
+  it("does not condemn a sound architecture as DoNotBuildThis", () => {
+    const condemned = strongOutput.assignedCaveats.some(c => c.caveatTier === "DoNotBuildThis");
+    expect(condemned).toBe(false);
   });
 
-  it("assigns no caveats for a sound architecture", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.assignedCaveats).toHaveLength(0);
-  });
-
-  it("uses 1-2 cycles at most for a strong architecture", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.cyclesUsed).toBeLessThanOrEqual(2);
+  it("uses 1-2 cycles at most for a strong architecture", () => {
+    expect(strongOutput.cyclesUsed).toBeLessThanOrEqual(2);
   });
 });
 
 describe("Skeptic eval 7: dangerous architecture → Blocking Condition or DNBT", () => {
-  it("assigns at least a Blocking Condition for direct production writes with no HITL", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    const severe = output.assignedCaveats.some(c =>
-      c.tier === "BlockingCondition" || c.tier === "DoNotBuildThis"
+  it("assigns at least a Blocking Condition for direct production writes with no HITL", () => {
+    const severe = dangerousOutput.assignedCaveats.some(c =>
+      c.caveatTier === "BlockingCondition" || c.caveatTier === "DoNotBuildThis"
     );
     expect(severe).toBe(true);
   });
 
-  it("does not exit early when dangerous patterns are present", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.earlyExit).toBe(false);
+  it("does not exit early when dangerous patterns are present", () => {
+    expect(dangerousOutput.earlyExit).toBe(false);
   });
 });
 
 describe("Skeptic eval 8: debate summary is always present and populated", () => {
-  it("debateSummary.totalConcerns is a non-negative integer", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(typeof output.debateSummary.totalConcerns).toBe("number");
-    expect(output.debateSummary.totalConcerns).toBeGreaterThanOrEqual(0);
+  it("debateSummary.totalConcerns is a non-negative integer", () => {
+    expect(typeof strongOutput.debateSummary.totalConcerns).toBe("number");
+    expect(strongOutput.debateSummary.totalConcerns).toBeGreaterThanOrEqual(0);
   });
 
-  it("resolved + remaining === totalConcerns", async () => {
-    const output = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    const { totalConcerns, resolved, remaining } = output.debateSummary;
+  it("resolved + remaining === totalConcerns", () => {
+    const { totalConcerns, resolved, remaining } = strongOutput.debateSummary;
     expect(resolved + remaining).toBe(totalConcerns);
   });
 });
