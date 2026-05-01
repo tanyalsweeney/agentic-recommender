@@ -1,4 +1,5 @@
 export * from "./schemas/index.js";
+export * from "./logger.js";
 export * from "./registry.js";
 export * from "./providers.js";
 export * from "./callers/base.js";
