@@ -18,7 +18,7 @@ describe("Security eval 5: autonomous web agent → prompt injection flagged as 
 
   beforeAll(async () => {
     output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
-  }, 240_000);
+  }, 600_000);
 
   it("flags prompt injection via web content as a high-likelihood, high-impact risk", () => {
     const risks = output.agenticAttackSurface.promptInjectionRisks;

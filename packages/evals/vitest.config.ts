@@ -13,5 +13,6 @@ export default defineConfig({
     // Evals make real Anthropic API calls — run manually only, never in CI.
     // Use: pnpm eval:skeptic (etc) to run specific suites.
     testTimeout: 240_000,
+    hookTimeout: 600_000,
   },
 });
