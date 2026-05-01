@@ -946,6 +946,7 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | `themes` | Theme definitions — system presets and tenant themes | id, name, owner (global or tenant_id), token_map (flat jsonb), custom_css (nullable text), version, status (draft or published) |
 | `theme_assignments` | Owner-to-theme mapping by mode | id, owner, mode (light or dark), theme_id, token_overrides (flat jsonb), logo_url, status, version, valid_from nullable, valid_until nullable |
 | `user_theme_preferences` | User-level optional theme opt-in (stub) | user_id, theme_id, activated_at, expires_at nullable |
+| `agent_call_log` | Per-call agent performance log | id, timestamp, agent_name, agent_version, provider, model, source (eval or production), run_id (nullable), eval_suite (nullable), duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, estimated_cost_usd |
 
 **Required indexes in initial migration** (see settled decisions — Database indexes).
 
@@ -1047,6 +1048,7 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | Pipeline failure handling | Transient checkpoints for within-run retry; persistent checkpoints for cross-run reuse; safety-critical failures fail the run; non-critical CV sub-tasks ship flagged with documentation link | Agent-level checkpointing preserves all completed work; cross-run reuse reduces cost for iterating users -- consistent with CV result cache pattern already in the spec | 2026-04-25 |
 | Wave 1 agent distinctness | All four Wave 1 agents kept separate | Orchestration and Tool & Integration share a surface-level concern but use different reasoning frameworks — merging them produces shallower output on at least one domain for an audience that will notice wrong recommendations | 2026-04-23 |
 | Agent caller streaming | callAnthropicAgent switches from client.messages.create() to client.messages.stream(), accumulating input_json_delta chunks and parsing on content_block_stop | Complex user systems trigger responses long enough to drop the TCP connection before completion (~6 min confirmed in eval). Streaming keeps the connection active throughout. Also required for CV progressive disclosure to the frontend. Must ship before production traffic. | 2026-05-01 |
+| Agent performance monitoring | `agent_call_log` table stores per-call data (agent name, version, provider, model, source, run_id, eval_suite, duration, token breakdown, estimated cost). Logger writes to DB and CSV. Admin dashboard "Agent performance" panel queries this table. | Dev-time prompt tuning requires tracking cost and latency impact per agent version. Production observability (pipeline panel) tracks run-level metrics; agent performance tracks agent-level metrics. Both are needed. | 2026-05-01 |
 
 ### Compatibility Validator
 
