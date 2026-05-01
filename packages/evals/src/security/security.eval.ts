@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { callSecurityAgent } from "@agent12/agents";
+import type { SecurityAgentOutput } from "@agent12/agents";
 import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 const autonomousWebAgentContext = {
@@ -13,8 +14,13 @@ const autonomousWebAgentContext = {
 };
 
 describe("Security eval 5: autonomous web agent → prompt injection flagged as high", () => {
-  it("flags prompt injection via web content as a high-likelihood, high-impact risk", async () => {
-    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
+  let output: SecurityAgentOutput;
+
+  beforeAll(async () => {
+    output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
+  }, 240_000);
+
+  it("flags prompt injection via web content as a high-likelihood, high-impact risk", () => {
     const risks = output.agenticAttackSurface.promptInjectionRisks;
     expect(risks.length).toBeGreaterThan(0);
 
@@ -29,13 +35,11 @@ describe("Security eval 5: autonomous web agent → prompt injection flagged as 
     expect(webRisk!.impact).toBe("high");
   });
 
-  it("flags excessive autonomy as a risk", async () => {
-    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
+  it("flags excessive autonomy as a risk", () => {
     expect(output.agenticAttackSurface.excessiveAutonomyRisks.length).toBeGreaterThan(0);
   });
 
-  it("includes at least one mitigation for prompt injection", async () => {
-    const output = await callSecurityAgent(SEED_MANIFEST, autonomousWebAgentContext, DEFAULT_PROVIDER_CONFIGS.security);
+  it("includes at least one mitigation for prompt injection", () => {
     const mitigations = output.agenticAttackSurface.promptInjectionRisks.flatMap(r => r.mitigations);
     expect(mitigations.length).toBeGreaterThan(0);
   });

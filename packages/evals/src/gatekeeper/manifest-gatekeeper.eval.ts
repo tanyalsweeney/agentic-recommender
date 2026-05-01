@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { callManifestGatekeeperAgent } from "@agent12/agents";
+import type { ManifestGatekeeperOutput } from "@agent12/agents";
 import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 // A well-evidenced, actively maintained tool with genuine independent adoption.
@@ -76,83 +77,83 @@ const abandonedEntry = {
   domainKnowledgePayload: null,
 };
 
+// One call per unique input — shared across all assertions for that input.
+let solidOutput: ManifestGatekeeperOutput;
+let inflatedOutput: ManifestGatekeeperOutput;
+let schemaChangeOutput: ManifestGatekeeperOutput;
+let abandonedOutput: ManifestGatekeeperOutput;
+
+beforeAll(async () => {
+  solidOutput       = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry,       DEFAULT_PROVIDER_CONFIGS.skeptic);
+  inflatedOutput    = await callManifestGatekeeperAgent(SEED_MANIFEST, inflatedEntry,    DEFAULT_PROVIDER_CONFIGS.skeptic);
+  schemaChangeOutput = await callManifestGatekeeperAgent(SEED_MANIFEST, schemaChangeEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
+  abandonedOutput   = await callManifestGatekeeperAgent(SEED_MANIFEST, abandonedEntry,   DEFAULT_PROVIDER_CONFIGS.skeptic);
+}, 960_000);
+
 describe("Manifest Gatekeeper eval 1: solid entry with genuine independent adoption → accepted", () => {
-  it("accepts a well-evidenced entry", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.decision).toBe("accepted");
+  it("accepts a well-evidenced entry", () => {
+    expect(solidOutput.decision).toBe("accepted");
   });
 
-  it("recommends a confidence score for an accepted entry", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.confidenceScoreRecommendation).not.toBeNull();
-    expect(output.confidenceScoreRecommendation).toBeGreaterThanOrEqual(6);
+  it("recommends a confidence score for an accepted entry", () => {
+    expect(solidOutput.confidenceScoreRecommendation).not.toBeNull();
+    expect(solidOutput.confidenceScoreRecommendation).toBeGreaterThanOrEqual(6);
   });
 
-  it("recommends a maturity tier for an accepted entry", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(["Established", "Emerging"]).toContain(output.maturityTierRecommendation);
+  it("recommends a maturity tier for an accepted entry", () => {
+    expect(["Established", "Emerging"]).toContain(solidOutput.maturityTierRecommendation);
   });
 });
 
 describe("Manifest Gatekeeper eval 2: vendor self-adoption only → rejected", () => {
-  it("rejects an entry with no independent adoption signals", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, inflatedEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.decision).toBe("rejected");
+  it("rejects an entry with no independent adoption signals", () => {
+    expect(inflatedOutput.decision).toBe("rejected");
   });
 
-  it("surfaces a quality finding citing adoption signal failure", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, inflatedEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    const hasQualityFinding = output.findings.some(f => f.type === "quality");
+  it("surfaces a quality finding citing adoption signal failure", () => {
+    const hasQualityFinding = inflatedOutput.findings.some(f => f.type === "quality");
     expect(hasQualityFinding).toBe(true);
   });
 });
 
 describe("Manifest Gatekeeper eval 3: proposed schema change → escalated", () => {
-  it("escalates when a schema change is required", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, schemaChangeEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.decision).toBe("escalated");
+  it("escalates when a schema change is required", () => {
+    expect(schemaChangeOutput.decision).toBe("escalated");
   });
 
-  it("populates escalationReason for an escalated entry", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, schemaChangeEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.escalationReason).toBeTruthy();
+  it("populates escalationReason for an escalated entry", () => {
+    expect(schemaChangeOutput.escalationReason).toBeTruthy();
   });
 
-  it("surfaces a schema finding", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, schemaChangeEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    const hasSchemaFinding = output.findings.some(f => f.type === "schema");
+  it("surfaces a schema finding", () => {
+    const hasSchemaFinding = schemaChangeOutput.findings.some(f => f.type === "schema");
     expect(hasSchemaFinding).toBe(true);
   });
 });
 
 describe("Manifest Gatekeeper eval 4: abandoned tool failing maintenance signals → rejected", () => {
-  it("rejects a tool with no meaningful maintenance activity", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, abandonedEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.decision).toBe("rejected");
+  it("rejects a tool with no meaningful maintenance activity", () => {
+    expect(abandonedOutput.decision).toBe("rejected");
   });
 
-  it("does not recommend a high confidence score for an abandoned tool", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, abandonedEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    if (output.confidenceScoreRecommendation !== null && output.confidenceScoreRecommendation !== undefined) {
-      expect(output.confidenceScoreRecommendation).toBeLessThanOrEqual(3);
+  it("does not recommend a high confidence score for an abandoned tool", () => {
+    if (abandonedOutput.confidenceScoreRecommendation !== null && abandonedOutput.confidenceScoreRecommendation !== undefined) {
+      expect(abandonedOutput.confidenceScoreRecommendation).toBeLessThanOrEqual(3);
     }
   });
 });
 
 describe("Manifest Gatekeeper eval 5: output contract always satisfied", () => {
-  it("cyclesUsed is always 1 or 2", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.cyclesUsed).toBeGreaterThanOrEqual(1);
-    expect(output.cyclesUsed).toBeLessThanOrEqual(2);
+  it("cyclesUsed is always 1 or 2", () => {
+    expect(solidOutput.cyclesUsed).toBeGreaterThanOrEqual(1);
+    expect(solidOutput.cyclesUsed).toBeLessThanOrEqual(2);
   });
 
-  it("justification is always populated", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, inflatedEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(output.justification.length).toBeGreaterThan(0);
+  it("justification is always populated", () => {
+    expect(inflatedOutput.justification.length).toBeGreaterThan(0);
   });
 
-  it("findings array is always present", async () => {
-    const output = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-    expect(Array.isArray(output.findings)).toBe(true);
+  it("findings array is always present", () => {
+    expect(Array.isArray(solidOutput.findings)).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { callOrchestrationAgent } from "@agent12/agents";
+import type { OrchestrationAgentOutput } from "@agent12/agents";
 import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
 
 const parallelResearchContext = {
@@ -13,18 +14,21 @@ const parallelResearchContext = {
 };
 
 describe("Orchestration eval 4: parallel research → DAG pattern", () => {
-  it("recommends DAG pattern for parallel independent sub-agents", async () => {
-    const output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, DEFAULT_PROVIDER_CONFIGS.orchestration);
+  let output: OrchestrationAgentOutput;
+
+  beforeAll(async () => {
+    output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, DEFAULT_PROVIDER_CONFIGS.orchestration);
+  }, 240_000);
+
+  it("recommends DAG pattern for parallel independent sub-agents", () => {
     expect(output.recommendedPattern).toBe("dag");
   });
 
-  it("does not recommend pipeline for a system with parallel execution", async () => {
-    const output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, DEFAULT_PROVIDER_CONFIGS.orchestration);
+  it("does not recommend pipeline for a system with parallel execution", () => {
     expect(output.recommendedPattern).not.toBe("pipeline");
   });
 
-  it("acknowledges parallelism in the agent structure description", async () => {
-    const output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, DEFAULT_PROVIDER_CONFIGS.orchestration);
+  it("acknowledges parallelism in the agent structure description", () => {
     const structureText = JSON.stringify(output.agentStructure).toLowerCase();
     expect(structureText).toMatch(/parallel|concurrent|simultaneous/);
   });
