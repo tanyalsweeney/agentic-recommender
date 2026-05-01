@@ -14,7 +14,7 @@ export async function processWave2_5Job(
 
   const result = await runAgent({
     db, runId, tenantId,
-    agentKey: "compatibility_validator",
+    agentKey: "compatibilityValidator",
     wave: "2_5",
     upstreamHashes: upstreamCheckpointVersions,
     upstreamOutputs: { wave1: wave1Results, wave2: wave2Results },

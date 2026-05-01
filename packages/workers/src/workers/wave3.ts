@@ -21,7 +21,8 @@ export async function processWave3Job(
   for (let cycle = 1; cycle <= MAX_CYCLES; cycle++) {
     const result = await runAgent({
       db, runId, tenantId,
-      agentKey: `skeptic_cycle${cycle}`,
+      agentKey: "skeptic",
+      checkpointName: `skeptic_cycle${cycle}`,
       wave: "3",
       upstreamHashes: {
         ...upstreamCheckpointVersions,

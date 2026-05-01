@@ -22,8 +22,12 @@ export const FailureObservabilityAgentOutput = z.object({
     interAgentHandoffTracing: z.string(),
     intersectionsWithStandardTracing: z.array(z.string()),
   }),
-  // F&O confirms or adjusts after seeing T&C gate placements
+  // F&O confirms gate coverage after seeing T&C placements.
+  // Narrative assessment of what is and isn't covered.
   confirmationOfGateCoverage: z.string().nullish(),
+  // Specific risks not addressed by T&C's gate placements.
+  // Absent or empty = all risks covered = early exit. Non-empty = cycle 2 runs.
+  uncoveredRisks: z.array(z.string()).optional(),
   implementationTripHazards: z.array(TripHazard),
   costSignals: CostSignals,
 });

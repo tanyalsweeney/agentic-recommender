@@ -14,16 +14,16 @@ import type { Db } from "./db.js";
 
 // Manifest sections each agent needs — keeps token cost low.
 const AGENT_MANIFEST_SECTIONS: Record<string, ManifestSections> = {
-  intake:                  { tools: true, patterns: true },
-  orchestration:           { patterns: true },
-  security:                { tools: true },
-  memory_state:            { tools: true },
-  tool_integration:        { tools: true },
-  failure_observability:   { patterns: true, failureModes: true },
-  trust_control:           { failureModes: true },
-  compatibility_validator: { tools: true, patterns: true },
-  skeptic:                 { tools: true, patterns: true, failureModes: true },
-  technical_writer:        { tools: true, patterns: true, failureModes: true },
+  intake:                 { tools: true, patterns: true },
+  orchestration:          { patterns: true },
+  security:               { tools: true },
+  memoryState:            { tools: true },
+  toolIntegration:        { tools: true },
+  failureObservability:   { patterns: true, failureModes: true },
+  trustControl:           { failureModes: true },
+  compatibilityValidator: { tools: true, patterns: true },
+  skeptic:                { tools: true, patterns: true, failureModes: true },
+  technicalWriter:        { tools: true, patterns: true, failureModes: true },
 };
 
 export interface RunAgentOpts {
@@ -32,6 +32,10 @@ export interface RunAgentOpts {
   tenantId?: string;
   tenantContextVersion?: string;
   agentKey: string;
+  // Overrides agentKey for checkpoint storage only. Use when the same agent
+  // runs multiple times in one wave (e.g. F&O cycle 1 vs cycle 2) — each call
+  // needs a distinct checkpoint name while sharing the same version and provider.
+  checkpointName?: string;
   wave: string;
   upstreamHashes: Record<string, string>;
   upstreamOutputs?: unknown;
@@ -47,7 +51,8 @@ export interface AgentResult {
 // Core agent runner used by every wave worker.
 // Handles: provider resolution, checkpoint reuse, agent call, checkpoint write.
 export async function runAgent(opts: RunAgentOpts): Promise<AgentResult> {
-  const { db, runId, tenantId, tenantContextVersion, agentKey, wave, upstreamHashes, upstreamOutputs, callAgent } = opts;
+  const { db, runId, tenantId, tenantContextVersion, agentKey, checkpointName, wave, upstreamHashes, upstreamOutputs, callAgent } = opts;
+  const checkpointAgentName = checkpointName ?? agentKey;
 
   // Tenant context version is an upstream dependency for checkpoint reuse.
   // If the tenant updates their context block, this version changes and
@@ -85,13 +90,13 @@ export async function runAgent(opts: RunAgentOpts): Promise<AgentResult> {
   const { manifest, manifestVersion } = await fetchManifest(db);
 
   // 5. Check checkpoint reuse (all 4 conditions)
-  const checkpointKey = { runId, agentName: agentKey, contextHash, agentVersion, manifestVersion, upstreamHashes: effectiveUpstreamHashes };
+  const checkpointKey = { runId, agentName: checkpointAgentName, contextHash, agentVersion, manifestVersion, upstreamHashes: effectiveUpstreamHashes };
   const cached = await readCheckpoint(db, checkpointKey);
 
   if (cached !== null) {
     return {
       output: cached,
-      checkpointVersion: `${agentVersion}:${contextHash}`,
+      checkpointVersion: `${checkpointAgentName}:${agentVersion}:${contextHash}`,
       fromCache: true,
     };
   }
@@ -109,7 +114,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<AgentResult> {
 
   return {
     output,
-    checkpointVersion: `${agentVersion}:${contextHash}`,
+    checkpointVersion: `${checkpointAgentName}:${agentVersion}:${contextHash}`,
     fromCache: false,
   };
 }
