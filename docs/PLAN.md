@@ -135,12 +135,25 @@ input shared across all assertions. Security split into two sequential scenarios
 Agent call logger added (`AGENT_CALL_LOG` env var) — appends timing, token
 counts, cache breakdown, and estimated cost per call to a CSV file.
 
+**AgentKey registry bug found and fixed (2026-05-01):** All multi-word agent
+keys in the worker layer used snake_case (`memory_state`, `tool_integration`,
+`failure_observability`, etc.) while the version registry and
+`DEFAULT_PROVIDER_CONFIGS` used camelCase. Version lookup would have thrown at
+runtime for every multi-word agent. The worker layer had never been exercised
+end-to-end — this was caught during a completion audit. Fixed in the Wave 2
+cooperative exchange PR; all worker keys are now camelCase.
+
 ### 3e. Maintenance workers `[Upcoming]`
 BullMQ workers for manifest refresh and Gatekeeper runs. Same infrastructure
 as the wave workers — new job types on the existing queue.
 
-Schema additions before workers: add `last_refreshed` to `manifest_entries`,
-add `manifest_proposals` table for proposed changes pending Gatekeeper review.
+Schema additions before workers (neither exists yet — add both before writing
+any worker code):
+1. Add `last_refreshed_at` column to `manifest_tools`, `manifest_patterns`,
+   and `manifest_failure_modes` (the three typed tables from migration 0006)
+2. Add `manifest_proposals` table: id, tool_name, proposed_entry (jsonb),
+   proposing_agent, status (pending/approved/rejected/escalated),
+   gatekeeper_findings (jsonb nullable), cycle_count
 
 **Manifest refresh worker:** Lazy trigger — fires when a tool is referenced by
 a run and last_refreshed exceeds the staleness threshold (tier-based, configurable
