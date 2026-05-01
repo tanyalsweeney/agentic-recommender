@@ -104,14 +104,14 @@ export const cvResultCache = pgTable(
   (t) => [unique("cv_result_cache_tool_version_unique").on(t.toolName, t.toolVersion)]
 );
 
-// ── manifest_entries ──────────────────────────────────────────────────────────
+// ── manifest_tools ────────────────────────────────────────────────────────────
 
-export const manifestEntries = pgTable(
-  "manifest_entries",
+export const manifestTools = pgTable(
+  "manifest_tools",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     toolName: text("tool_name").notNull().unique(),
-    category: text("category"),
+    category: text("category"), // orchestration-framework | vector-db | llm-sdk | job-queue | etc.
     maturityTier: text("maturity_tier").notNull().default("Emerging"),
     confidenceScore: integer("confidence_score").notNull().default(5),
     adoptionSignals: jsonb("adoption_signals").notNull().default({}),
@@ -120,25 +120,54 @@ export const manifestEntries = pgTable(
     // CV reasons about deployment compatibility from this fact — does not pre-store conclusions.
     deploymentModel: text("deployment_model"),
     // Floor requirements to run this tool at baseline. Use case adds on top.
-    // CV directive: treat this as the known minimum, reason about what this specific
-    // architecture adds beyond the floor. Example: { "runtime": "nodejs", "minVersion": "18" }
     minimumRuntimeRequirements: jsonb("minimum_runtime_requirements"),
     // Documented hard constraints that affect architectural decisions regardless of use case.
-    // Example: ["Cannot exceed 15min execution on Lambda", "No ARM64 support before v2.1"]
-    // Only populated when a constraint is documented and architecturally significant.
     knownConstraints: jsonb("known_constraints"),
-    // Domain knowledge payload — structure varies by category.
-    // category = 'pattern': knownGotchas, failurePosture, scaleConsiderations, stateHandoffPoints, mixingNotes
-    // category = 'failure_mode': description, likelihoodSignals, detectionApproach, mitigationApproaches, domainApplicability
-    // Maintained by the Manifest Gatekeeper; no code change needed to evolve domain knowledge.
+    // Optional tool-specific domain knowledge. Maintained by the Manifest Gatekeeper.
     domainKnowledgePayload: jsonb("domain_knowledge_payload"),
     lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
     vetted: boolean("vetted").notNull().default(true),
     owner: text("owner").notNull().default("global"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (t) => [index("manifest_entries_tier_deployment_idx").on(t.maturityTier, t.deploymentModel)]
+  (t) => [index("manifest_tools_tier_deployment_idx").on(t.maturityTier, t.deploymentModel)]
 );
+
+// ── manifest_patterns ─────────────────────────────────────────────────────────
+
+export const manifestPatterns = pgTable("manifest_patterns", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  patternName: text("pattern_name").notNull().unique(),
+  maturityTier: text("maturity_tier").notNull().default("Emerging"),
+  confidenceScore: integer("confidence_score").notNull().default(5),
+  adoptionSignals: jsonb("adoption_signals").notNull().default({}),
+  maintenanceSignals: jsonb("maintenance_signals").notNull().default({}),
+  // Required. Shape: { knownGotchas, failurePosture, scaleConsiderations, stateHandoffPoints, mixingNotes }
+  // Maintained by the Manifest Gatekeeper without code changes.
+  domainKnowledgePayload: jsonb("domain_knowledge_payload").notNull(),
+  lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+  vetted: boolean("vetted").notNull().default(true),
+  owner: text("owner").notNull().default("global"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+// ── manifest_failure_modes ────────────────────────────────────────────────────
+
+export const manifestFailureModes = pgTable("manifest_failure_modes", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  failureModeName: text("failure_mode_name").notNull().unique(),
+  maturityTier: text("maturity_tier").notNull().default("Established"),
+  confidenceScore: integer("confidence_score").notNull().default(9),
+  adoptionSignals: jsonb("adoption_signals").notNull().default({}),
+  maintenanceSignals: jsonb("maintenance_signals").notNull().default({}),
+  // Required. Shape: { description, likelihoodSignals, detectionApproach, mitigationApproaches, domainApplicability }
+  // Maintained by the Manifest Gatekeeper without code changes.
+  domainKnowledgePayload: jsonb("domain_knowledge_payload").notNull(),
+  lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+  vetted: boolean("vetted").notNull().default(true),
+  owner: text("owner").notNull().default("global"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
 
 // ── org_list ──────────────────────────────────────────────────────────────────
 

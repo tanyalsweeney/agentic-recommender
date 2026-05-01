@@ -47,7 +47,7 @@ const schemaChangeEntry = {
   toolName: "some-tool",
   category: "orchestration-framework",
   description: "A tool that needs a new top-level field: 'multiRegionSupport' boolean.",
-  proposedSchemaChange: "Add multiRegionSupport: boolean to manifest_entries",
+  proposedSchemaChange: "Add multiRegionSupport: boolean to manifest_tools",
   deploymentModel: "managed_cloud",
   minimumRuntimeRequirements: null,
   knownConstraints: null,

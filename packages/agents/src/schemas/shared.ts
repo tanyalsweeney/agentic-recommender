@@ -46,7 +46,7 @@ export const MaturityLabel = z.enum([
 export type MaturityLabel = z.infer<typeof MaturityLabel>;
 
 // Tool recommended by an agent that is not in the manifest.
-// Written to manifest_entries with vetted=false by the worker after the run.
+// Written to manifest_tools with vetted=false by the worker after the run.
 export const ManifestCandidate = z.object({
   toolName: z.string(),
   category: z.string(),

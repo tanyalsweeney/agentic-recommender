@@ -31,7 +31,7 @@ export async function processWave3Job(
         ...allUpstreamOutputs,
         skepticPreviousCycle: lastResult?.output ?? null,
       },
-      callAgent: (m, c, p) => callSkepticAgent(m, c, allUpstreamOutputs as never, p as never),
+      callAgent: (m, c, p) => callSkepticAgent(m, c, allUpstreamOutputs as { wave1: unknown; wave2: unknown; cv: unknown }, p),
     });
 
     lastResult = result;

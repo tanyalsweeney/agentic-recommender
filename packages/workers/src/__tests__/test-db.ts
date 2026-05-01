@@ -1,14 +1,14 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import {
-  runs, runCheckpoints, manifestEntries, config,
-  users, jobs, orgList,
+  runs, runCheckpoints, manifestTools, manifestPatterns, manifestFailureModes,
+  config, users, jobs, orgList,
 } from "@agent12/shared";
 
 const url = process.env.DATABASE_URL_TEST;
 if (!url) throw new Error("DATABASE_URL_TEST is not set");
 
-const schema = { runs, runCheckpoints, manifestEntries, config, users, jobs, orgList };
+const schema = { runs, runCheckpoints, manifestTools, manifestPatterns, manifestFailureModes, config, users, jobs, orgList };
 
 let client: postgres.Sql | null = null;
 let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
