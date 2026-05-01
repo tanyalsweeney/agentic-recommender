@@ -25,6 +25,8 @@ export const agentVersions = {
   compatibilityValidator: fileVersion("compatibility-validator.txt"),
   skeptic:                fileVersion("skeptic.txt"),
   technicalWriter:        fileVersion("technical-writer.txt"),
+  manifestGatekeeper:     fileVersion("manifest-gatekeeper.txt"),
+  orgListGatekeeper:      fileVersion("org-list-gatekeeper.txt"),
 } as const;
 
 export type AgentName = keyof typeof agentVersions;

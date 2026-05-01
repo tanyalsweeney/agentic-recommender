@@ -11,7 +11,8 @@
     "eval:skeptic": "vitest run src/skeptic",
     "eval:technical-writer": "vitest run src/technical-writer",
     "eval:cooperative": "vitest run src/cooperative",
-    "eval:cv": "vitest run src/cv"
+    "eval:cv": "vitest run src/cv",
+    "eval:gatekeeper": "vitest run src/gatekeeper"
   },
   "dependencies": {
     "@agent12/agents": "workspace:*",

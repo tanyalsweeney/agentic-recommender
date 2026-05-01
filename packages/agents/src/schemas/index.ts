@@ -9,3 +9,5 @@ export * from "./trust-control.js";
 export * from "./compatibility-validator.js";
 export * from "./skeptic.js";
 export * from "./technical-writer.js";
+export * from "./manifest-gatekeeper.js";
+export * from "./org-list-gatekeeper.js";

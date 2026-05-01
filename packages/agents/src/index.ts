@@ -12,3 +12,5 @@ export * from "./callers/trust-control.js";
 export * from "./callers/compatibility-validator.js";
 export * from "./callers/skeptic.js";
 export * from "./callers/technical-writer.js";
+export * from "./callers/manifest-gatekeeper.js";
+export * from "./callers/org-list-gatekeeper.js";
