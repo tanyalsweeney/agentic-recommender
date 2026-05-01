@@ -17,7 +17,7 @@ export async function processPass1Job(
     wave: "pass1",
     upstreamHashes: upstreamCheckpointVersions,
     upstreamOutputs: allUpstreamOutputs,
-    callAgent: (m, c, p) => callTechnicalWriterAgent(m, c, allUpstreamOutputs as never, p as never),
+    callAgent: (m, c, p) => callTechnicalWriterAgent(m, c, allUpstreamOutputs as { wave1: unknown; wave2: unknown; cv: unknown; skeptic: unknown }, p),
   });
 
   return { output: result.output, checkpointVersion: result.checkpointVersion };

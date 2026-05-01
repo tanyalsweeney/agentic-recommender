@@ -167,7 +167,9 @@ async function callOpenAICompatibleAgent<T>(
   if (!toolCall) {
     throw new Error(`${agentName}: no tool call in response — model did not call the function`);
   }
-
-  const parsed = JSON.parse(toolCall.function.arguments);
+  if (!('function' in toolCall)) {
+    throw new Error(`${agentName}: tool call is not a function call`);
+  }
+  const parsed = JSON.parse((toolCall as { function: { arguments: string } }).function.arguments);
   return zodSchema.parse(parsed);
 }

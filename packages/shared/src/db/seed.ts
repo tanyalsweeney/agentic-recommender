@@ -1,14 +1,14 @@
 /**
  * Manifest and org list seeder.
- * Idempotent — safe to re-run. Existing entries are skipped (onConflictDoNothing).
+ * Idempotent — safe to re-run. Existing entries are skipped via onConflictDoNothing.
  * Run with: pnpm --filter shared db:seed
  */
 
 import "dotenv/config";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { sql } from "drizzle-orm";
-import { manifestEntries, orgList } from "./schema.js";
+import { manifestTools, manifestPatterns, manifestFailureModes, orgList } from "./schema.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -16,9 +16,9 @@ if (!url) throw new Error("DATABASE_URL is not set");
 const client = postgres(url);
 const db = drizzle(client);
 
-// ── Manifest entries ──────────────────────────────────────────────────────────
+// ── Tools ─────────────────────────────────────────────────────────────────────
 
-const TOOLS = [
+const TOOLS: Array<typeof manifestTools.$inferInsert> = [
   // ── Orchestration frameworks ────────────────────────────────────────────────
   {
     toolName: "langchain",
@@ -359,17 +359,13 @@ const TOOLS = [
   },
 ];
 
-// Patterns and failure modes carry domainKnowledgePayload — reuse the
-// eval seed manifest data which is already complete and reviewed.
-const PATTERNS = [
+// ── Patterns ──────────────────────────────────────────────────────────────────
+
+const PATTERNS: Array<typeof manifestPatterns.$inferInsert> = [
   {
-    toolName: "pattern:pipeline",
-    category: "pattern",
+    patternName: "pipeline",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Foundational pattern — widespread" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -392,13 +388,9 @@ const PATTERNS = [
     },
   },
   {
-    toolName: "pattern:dag",
-    category: "pattern",
+    patternName: "dag",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Foundational pattern — widespread" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -422,13 +414,9 @@ const PATTERNS = [
     },
   },
   {
-    toolName: "pattern:supervisor",
-    category: "pattern",
+    patternName: "supervisor",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Foundational pattern — widespread" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -452,13 +440,9 @@ const PATTERNS = [
     },
   },
   {
-    toolName: "pattern:event_driven",
-    category: "pattern",
+    patternName: "event_driven",
     maturityTier: "Emerging",
     confidenceScore: 7,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Growing adoption for async agent coordination" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -481,13 +465,9 @@ const PATTERNS = [
     },
   },
   {
-    toolName: "pattern:peer_to_peer",
-    category: "pattern",
+    patternName: "peer_to_peer",
     maturityTier: "Emerging",
     confidenceScore: 5,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Niche — experimental in production contexts" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -503,13 +483,9 @@ const PATTERNS = [
     },
   },
   {
-    toolName: "pattern:hierarchical",
-    category: "pattern",
+    patternName: "hierarchical",
     maturityTier: "Emerging",
     confidenceScore: 6,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Used for genuinely multi-domain systems" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -526,15 +502,13 @@ const PATTERNS = [
   },
 ];
 
-const FAILURE_MODES = [
+// ── Failure modes ─────────────────────────────────────────────────────────────
+
+const FAILURE_MODES: Array<typeof manifestFailureModes.$inferInsert> = [
   {
-    toolName: "failure:cascading_agent_failures",
-    category: "failure_mode",
+    failureModeName: "cascading_agent_failures",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Universally applicable failure mode" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -554,13 +528,9 @@ const FAILURE_MODES = [
     },
   },
   {
-    toolName: "failure:reasoning_loops",
-    category: "failure_mode",
+    failureModeName: "reasoning_loops",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Universally applicable failure mode" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -581,13 +551,9 @@ const FAILURE_MODES = [
     },
   },
   {
-    toolName: "failure:tool_misuse_under_failure",
-    category: "failure_mode",
+    failureModeName: "tool_misuse_under_failure",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Universally applicable failure mode" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -609,13 +575,9 @@ const FAILURE_MODES = [
     },
   },
   {
-    toolName: "failure:nondeterministic_output_divergence",
-    category: "failure_mode",
+    failureModeName: "nondeterministic_output_divergence",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Universally applicable failure mode" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -637,13 +599,9 @@ const FAILURE_MODES = [
     },
   },
   {
-    toolName: "failure:agent_memory_corruption",
-    category: "failure_mode",
+    failureModeName: "agent_memory_corruption",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Universally applicable failure mode" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -665,13 +623,9 @@ const FAILURE_MODES = [
     },
   },
   {
-    toolName: "failure:agent_handoff_schema_failures",
-    category: "failure_mode",
+    failureModeName: "agent_handoff_schema_failures",
     maturityTier: "Established",
     confidenceScore: 9,
-    deploymentModel: null,
-    minimumRuntimeRequirements: null,
-    knownConstraints: null,
     adoptionSignals: { description: "Universally applicable failure mode" },
     maintenanceSignals: {},
     domainKnowledgePayload: {
@@ -694,59 +648,56 @@ const FAILURE_MODES = [
   },
 ];
 
-// ── Org list seed ─────────────────────────────────────────────────────────────
+// ── Org list ──────────────────────────────────────────────────────────────────
 
 const ORG_LIST: Array<{ orgName: string; tier: 1 | 2 | 3; signals: Record<string, unknown> }> = [
   // Tier 1 — market influence
-  { orgName: "Anthropic",    tier: 1, signals: { basis: "market-influence", notes: "Frontier model lab defining agentic norms; Claude, MCP, Constitutional AI" } },
-  { orgName: "OpenAI",       tier: 1, signals: { basis: "market-influence", notes: "GPT series, Assistants API, function calling; de facto industry standard setters" } },
-  { orgName: "Google",       tier: 1, signals: { basis: "market-influence", notes: "Gemini, Vertex AI, DeepMind research; platform decisions shape industry at scale" } },
-  { orgName: "Microsoft",    tier: 1, signals: { basis: "market-influence", notes: "Azure OpenAI, Copilot, Semantic Kernel, AutoGen; enterprise agentic platform" } },
-  { orgName: "Amazon",       tier: 1, signals: { basis: "market-influence", notes: "AWS Bedrock, SageMaker; cloud infrastructure for majority of deployed LLM systems" } },
-  { orgName: "Meta",         tier: 1, signals: { basis: "market-influence", notes: "Llama series open weights; dominant open model adoption signal" } },
-  { orgName: "Nvidia",       tier: 1, signals: { basis: "market-influence", notes: "GPU infrastructure underpinning all LLM training and inference at scale" } },
+  { orgName: "Anthropic",        tier: 1, signals: { basis: "market-influence", notes: "Frontier model lab defining agentic norms; Claude, MCP, Constitutional AI" } },
+  { orgName: "OpenAI",           tier: 1, signals: { basis: "market-influence", notes: "GPT series, Assistants API, function calling; de facto industry standard setters" } },
+  { orgName: "Google",           tier: 1, signals: { basis: "market-influence", notes: "Gemini, Vertex AI, DeepMind research; platform decisions shape industry at scale" } },
+  { orgName: "Microsoft",        tier: 1, signals: { basis: "market-influence", notes: "Azure OpenAI, Copilot, Semantic Kernel, AutoGen; enterprise agentic platform" } },
+  { orgName: "Amazon",           tier: 1, signals: { basis: "market-influence", notes: "AWS Bedrock, SageMaker; cloud infrastructure for majority of deployed LLM systems" } },
+  { orgName: "Meta",             tier: 1, signals: { basis: "market-influence", notes: "Llama series open weights; dominant open model adoption signal" } },
+  { orgName: "Nvidia",           tier: 1, signals: { basis: "market-influence", notes: "GPU infrastructure underpinning all LLM training and inference at scale" } },
   // Tier 1 — deep commitment
-  { orgName: "LangChain",   tier: 1, signals: { basis: "committed", notes: "Dominant framework ecosystem (LangGraph, LangSmith); extensive engineering publications" } },
-  { orgName: "Hugging Face", tier: 1, signals: { basis: "committed", notes: "Open-source model hub; smolagents; prolific technical publishing" } },
+  { orgName: "LangChain",        tier: 1, signals: { basis: "committed", notes: "Dominant framework ecosystem (LangGraph, LangSmith); extensive engineering publications" } },
+  { orgName: "Hugging Face",     tier: 1, signals: { basis: "committed", notes: "Open-source model hub; smolagents; prolific technical publishing" } },
   // Tier 2
-  { orgName: "Cohere",       tier: 2, signals: { notes: "Serious model provider with genuine enterprise engineering depth" } },
-  { orgName: "Mistral",      tier: 2, signals: { notes: "Strong open model engineering; growing enterprise adoption" } },
-  { orgName: "Together AI",  tier: 2, signals: { notes: "Inference infrastructure with real technical credibility" } },
+  { orgName: "Cohere",           tier: 2, signals: { notes: "Serious model provider with genuine enterprise engineering depth" } },
+  { orgName: "Mistral",          tier: 2, signals: { notes: "Strong open model engineering; growing enterprise adoption" } },
+  { orgName: "Together AI",      tier: 2, signals: { notes: "Inference infrastructure with real technical credibility" } },
   { orgName: "Weights & Biases", tier: 2, signals: { notes: "MLflow competitor; observability tooling and publications; Weave for LLM tracing" } },
-  { orgName: "Pinecone",     tier: 2, signals: { notes: "Vector DB provider with substantive engineering content" } },
-  { orgName: "Weaviate",     tier: 2, signals: { notes: "Vector DB provider with substantive engineering content" } },
-  { orgName: "Modal",        tier: 2, signals: { notes: "Agent infrastructure with real technical credibility" } },
-  { orgName: "E2B",          tier: 2, signals: { notes: "Sandboxed code execution for agents; real technical credibility" } },
-  { orgName: "Databricks",   tier: 2, signals: { notes: "Strong engineering depth; MLflow ownership; serious publications" } },
-  { orgName: "Cursor",       tier: 2, signals: { notes: "AI-native company running agentic systems as core product" } },
+  { orgName: "Pinecone",         tier: 2, signals: { notes: "Vector DB provider with substantive engineering content" } },
+  { orgName: "Weaviate",         tier: 2, signals: { notes: "Vector DB provider with substantive engineering content" } },
+  { orgName: "Modal",            tier: 2, signals: { notes: "Agent infrastructure with real technical credibility" } },
+  { orgName: "E2B",              tier: 2, signals: { notes: "Sandboxed code execution for agents; real technical credibility" } },
+  { orgName: "Databricks",       tier: 2, signals: { notes: "Strong engineering depth; MLflow ownership; serious publications" } },
+  { orgName: "Cursor",           tier: 2, signals: { notes: "AI-native company running agentic systems as core product" } },
   // Tier 3
-  { orgName: "CrewAI",       tier: 3, signals: { notes: "Multi-agent framework; growing but not yet established track record" } },
-  { orgName: "LlamaIndex",   tier: 3, signals: { notes: "RAG and data framework; growing but not yet established" } },
-  { orgName: "Haystack",     tier: 3, signals: { notes: "LLM pipeline framework (deepset); growing adoption in RAG" } },
-  { orgName: "Composio",     tier: 3, signals: { notes: "Tooling layer for agent integrations; newer but gaining traction" } },
+  { orgName: "CrewAI",           tier: 3, signals: { notes: "Multi-agent framework; growing but not yet established track record" } },
+  { orgName: "LlamaIndex",       tier: 3, signals: { notes: "RAG and data framework; growing but not yet established" } },
+  { orgName: "Haystack",         tier: 3, signals: { notes: "LLM pipeline framework (deepset); growing adoption in RAG" } },
+  { orgName: "Composio",         tier: 3, signals: { notes: "Tooling layer for agent integrations; newer but gaining traction" } },
 ];
 
-// ── Seeder ────────────────────────────────────────────────────────────────────
+// ── Seeder functions ──────────────────────────────────────────────────────────
 
-async function seedManifest() {
-  const allEntries = [
-    ...TOOLS.map(t => ({ ...t, domainKnowledgePayload: null, vetted: true })),
-    ...PATTERNS.map(p => ({ ...p, vetted: true })),
-    ...FAILURE_MODES.map(f => ({ ...f, vetted: true })),
-  ];
+async function seedTools() {
+  await db.insert(manifestTools).values(TOOLS).onConflictDoNothing({ target: manifestTools.toolName });
+  console.log(`manifest_tools: seeded ${TOOLS.length} entries`);
+}
 
-  const result = await db
-    .insert(manifestEntries)
-    .values(allEntries)
-    .onConflictDoNothing({ target: manifestEntries.toolName });
+async function seedPatterns() {
+  await db.insert(manifestPatterns).values(PATTERNS).onConflictDoNothing({ target: manifestPatterns.patternName });
+  console.log(`manifest_patterns: seeded ${PATTERNS.length} entries`);
+}
 
-  console.log(`manifest_entries: seeded ${allEntries.length} entries (skipped any duplicates)`);
-  return allEntries.length;
+async function seedFailureModes() {
+  await db.insert(manifestFailureModes).values(FAILURE_MODES).onConflictDoNothing({ target: manifestFailureModes.failureModeName });
+  console.log(`manifest_failure_modes: seeded ${FAILURE_MODES.length} entries`);
 }
 
 async function seedOrgList() {
-  // org_list has no unique constraint on orgName — check existence before inserting.
-  const { eq } = await import("drizzle-orm");
   let inserted = 0;
   let skipped = 0;
 
@@ -757,10 +708,7 @@ async function seedOrgList() {
       .where(eq(orgList.orgName, org.orgName))
       .limit(1);
 
-    if (existing.length > 0) {
-      skipped++;
-      continue;
-    }
+    if (existing.length > 0) { skipped++; continue; }
 
     await db.insert(orgList).values({
       orgName: org.orgName,
@@ -777,7 +725,9 @@ async function seedOrgList() {
 
 async function main() {
   console.log("Seeding database...");
-  await seedManifest();
+  await seedTools();
+  await seedPatterns();
+  await seedFailureModes();
   await seedOrgList();
   console.log("Done.");
   await client.end();

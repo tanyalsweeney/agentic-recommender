@@ -28,7 +28,7 @@ export async function processWave2Job(
     wave: "2",
     upstreamHashes,
     upstreamOutputs: wave1Outputs,
-    callAgent: (m, c, p) => callFailureObservabilityAgent(m, c, p as never),
+    callAgent: (m, c, p) => callFailureObservabilityAgent(m, c, p),
   });
 
   // Cycle 1: T&C (receives F&O output)
@@ -38,7 +38,7 @@ export async function processWave2Job(
     wave: "2",
     upstreamHashes: { ...upstreamHashes, failure_observability: foResult.checkpointVersion },
     upstreamOutputs: { wave1: wave1Results, failureObservability: foResult.output },
-    callAgent: (m, c, p) => callTrustControlAgent(m, c, p as never),
+    callAgent: (m, c, p, u) => callTrustControlAgent(m, c, u as { failureObservability: unknown }, p),
   });
 
   const tc = tcResult.output as { unresolvedTensions?: string[] };
@@ -53,7 +53,7 @@ export async function processWave2Job(
       trust_control: tcResult.checkpointVersion,
     },
     upstreamOutputs: { wave1: wave1Results, trustControl: tcResult.output },
-    callAgent: (m, c, p) => callFailureObservabilityAgent(m, c, p as never),
+    callAgent: (m, c, p) => callFailureObservabilityAgent(m, c, p),
   });
 
   return {
