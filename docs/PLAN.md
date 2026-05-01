@@ -167,41 +167,12 @@ BullMQ job submission from Next.js API routes. Server-sent events for progressiv
 CV disclosure (stream per-tool results as sub-tasks complete; blur applied on
 free tier runs in real time). Email notifications on run completion.
 
-### 4f. Tenant dashboard and config interface `[Upcoming]`
-Tenant-facing interface for run management and configuration. Separate from the
-admin dashboard (Phase 5).
-
-**Tenant dashboard:**
-- Run history scoped to tenant
-- Per-run cost and token breakdown
-- Active holds and status
-
-**Tenant config interface:**
-- Tenant context management: register/update regulatory controls, prohibited
-  tools, certifications injected into verifiedContext before Wave 1
-- BYOK key management: add/rotate/revoke provider API keys (stored in
-  tenant_secrets with field-level encryption); key validated against provider
-  API before storage; data residency flag shown for non-US providers
-- Communication context template selection: choose the audience/purpose template
-  that shapes Technical Writer output
-- Branding: preset picker (select from global presets for each mode); token
-  overrides for color, font, and radius tokens; logo upload via Vercel Blob;
-  string overrides for product name, tagline, button labels, and section headers
-  (stored in config table under ui.string.*); draft/publish workflow so changes
-  can be previewed before going live
-- White-label tier settings: Standard (Agent12 attribution required), Premium
-  (attribution optional), Enterprise (custom domain, full attribution removal,
-  liability transfer in contract)
-
 ---
 
 ## Phase 5 — Admin dashboard `[Upcoming]`
 
-Eight panels. Lower priority — build the panels that matter first: pipeline
-observability and margin per tier.
-
-Pipeline observability and tenant management panels must be in place before
-the first paying tenant is onboarded.
+Eight panels. Build pipeline observability first — it's the foundation for
+understanding every run, including demo runs.
 
 **Pipeline observability:** per-agent latency breakdown, wave timing, checkpoint
 hit/miss rates, token usage and cost per run.
@@ -233,11 +204,40 @@ status.
 
 ---
 
-## Phase 6 — Maintenance pipeline `[Upcoming]`
+## Phase 6 — Tenant dashboard and config interface `[Upcoming]`
+
+Tenant-facing interface for run management and configuration. Admin dashboard
+(Phase 5) must be complete before this phase begins.
+
+**Tenant dashboard:**
+- Run history scoped to tenant
+- Per-run cost and token breakdown
+- Active holds and status
+
+**Tenant config interface:**
+- Tenant context management: register/update regulatory controls, prohibited
+  tools, certifications injected into verifiedContext before Wave 1
+- BYOK key management: add/rotate/revoke provider API keys (stored in
+  tenant_secrets with field-level encryption); key validated against provider
+  API before storage; data residency flag shown for non-US providers
+- Communication context template selection: choose the audience/purpose template
+  that shapes Technical Writer output
+- Branding: preset picker (select from global presets for each mode); token
+  overrides for color, font, and radius tokens; logo upload via Vercel Blob;
+  string overrides for product name, tagline, button labels, and section headers
+  (stored in config table under ui.string.*); draft/publish workflow so changes
+  can be previewed before going live
+- White-label tier settings: Standard (Agent12 attribution required), Premium
+  (attribution optional), Enterprise (custom domain, full attribution removal,
+  liability transfer in contract)
+
+---
+
+## Phase 7 — Maintenance pipeline `[Upcoming]`
 
 Manifest refresh (lazy trigger), Manifest Gatekeeper, Org List Gatekeeper.
 
-Run on a hardcoded seed manifest through Phase 5. Build the maintenance
+Run on a hardcoded seed manifest through Phase 6. Build the maintenance
 pipeline when there is enough usage data to know which tools need refreshing.
 
 ---
