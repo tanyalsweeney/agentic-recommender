@@ -633,6 +633,7 @@ CV's work is decomposed into independently checkpointable sub-tasks (see Pipelin
 - License (SPDX identifier; copyleft licenses flagged for legal review)
 - Pricing and tier data
 - For managed cloud services: availability in the target cloud provider and region — whether specified by the user or recommended by the system
+- Known production trip hazards and common integration gotchas for the recommended version — version-specific issues not captured in CVEs or breaking change logs
 - Direct link to the source visited — included in CV's report as the source reference and as a manual verification path if any data is flagged as unavailable
 
 *Data source hierarchy (per-tool sub-tasks):*
@@ -650,10 +651,24 @@ CV uses structured APIs for high-accuracy, high-stakes data points and LLM web s
 | License | Package manifest (PyPI classifiers, npm `license` field) | LLM web search |
 | Pricing and tier data | LLM web search (no structured API) | — |
 | Regional availability (managed cloud services) | LLM web search (no structured API) | — |
+| Known production trip hazards, integration gotchas | LLM web search (no structured API) | — |
 
 API calls are one tool, one call — no batch endpoints exist on any of these APIs. Parallel per-tool sub-tasks mean all API calls across the tool set run concurrently.
 
 **Required credentials (free):** GitHub token (5,000 req/hour; without token: 60/hour — insufficient for parallel sub-tasks at production scale); NVD API key (50 req/30s; without key: 5 req/30s). Both are free to obtain and must be provisioned before production traffic. Add to `.env.example` alongside existing credentials.
+
+*Execution structure:*
+
+CV runs as a single BullMQ job. Within that job, per-tool lookups run in parallel via Promise.all(); sequential phases follow after all per-tool work resolves. BullMQ handles wave-level orchestration; Node.js concurrency handles within-wave parallelism. No LLM acts as an orchestrator at any level — agent calls are leaf nodes.
+
+The full tool list is not known until Wave 2 completes (agents may recommend tools beyond the user's intake selections), making static pre-creation of per-tool child jobs impossible. cv_result_cache serves as the per-tool checkpoint: if the wave2_5 job fails mid-run, retrying it reads cached results for completed tools and skips their API calls and web search.
+
+Per-tool lookups execute in parallel, one Promise per tool:
+1. Cache check against cv_result_cache — early exit if a fresh result exists within TTL
+2. Parallel API calls (GHSA, PyPI/npm/GitHub Releases, NVD if GHSA has no entry) and one LLM web search covering all data points with no structured API source (pricing, regional availability, trip hazards, integration gotchas)
+3. Write completed result to cv_result_cache
+
+After Promise.all() resolves, sequential phases execute in order: cross-agent conflict checks, then cross-tool compatibility checks, then cost aggregation.
 
 *Cross-agent conflict checks (run after all per-tool sub-tasks complete):*
 - Constraint violations: checks whether any tool or decision recommended by one agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
@@ -662,9 +677,13 @@ API calls are one tool, one call — no batch endpoints exist on any of these AP
 These checks are primarily structural comparisons against data already collected from the per-tool sub-tasks. Where a version conflict or constraint violation is found, CV performs additional API or web lookup to identify a mutually compatible version or alternative — the rejection message includes a resolution path, not just a flag. Definitive elimination applies only where no resolution exists: binary constraint violations with no workaround (e.g., SaaS-only tool against a no-cloud constraint), platform incompatibilities with no compatible version, or unpatched CVEs affecting all available stable versions. Any tools definitively eliminated here are removed from scope before the cross-tool compatibility checks run, avoiding unnecessary research on rejected candidates.
 
 *Cross-tool compatibility checks (run after cross-agent conflict checks complete, scoped to the surviving tool set):*
-- Verifies that recommended tools and versions are mutually compatible across all meaningful tool pairs and integration points
-- Checks LLM SDK version against orchestration framework, memory/vector store against embedding model API, agent framework against tool execution runtime, and model constraints against platform deployment target
-- Version conflicts: where two agents both depend on the same tool, checks that their version requirements are compatible
+
+Meaningful tool pairs are identified via two layers:
+
+- **Algorithmic:** package manifests collected during per-tool API calls encode declared dependencies and version requirements. Tools sharing a declared dependency are checked for version range conflicts deterministically — no LLM reasoning required. If Tool A requires `openai>=1.0.0` and Tool B requires `openai>=0.28.0,<1.0.0`, the conflict is detected from manifest data alone.
+- **LLM reasoning:** one call over the full tool set, manifest `knownConstraints` and `domainKnowledgePayload` fields, and per-tool findings identifies architectural incompatibilities not captured in package declarations (e.g., competing orchestration frameworks, embedding dimension mismatches between vector store and embedding model). Flags a small number of pairs for targeted web investigation.
+
+Targeted web searches fire only for pairs the LLM flags — typically a handful per run. Per-tool trip hazard findings from the per-tool phase are available as context, reducing re-search. Same resolution-seeking behavior as conflict checks: where a compatible alternative version or configuration exists, it is surfaced alongside the incompatibility finding.
 
 *Cost aggregation:*
 - Aggregates cost signals from Wave 1 and Wave 2 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
@@ -1076,10 +1095,12 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 |---|---|---|---|
 | Compatibility Validator freshness | API-first lookup + LLM web search per run | Ensures version, compatibility, and pricing data is current at evaluation time — the manifest does not serve as a source for CV checks | 2026-04-15, updated 2026-05-01 |
 | Compatibility Validator in Pass 2 | Shared input to all synthesis agents, no synthesis counterpart | Cross-cutting data; not a domain with its own ADRs or specs | 2026-04-14 |
-| CV data sourcing strategy | Structured APIs for high-accuracy data; LLM web search for unstructured remainder | Structured APIs (GHSA, PyPI, npm, GitHub) return authoritative, citation-quality data for CVEs and versions. LLM web search is reserved for data points with no structured source (pricing, regional availability). Accuracy and provenance requirements for CVE data make LLM-only sourcing unacceptable. | 2026-05-01 |
+| CV data sourcing strategy | Structured APIs for high-accuracy data; one LLM web search per tool for all unstructured data points | Structured APIs (GHSA, PyPI, npm, GitHub) return authoritative, citation-quality data for CVEs and versions. One LLM web search per tool covers all data points with no structured source: pricing, regional availability, known production trip hazards, and common integration gotchas. | 2026-05-01 |
 | CVE primary source | GitHub Advisory Database (GHSA) via GitHub API | GHSA maps directly to package ecosystem and name — no CPE translation required. NVD indexes by CPE, which requires a vendor-name translation that is error-prone for some packages. GHSA covers the majority of Tier 1 platform tools in the manifest. | 2026-05-01 |
 | CVE fallback source | NVD API (free key, 50 req/30s) | Used when GHSA has no entry — primarily infrastructure tools and managed services without a clean ecosystem mapping. NVD rate limits are not a practical constraint at expected tool set sizes. | 2026-05-01 |
 | Version data sources | PyPI JSON API (Python), npm Registry API (Node), GitHub Releases API (GitHub-hosted tools) | All three are free, unauthenticated or free-key, and return authoritative version data directly from the package's canonical source. More reliable than LLM web search for this data point. | 2026-05-01 |
+| CV within-wave concurrency | Promise.all() within the wave2_5 BullMQ job; cv_result_cache as per-tool checkpoint | The full tool list is not known until Wave 2 completes, making static BullMQ child job creation impossible. cv_result_cache provides per-tool checkpointing: if wave2_5 fails mid-run, retry reads cached results for completed tools. Promise.all() achieves within-wave parallelism without dynamic job creation complexity. | 2026-05-01 |
+| Tool-pair identification for compatibility checks | Algorithmic (package dependency graph from per-tool API calls) for version conflicts; LLM reasoning for architectural incompatibilities | Package manifests encode version requirements for shared dependencies deterministically — no LLM reasoning required for those pairs. LLM reasoning handles semantic incompatibilities not captured in semver. Targeted web searches fire only for pairs the LLM flags, typically a small subset per run. | 2026-05-01 |
 
 ### Output
 

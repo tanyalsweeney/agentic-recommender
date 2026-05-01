@@ -227,7 +227,7 @@ Two related pieces of work that ship together. The current CV implementation is 
 **CV worker decomposition** (`packages/workers/src/workers/wave2_5.ts`):
 
 Replace the single `runAgent` call with the full decomposed structure:
-- Spawn N parallel BullMQ child jobs (one per tool in the recommendation set); each sub-task runs API calls + LLM web search for data points without a structured source (pricing, regional availability); each sub-task writes its own checkpoint
+- Run N per-tool lookups in parallel via Promise.all() within the wave2_5 job; each lookup: (1) checks cv_result_cache and exits early if a fresh result exists, (2) runs API calls + one LLM web search for all unstructured data points (pricing, regional availability, trip hazards, integration gotchas), (3) writes result to cv_result_cache; cv_result_cache is the per-tool checkpoint — failed mid-run retries read cached results for completed tools
 - Cross-agent conflict checks: sequential, after all per-tool sub-tasks complete; when a version conflict or constraint violation is found, CV does additional API or web lookup to identify a mutually compatible version to recommend back to the relevant Wave 1 and Wave 2 agents as part of the rejection message — surfacing a resolution path, not just a flag
 - Cross-tool compatibility checks: sequential, after conflict checks, scoped to surviving tool set; same resolution-seeking behavior for version conflicts between tool pairs
 - Cost aggregation: runs after compatibility checks, consumes Wave 1 and Wave 2 cost signals
