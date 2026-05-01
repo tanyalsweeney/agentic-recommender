@@ -113,8 +113,22 @@ any Phase 4 frontend work begins.
 2. Add `tenant_id` to `users` table
 3. Add `tenant_secrets` table for BYOK keys (field-level encryption, never in
    config table)
-4. Thread `tenant_id` from auth through every `getConfig` call and agent invocation
-5. Integration tests: tenant isolation (tenant A cannot read tenant B's runs or config)
+4. Add `themes` table (id, name, owner, token_map flat jsonb, custom_css nullable
+   text, version, status). Seed eight global rows: default_light, default_dark,
+   professional_light, professional_dark, minimal_light, minimal_dark, bold_light,
+   bold_dark
+5. Add `theme_assignments` table (id, owner, mode, theme_id, token_overrides flat
+   jsonb, logo_url, status, version, valid_from nullable, valid_until nullable).
+   Seed two global assignments: light → default_light, dark → default_dark
+6. Add `user_theme_preferences` stub table (user_id, theme_id, activated_at,
+   expires_at nullable) — schema only, no resolution logic yet
+7. Seed `ui.string.*` global defaults in config table (productName, tagline,
+   ctaLabel, section headers)
+8. Set up Vercel Blob for tenant logo uploads
+9. Thread `tenant_id` from auth through every `getConfig` call and agent invocation
+10. Integration tests: tenant isolation; theme version updates when token_map or
+    custom_css changes; mode lock when one assignment present; time-bounded
+    assignment inactive outside valid_from/valid_until window
 
 ---
 
@@ -130,6 +144,13 @@ E2E: full signup flow, MFA enforcement, email verification gate.
 ### 4b. Intake flow `[Upcoming]`
 Spec Scaffold (both planning and mid-build prompts), 11-step TurboTax flow,
 binary exclusion exhaustion warning, review screen with downstream re-inference.
+
+Intake UI is theme-aware from day one. At layout level, the server resolves the
+active theme for the owner and mode, merges token overrides, and injects CSS
+custom properties (plus any custom_css) as a server-rendered style block. Cache
+key: `theme:resolved:{owner_id}:{mode}:{assignment_version}` — no explicit flush
+needed. If the owner has one mode assigned, the UI locks to it with no toggle.
+
 E2E: full intake → submit → pipeline queued.
 
 ### 4c. Pass 1 output rendering `[Upcoming]`
@@ -163,14 +184,24 @@ admin dashboard (Phase 5).
   API before storage; data residency flag shown for non-US providers
 - Communication context template selection: choose the audience/purpose template
   that shapes Technical Writer output
-- White-label settings (Premium and Enterprise tiers)
+- Branding: preset picker (select from global presets for each mode); token
+  overrides for color, font, and radius tokens; logo upload via Vercel Blob;
+  string overrides for product name, tagline, button labels, and section headers
+  (stored in config table under ui.string.*); draft/publish workflow so changes
+  can be previewed before going live
+- White-label tier settings: Standard (Agent12 attribution required), Premium
+  (attribution optional), Enterprise (custom domain, full attribution removal,
+  liability transfer in contract)
 
 ---
 
 ## Phase 5 — Admin dashboard `[Upcoming]`
 
-Seven panels. Lower priority — build the panels that matter first: pipeline
+Eight panels. Lower priority — build the panels that matter first: pipeline
 observability and margin per tier.
+
+Pipeline observability and tenant management panels must be in place before
+the first paying tenant is onboarded.
 
 **Pipeline observability:** per-agent latency breakdown, wave timing, checkpoint
 hit/miss rates, token usage and cost per run.
@@ -178,10 +209,15 @@ hit/miss rates, token usage and cost per run.
 **Manifest health:** entry freshness, missing domainKnowledgePayload, vetted
 status, tools flagged for refresh.
 
-**Config interface:** view and edit system-level config table values, provider
-registry (add/edit provider entries, assign models per agent), and manifest
-seeding. Tenant config overrides are visible per-tenant but edited from the
-tenant dashboard.
+**Themes:** manage system presets and the base app default theme. Create, edit,
+and publish global theme presets. Supports time-bounded seasonal themes via
+valid_from/valid_until. Changes take effect on next page load via the
+version-based cache key — no deploy required.
+
+**Config interface:** view and edit system-level config table values (including
+ui.string.* global defaults), provider registry (add/edit provider entries,
+assign models per agent), and manifest seeding. Tenant config overrides are
+visible per-tenant but edited from the tenant dashboard.
 
 **Org list approval workflow:** review org_list_proposals, approve/reject, view
 active list.

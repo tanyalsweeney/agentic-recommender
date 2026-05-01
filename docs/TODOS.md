@@ -13,3 +13,4 @@
 | Item | Why | Context | Effort | Depends on |
 |---|---|---|---|---|
 | API access tier | Enterprise teams want to embed recommendations into CI/CD, internal onboarding tools, and standards enforcement. Design the API input/output contract after seeing what paying users actually want to extract — not before. | Added in CEO review 2026-04-26 | L | Web product has traction; structured output schema stable |
+| Seasonal and novelty theme UI | Enable admin to activate time-bounded themed experiences (pride mode, Christmas, rave mode) and expose a user-level opt-in alongside the light/dark toggle. Database schema is fully in place: custom_css on themes, valid_from/valid_until on theme_assignments, user_theme_preferences stub table. UI and resolution logic deferred. | Added 2026-04-30 | M | Admin themes panel built (Phase 5) |
