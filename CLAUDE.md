@@ -1,8 +1,8 @@
 # agentic-recommender
 
 Agent12 — a multi-wave agentic pipeline that takes a description of an agentic system
-and produces a validated architecture recommendation. See spec.md for the full product
-spec and PLAN.md for the build sequence.
+and produces a validated architecture recommendation. See docs/spec.md for the full product
+spec and docs/PLAN.md for the build sequence.
 
 ## Skills
 
@@ -174,7 +174,7 @@ be validated against the baseline before merging. Run: `pnpm --filter evals eval
 
 ---
 
-## Key decisions (see spec.md Settled decisions for full context)
+## Key decisions (see docs/spec.md Settled decisions for full context)
 
 - Manifest query: full load for v1 (all agents receive the full manifest)
 - Agent output schemas: Zod, validated at call time

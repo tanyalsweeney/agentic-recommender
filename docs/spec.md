@@ -266,7 +266,7 @@ Once the user clicks Analyze and the pipeline begins, the UI streams Compatibili
 
 On free tier runs, the blur is applied to CV values as they stream in — the user sees the category name and that a result arrived, but the value is blurred in real time. This preserves the streaming effect (visible progress, trust-building) while maintaining the free-tier gate.
 
-Makes the wait productive: users watch real validation work completing rather than a progress spinner, building confidence before they see the final output. Streaming requires server-sent events or WebSocket on the CV output path. Validate that per-tool sub-task P50 latency justifies the streaming infrastructure before committing (see TODOS.md).
+Makes the wait productive: users watch real validation work completing rather than a progress spinner, building confidence before they see the final output. Streaming requires server-sent events or WebSocket on the CV output path. Validate that per-tool sub-task P50 latency justifies the streaming infrastructure before committing (see TODOS.md in this directory).
 
 ### Session expiry and long-running pipelines
 
@@ -928,11 +928,11 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 
 | Table | Primary purpose | Key columns |
 |---|---|---|
-| `users` | Auth + billing | id, email, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
+| `users` | Auth + billing | id, email, tenant_id, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
 | `runs` | Run storage and state | id, user_id, status, tier, verified_context (jsonb), verified_context_hash, tenant_context_tag, pass1_output (jsonb), pass2_output (jsonb nullable), maturity_label_distribution (jsonb), charged |
 | `run_checkpoints` | Cross-run reuse | id, run_id, agent_name, wave, status, output_jsonb, upstream_hashes (jsonb), agent_version, manifest_version, context_hash, expires_at |
 | `cv_result_cache` | Cross-user tool cache | id, tool_name, tool_version (UNIQUE pair), cve_status, compat_status, pricing, eol_date, license, breaking_changes, regional_availability, source_url, cached_at, ttl_seconds |
-| `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), platform_compat (jsonb), model_compat (jsonb), last_refreshed_at, owner |
+| `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), deploymentModel, minimumRuntimeRequirements, knownConstraints, domainKnowledgePayload (jsonb), vetted, last_refreshed_at, owner |
 | `org_list` | Practitioner org registry | id, org_name, tier, signals (jsonb), maintenance_active, last_reviewed_at, owner, status |
 | `org_list_proposals` | Pending org changes | id, org_id, action (add/remove/tier-change), justification, sources (jsonb), status, second_pass_findings (jsonb nullable) |
 | `vendor_relationship_cache` | Affiliate/parent relationships | id, vendor_name, parent_org, affiliates (jsonb), cached_at |
@@ -940,6 +940,12 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | `user_holds` | Per-user org holds | id, user_id, org_id, lifted_at nullable, research_findings (jsonb nullable) |
 | `admin_holds` | Admin-level org holds | id, org_id, resolved_at nullable, resolution, flagged_by |
 | `jobs` | BullMQ job metadata mirror | id, type, status, payload (jsonb), run_id nullable — primary job state lives in Redis/BullMQ; this table is for admin observability only |
+| `manifest_proposals` | Proposed manifest changes pending Gatekeeper review | id, tool_name, proposed_entry (jsonb), proposing_agent, status (pending/approved/rejected/escalated), gatekeeper_findings (jsonb nullable), cycle_count |
+| `tenants` | Tenant registry | id, name, slug, plan, created_at |
+| `tenant_secrets` | BYOK API keys (field-level encrypted) | id, tenant_id, provider, encrypted_key, created_at, rotated_at nullable |
+| `themes` | Theme definitions — system presets and tenant themes | id, name, owner (global or tenant_id), token_map (flat jsonb), custom_css (nullable text), version, status (draft or published) |
+| `theme_assignments` | Owner-to-theme mapping by mode | id, owner, mode (light or dark), theme_id, token_overrides (flat jsonb), logo_url, status, version, valid_from nullable, valid_until nullable |
+| `user_theme_preferences` | User-level optional theme opt-in (stub) | user_id, theme_id, activated_at, expires_at nullable |
 
 **Required indexes in initial migration** (see settled decisions — Database indexes).
 
@@ -963,12 +969,25 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | System configuration | Admin dashboard with runtime-configurable thresholds | Refresh cadences, confidence thresholds, and cycle caps change as demand and the tooling landscape evolve — hardcoding them requires a deploy to tune | 2026-04-20 |
 | Config data model | All thresholds stored with an owner identifier; global default is `owner = global` | Per-tenant config overrides are additional rows with `owner = tenant_id` — no schema change needed when multi-tenancy is added | 2026-04-20 |
 | Config resolution pattern | Always check for tenant-specific override first, fall back to global default | Builds the lookup pattern now so adding per-tenant config later is a data change, not a code change | 2026-04-20 |
-| Multi-tenancy | Deferred — design only | White-label consultancy version is a future feature; initial build is single-tenant | 2026-04-20 |
+| Multi-tenancy | Initial rollout | Multi-tenancy is in scope from launch; tenant schema and branding system built in Phase 3e before any frontend work | 2026-04-30 |
+| Tenant branding architecture | Theme presets (selectable, stored in DB) built on a token map data model | Presets give tenants a good-looking starting point; token map data model means extending to new properties is a data change not a schema change; all theme definitions live in DB so no code change required to update any theme value | 2026-04-30 |
+| Theme table design | `themes`: id, name, owner (global or tenant_id), token_map (flat jsonb), custom_css (nullable text, for animations and keyframes), version (`YYYY-MM-DD-{sha256_8(token_map + custom_css)}`), status (draft or published) | Flat token map keeps values simple strings; mode is a relationship concern not a token structure concern; custom_css supports animated themes without changing the token model | 2026-04-30 |
+| Theme assignment design | `theme_assignments`: id, owner (global or tenant_id), mode (light or dark), theme_id, token_overrides (flat jsonb), logo_url, status, version, valid_from (nullable timestamp), valid_until (nullable timestamp) | Many-to-many owner:theme relationship mediated by mode; valid_from/valid_until enables time-bounded seasonal themes with no code change | 2026-04-30 |
+| Token structure | Flat strings per theme — mode is a relationship, not encoded in token values | A dark theme has different token values from a light theme; encoding both in one record conflates theme design with mode logic and prevents completely different designs per mode | 2026-04-30 |
+| Token vocabulary (v1) | color.primary, color.secondary, color.accent, color.surface, color.text.primary, color.text.secondary; typography.fontFamily.heading, typography.fontFamily.body (curated list); radius.base, radius.large | Covers colors, fonts, and shape — the three axes of brand expression beyond content | 2026-04-30 |
+| Initial seeded themes | Eight theme rows (owner = global): default_light, default_dark, professional_light, professional_dark, minimal_light, minimal_dark, bold_light, bold_dark. Two global assignments seeded: light → default_light, dark → default_dark | Admin edits any preset from the admin dashboard without a deploy; tenants pick from available presets | 2026-04-30 |
+| Mode resolution | If a tenant has one mode assigned, UI is locked to that mode — no toggle shown, system preference ignored. If two modes assigned, system/user preference is respected | Tenants with a specific brand identity should not have the system override their design with a mismatched global theme | 2026-04-30 |
+| Theme versioning | `YYYY-MM-DD-{sha256_8(token_map + custom_css)}` computed on every write, same pattern as agent versions | Version changes automatically when any theme content changes | 2026-04-30 |
+| Theme cache strategy | Cache key: `theme:resolved:{owner_id}:{mode}:{assignment_version}`. Version is the cache key — stale entries are never read; old entries age out via background TTL | No explicit flush needed; consistent with checkpoint cache strategy; time-bounded assignments use a short TTL near transition boundaries | 2026-04-30 |
+| String overrides | Reuse `config` table with owner = tenant_id; keys namespaced `ui.string.*` (productName, tagline, ctaLabel, section headers); global defaults seeded as owner = global | No new table; falls back to global defaults via existing config resolution pattern automatically | 2026-04-30 |
+| File storage | Vercel Blob for tenant logo uploads | Natural fit for Vercel-deployed Next.js; no infra addition | 2026-04-30 |
+| White-label tiers | Standard (Agent12 attribution required), Premium (attribution optional), Enterprise (full white-label, custom domain, liability transfer in contract) | Tiered attribution keeps brand visible at lower price points; full white-label is a meaningful Enterprise differentiator | 2026-04-30 |
+| User theme preferences | `user_theme_preferences` stub table: user_id, theme_id, activated_at, expires_at (nullable). Resolution logic and UI deferred | Schema in place for future user-level opt-in (seasonal themes, novelty modes); no migration needed when UI ships | 2026-04-30 |
 | Free tier abuse prevention | Email verification + per-IP account creation rate limiting; admin visibility for consecutive daily-limit accounts and multi-account IP patterns | MFA already raises the bar; email verification and IP rate limiting close the multi-account gap; usage pattern signals are free given data already collected for rate limiting and conversion tracking | 2026-04-25 |
 
 > **Multi-tenancy and configuration design notes**
 >
-> Multi-tenancy is deferred, but several design decisions made now ensure it can be added without rearchitecting.
+> Multi-tenancy is in scope for initial rollout. Forward-compatible design decisions made earlier remain intact; the remaining schema gaps are closed in Phase 3e.
 >
 > *Governance model:* The existing owner/admin role, user-level holds, and scoped run history map directly to a multi-tenant model. When implemented, this extends to: shared base manifest with tenant-level additive/suppressive overrides gated by the Manifest Gatekeeper; no tenant-level modification of base confidence scores; per-tenant domain agent registration. Data model should carry a `tenant_id` from day one.
 >
@@ -977,6 +996,8 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 > *Config resolution:* When the system looks up any threshold, it checks for a tenant-specific override first, then falls back to the global default. This lookup pattern is built into the initial single-tenant product — all lookups currently return the global default, but the pattern is already in place. Adding per-tenant manifest refresh schedules or threshold overrides later is a data addition, not a code change.
 >
 > *Org list data model:* The `owner` field pattern applies to org list entries as well as config thresholds. All current entries are `owner = global`. The data model supports `owner = tenant_id` entries from day one — a tenant with a legitimate need to elevate a specific org for their own runs (e.g. a white-label tenant whose customers are integrating that org's products) can do so without a schema change. The confidence scoring pipeline is built to filter org list entries by owner at query time. Governance: tenant-scoped org list entries are established by the global admin at white-label setup time and locked — no tenant-facing UI or self-service capability. Changes require a change order back to the global admin and follow the same approval flow as any other org list modification.
+>
+> *Tenant branding and theming:* All theme definitions live in the `themes` table (owner = global for system presets, owner = tenant_id for tenant-specific themes). The base app theme is a seeded global row — admin can update it from the admin dashboard with no deploy required. Themes carry a flat token map (color, typography, and radius tokens as plain strings), an optional `custom_css` field for animations and keyframes, and a computed version following the `YYYY-MM-DD-{sha256_8}` pattern. Mode (light vs. dark) is modeled as a relationship in `theme_assignments`, not encoded in token values — this allows completely independent designs per mode and enables time-bounded seasonal themes via `valid_from`/`valid_until`. If a tenant assigns one mode, the UI locks to it; if two, system/user preference is respected. A `user_theme_preferences` stub table is in place for future user-level opt-in (seasonal and novelty themes such as pride mode or rave mode); resolution logic and UI are deferred.
 
 ### Maintenance manifest
 
@@ -990,6 +1011,9 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | Manifest refresh UX | Background on UI open; blocks only if user submits before refresh completes | User writing their description usually covers the refresh window | 2026-04-14 |
 | Manifest refresh failure | Retry with backoff; within max staleness threshold proceed silently (admin notified); beyond threshold block with generic unavailable message | Stale manifest within tolerance produces identical user-visible output — no reason to notify the user; admin needs to know regardless | 2026-04-25 |
 | Gatekeeper rejected entries | Dropped, no queue | Next refresh cycle is the retry mechanism | 2026-04-14 |
+| Manifest proposals storage | `manifest_proposals` table: proposed entry (jsonb), proposing agent, status, Gatekeeper findings, cycle count | Proposed changes need a durable store so Gatekeeper review survives restarts and can be observed via the admin dashboard | 2026-04-30 |
+| Manifest seeder scope | Cloud engineer tool catalog — orchestration frameworks, memory systems, tool integration patterns, observability platforms, security primitives | Covers the primary audience's tooling decisions; wide enough for production quality output on day one; Gatekeeper evolves the catalog from there | 2026-04-30 |
+| Gatekeeper agents build sequence | Manifest Gatekeeper and Org List Gatekeeper are part of the agent layer (Phase 2), built alongside the 10 pipeline agents — same structure: Zod schema, prompt template, caller, eval cases | Maintenance is a differentiating feature, not an afterthought; building Gatekeeper agents late means returning to the agent layer cold after months away | 2026-04-30 |
 | User-scoped tools | Run-scoped, live-researched, flagged as unvetted in output | Keeps manifest integrity intact while still evaluating user-specified tools | 2026-04-14 |
 
 ### Intake
