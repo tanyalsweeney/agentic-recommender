@@ -13,7 +13,7 @@ export async function processPass1Job(
 
   const result = await runAgent({
     db, runId, tenantId,
-    agentKey: "technical_writer",
+    agentKey: "technicalWriter",
     wave: "pass1",
     upstreamHashes: upstreamCheckpointVersions,
     upstreamOutputs: allUpstreamOutputs,

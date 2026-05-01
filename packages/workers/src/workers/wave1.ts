@@ -34,8 +34,8 @@ export async function processWave1Job(job: Job, db: Db): Promise<{ output: unkno
   const agentKeyMap: Record<string, string> = {
     "wave1.orchestration":    "orchestration",
     "wave1.security":         "security",
-    "wave1.memory_state":     "memory_state",
-    "wave1.tool_integration": "tool_integration",
+    "wave1.memory_state":     "memoryState",
+    "wave1.tool_integration": "toolIntegration",
   };
 
   const callFn = agentMap[job.name];
