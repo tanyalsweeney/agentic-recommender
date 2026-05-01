@@ -126,7 +126,30 @@ before merging.
 Run: `pnpm --filter evals eval:skeptic` (P1 baseline required), then each
 other eval suite. Pipeline output verified by reading the database — no UI needed.
 
-### 3e. Multi-tenancy schema `[Upcoming]`
+### 3e. Maintenance workers `[Upcoming]`
+BullMQ workers for manifest refresh and Gatekeeper runs. Same infrastructure
+as the wave workers — new job types on the existing queue.
+
+Schema additions before workers: add `last_refreshed` to `manifest_entries`,
+add `manifest_proposals` table for proposed changes pending Gatekeeper review.
+
+**Manifest refresh worker:** Lazy trigger — fires when a tool is referenced by
+a run and last_refreshed exceeds the staleness threshold (tier-based, configurable
+via admin dashboard). Fetches updated data, proposes changes, hands to Manifest
+Gatekeeper worker.
+
+**Manifest Gatekeeper worker:** Runs the Manifest Gatekeeper agent against each
+proposed change. Writes approved entries, drops rejected entries, escalates to
+admin hold queue on ambiguous cases.
+
+**Org List Gatekeeper worker:** Same pattern for org list proposals from
+org_list_proposals table.
+
+Integration tests: lazy trigger fires on reference past staleness threshold;
+Gatekeeper rejection drops entry without affecting existing approved entries;
+human escalation creates an admin hold correctly.
+
+### 3f. Multi-tenancy schema `[Upcoming]`
 Multi-tenancy is in scope for initial rollout. Close the schema gap before
 any Phase 4 frontend work begins.
 
@@ -151,36 +174,19 @@ any Phase 4 frontend work begins.
     custom_css changes; mode lock when one assignment present; time-bounded
     assignment inactive outside valid_from/valid_until window
 
-### 3f. Maintenance workers `[Upcoming]`
-BullMQ workers for manifest refresh and Gatekeeper runs. Same infrastructure
-as the wave workers — new job types on the existing queue.
-
-**Manifest refresh worker:** Lazy trigger — fires when a tool is referenced by
-a run and last_refreshed exceeds the staleness threshold (tier-based, configurable
-via admin dashboard). Fetches updated data, proposes changes, hands to Manifest
-Gatekeeper worker.
-
-**Manifest Gatekeeper worker:** Runs the Manifest Gatekeeper agent against each
-proposed change. Writes approved entries, drops rejected entries, escalates to
-admin hold queue on ambiguous cases.
-
-**Org List Gatekeeper worker:** Same pattern for org list proposals from
-org_list_proposals table.
-
-Integration tests: lazy trigger fires on reference past staleness threshold;
-Gatekeeper rejection drops entry without affecting existing approved entries;
-human escalation creates an admin hold correctly.
-
 ---
 
 ## Phase 4 — Web frontend `[Upcoming]`
 
 **E2E tests written alongside implementation (Playwright).**
 
-### 4a. Auth `[Upcoming]`
-MFA, email verification, per-IP rate limiting on signup. Tenant-aware from day one:
-every session carries tenant_id; every API route and getConfig call passes it through.
-E2E: full signup flow, MFA enforcement, email verification gate.
+### 4a. Dev auth stub `[Upcoming]`
+Middleware that injects a hardcoded session (`user_id = 'dev-user'`,
+`tenant_id = 'dev-tenant'`) in local and dev environments. Session object
+shape must match exactly what real auth (4f) will return — same fields, same
+types — so removing the stub is a clean swap with no downstream changes.
+
+Hard guard: if `NODE_ENV === 'production'` and stub is active, throw on startup.
 
 ### 4b. Intake flow `[Upcoming]`
 Spec Scaffold (both planning and mid-build prompts), 11-step TurboTax flow,
@@ -207,6 +213,12 @@ context into new run.
 BullMQ job submission from Next.js API routes. Server-sent events for progressive
 CV disclosure (stream per-tool results as sub-tasks complete; blur applied on
 free tier runs in real time). Email notifications on run completion.
+
+### 4f. Real auth `[Upcoming]`
+MFA, email verification, per-IP rate limiting on signup. Replaces the dev auth
+stub from 4a. Tenant-aware: every session carries tenant_id; every API route
+and getConfig call passes it through.
+E2E: full signup flow, MFA enforcement, email verification gate.
 
 ---
 
