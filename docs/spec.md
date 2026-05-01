@@ -928,11 +928,11 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 
 | Table | Primary purpose | Key columns |
 |---|---|---|
-| `users` | Auth + billing | id, email, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
+| `users` | Auth + billing | id, email, tenant_id, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
 | `runs` | Run storage and state | id, user_id, status, tier, verified_context (jsonb), verified_context_hash, tenant_context_tag, pass1_output (jsonb), pass2_output (jsonb nullable), maturity_label_distribution (jsonb), charged |
 | `run_checkpoints` | Cross-run reuse | id, run_id, agent_name, wave, status, output_jsonb, upstream_hashes (jsonb), agent_version, manifest_version, context_hash, expires_at |
 | `cv_result_cache` | Cross-user tool cache | id, tool_name, tool_version (UNIQUE pair), cve_status, compat_status, pricing, eol_date, license, breaking_changes, regional_availability, source_url, cached_at, ttl_seconds |
-| `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), platform_compat (jsonb), model_compat (jsonb), last_refreshed_at, owner |
+| `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), deploymentModel, minimumRuntimeRequirements, knownConstraints, domainKnowledgePayload (jsonb), vetted, last_refreshed_at, owner |
 | `org_list` | Practitioner org registry | id, org_name, tier, signals (jsonb), maintenance_active, last_reviewed_at, owner, status |
 | `org_list_proposals` | Pending org changes | id, org_id, action (add/remove/tier-change), justification, sources (jsonb), status, second_pass_findings (jsonb nullable) |
 | `vendor_relationship_cache` | Affiliate/parent relationships | id, vendor_name, parent_org, affiliates (jsonb), cached_at |
@@ -940,6 +940,12 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | `user_holds` | Per-user org holds | id, user_id, org_id, lifted_at nullable, research_findings (jsonb nullable) |
 | `admin_holds` | Admin-level org holds | id, org_id, resolved_at nullable, resolution, flagged_by |
 | `jobs` | BullMQ job metadata mirror | id, type, status, payload (jsonb), run_id nullable — primary job state lives in Redis/BullMQ; this table is for admin observability only |
+| `manifest_proposals` | Proposed manifest changes pending Gatekeeper review | id, tool_name, proposed_entry (jsonb), proposing_agent, status (pending/approved/rejected/escalated), gatekeeper_findings (jsonb nullable), cycle_count |
+| `tenants` | Tenant registry | id, name, slug, plan, created_at |
+| `tenant_secrets` | BYOK API keys (field-level encrypted) | id, tenant_id, provider, encrypted_key, created_at, rotated_at nullable |
+| `themes` | Theme definitions — system presets and tenant themes | id, name, owner (global or tenant_id), token_map (flat jsonb), custom_css (nullable text), version, status (draft or published) |
+| `theme_assignments` | Owner-to-theme mapping by mode | id, owner, mode (light or dark), theme_id, token_overrides (flat jsonb), logo_url, status, version, valid_from nullable, valid_until nullable |
+| `user_theme_preferences` | User-level optional theme opt-in (stub) | user_id, theme_id, activated_at, expires_at nullable |
 
 **Required indexes in initial migration** (see settled decisions — Database indexes).
 
@@ -1005,6 +1011,9 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | Manifest refresh UX | Background on UI open; blocks only if user submits before refresh completes | User writing their description usually covers the refresh window | 2026-04-14 |
 | Manifest refresh failure | Retry with backoff; within max staleness threshold proceed silently (admin notified); beyond threshold block with generic unavailable message | Stale manifest within tolerance produces identical user-visible output — no reason to notify the user; admin needs to know regardless | 2026-04-25 |
 | Gatekeeper rejected entries | Dropped, no queue | Next refresh cycle is the retry mechanism | 2026-04-14 |
+| Manifest proposals storage | `manifest_proposals` table: proposed entry (jsonb), proposing agent, status, Gatekeeper findings, cycle count | Proposed changes need a durable store so Gatekeeper review survives restarts and can be observed via the admin dashboard | 2026-04-30 |
+| Manifest seeder scope | Cloud engineer tool catalog — orchestration frameworks, memory systems, tool integration patterns, observability platforms, security primitives | Covers the primary audience's tooling decisions; wide enough for production quality output on day one; Gatekeeper evolves the catalog from there | 2026-04-30 |
+| Gatekeeper agents build sequence | Manifest Gatekeeper and Org List Gatekeeper are part of the agent layer (Phase 2), built alongside the 10 pipeline agents — same structure: Zod schema, prompt template, caller, eval cases | Maintenance is a differentiating feature, not an afterthought; building Gatekeeper agents late means returning to the agent layer cold after months away | 2026-04-30 |
 | User-scoped tools | Run-scoped, live-researched, flagged as unvetted in output | Keeps manifest integrity intact while still evaluating user-specified tools | 2026-04-14 |
 
 ### Intake
