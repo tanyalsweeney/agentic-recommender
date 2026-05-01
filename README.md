@@ -27,17 +27,18 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Status
 
-**Active development.** Design complete, agent layer complete, pipeline workers next.
+**Active development.** Phases 0-3d complete. Maintenance workers and multi-tenancy schema next.
 
 | Phase | Description | Status |
 |---|---|---|
 | 0 | Monorepo scaffolding (pnpm workspaces, TypeScript, Vitest) | Done |
-| 1 | Database schema — 12 tables, config resolution | Done |
-| 2 | Agent layer — Zod schemas, multi-provider callers, prompt caching, full prompt review | Done |
-| 3 | Pipeline workers — BullMQ wave orchestration, checkpointing | Next |
-| 4 | Web frontend — Next.js intake flow, Pass 1 output rendering | Upcoming |
-| 5 | Admin dashboard, progressive CV disclosure, email notifications | Upcoming |
-| 6 | Maintenance pipeline — manifest refresh, Org List Gatekeeper | Upcoming |
+| 1 | Database schema — 19 tables, config resolution | Done |
+| 2 | Agent layer — 12 agents, Zod schemas, multi-provider callers, prompt caching, eval baselines | Done |
+| 3a-3d | Pipeline workers — BullMQ wave orchestration, checkpointing, evals | Done |
+| 3e-3g | Maintenance workers, multi-tenancy schema, streaming in agent caller | In Progress |
+| 4 | Web frontend — intake flow, Pass 1 output rendering, auth | Upcoming |
+| 5 | Admin dashboard — pipeline observability, agent performance, manifest health, themes, config | Upcoming |
+| 6 | Tenant dashboard and config interface | Upcoming |
 
 **Local dev:** requires Docker Desktop. Run `docker compose up -d` to start Postgres and Redis.
 

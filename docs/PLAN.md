@@ -249,8 +249,13 @@ E2E: full signup flow, MFA enforcement, email verification gate.
 
 ## Phase 5 — Admin dashboard `[Upcoming]`
 
-Eight panels. Build pipeline observability first — it's the foundation for
+Nine panels. Build pipeline observability first — it's the foundation for
 understanding every run, including demo runs.
+
+Before Phase 5 ships, update `packages/agents/src/logger.ts` to write call
+data to the `agent_call_log` DB table in addition to CSV. This accumulates
+history that the agent performance panel queries. The CSV fallback stays for
+sessions without a DB connection.
 
 **Pipeline observability:** per-agent latency breakdown, wave timing, checkpoint
 hit/miss rates, token usage and cost per run.
@@ -279,6 +284,13 @@ tooling.
 
 **Run history:** full cross-tenant run log with filter by tenant, agent, wave,
 status.
+
+**Agent performance:** dev-time monitoring for prompt tuning. Queries
+`agent_call_log` table. Shows: eval run history (timestamped, pass/fail per
+suite, total cost per session); per-agent timing and cost trends over time;
+before/after comparison keyed on agent version (`YYYY-MM-DD-{hash8}`) so
+prompt changes have a visible cost and latency impact; cache hit rate per
+agent. Covers both eval runs and production runs, distinguished by source.
 
 ---
 
