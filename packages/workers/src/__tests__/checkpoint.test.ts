@@ -1,13 +1,16 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { getTestDb } from "./test-db.js";
 import { runCheckpoints, runs, users } from "@agent12/shared";
 import { readCheckpoint, writeCheckpoint } from "../checkpoint.js";
+import { uuidv7 } from "uuidv7";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 async function seedRun(db: ReturnType<typeof getTestDb>) {
   const [user] = await db.insert(users)
-    .values({ email: `test-${Date.now()}@example.com` })
+    // uuidv7 guarantees uniqueness even when tests run concurrently
+    .values({ email: `ckpt-test-${uuidv7()}@example.com` })
     .returning();
   const [run] = await db.insert(runs)
     .values({
@@ -18,7 +21,7 @@ async function seedRun(db: ReturnType<typeof getTestDb>) {
       verifiedContextHash: "ctx_hash_001",
     })
     .returning();
-  return run;
+  return { run, userId: user.id };
 }
 
 const BASE_KEY = {
@@ -34,14 +37,20 @@ const BASE_KEY = {
 describe("checkpoint reuse — 4 validity conditions", () => {
   let db: ReturnType<typeof getTestDb>;
   let runId: string;
+  let userId: string;
 
   beforeEach(async () => {
     db = getTestDb();
-    await db.delete(runCheckpoints);
-    await db.delete(runs);
-    await db.delete(users);
-    const run = await seedRun(db);
-    runId = run.id;
+    const seeded = await seedRun(db);
+    runId = seeded.run.id;
+    userId = seeded.userId;
+  });
+
+  afterEach(async () => {
+    // Only delete what this test suite created — never wipe global tables
+    await db.delete(runCheckpoints).where(eq(runCheckpoints.runId, runId));
+    await db.delete(runs).where(eq(runs.id, runId));
+    await db.delete(users).where(eq(users.id, userId));
   });
 
   it("returns null when no checkpoint exists", async () => {
