@@ -46,4 +46,6 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   compatibilityValidator:  { provider: "anthropic", model: "claude-sonnet-4-6" },
   skeptic:                 { provider: "anthropic", model: "claude-sonnet-4-6" },
   technicalWriter:         { provider: "anthropic", model: "claude-sonnet-4-6" },
+  manifestGatekeeper:      { provider: "anthropic", model: "claude-sonnet-4-6" },
+  orgListGatekeeper:       { provider: "anthropic", model: "claude-sonnet-4-6" },
 };
