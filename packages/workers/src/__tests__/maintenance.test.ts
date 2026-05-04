@@ -50,6 +50,11 @@ function makeGatekeeper(decision: ManifestGatekeeperOutput["decision"], override
 
 // ── staleness check ───────────────────────────────────────────────────────────
 
+// TODO: day values in these tests (e.g. daysAgo(21), daysAgo(7)) are hardcoded
+// relative to the seeded 14-day threshold. Refactor to read the seeded threshold
+// from the config table at test time and derive day values from it, so tests
+// remain correct if the default threshold is changed in config.
+
 describe("getStaleManifestTools", () => {
   let db: ReturnType<typeof getTestDb>;
 
