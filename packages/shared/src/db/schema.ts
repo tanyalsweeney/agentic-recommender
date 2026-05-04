@@ -12,11 +12,12 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { uuidv7 } from "uuidv7";
 
 // ── users ─────────────────────────────────────────────────────────────────────
 
 export const users = pgTable("users", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   email: text("email").notNull().unique(),
   tier: text("tier").notNull().default("free"), // free | pass1 | pass2
   mfaEnabled: boolean("mfa_enabled").notNull().default(false),
@@ -31,7 +32,7 @@ export const users = pgTable("users", {
 export const runs = pgTable(
   "runs",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
@@ -55,7 +56,7 @@ export const runs = pgTable(
 export const runCheckpoints = pgTable(
   "run_checkpoints",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
     runId: uuid("run_id")
       .notNull()
       .references(() => runs.id),
@@ -87,7 +88,7 @@ export const runCheckpoints = pgTable(
 export const cvResultCache = pgTable(
   "cv_result_cache",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
     toolName: text("tool_name").notNull(),
     toolVersion: text("tool_version").notNull().default("unknown"),
     cveStatus: jsonb("cve_status"),
@@ -109,7 +110,7 @@ export const cvResultCache = pgTable(
 export const manifestTools = pgTable(
   "manifest_tools",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
     toolName: text("tool_name").notNull().unique(),
     category: text("category"), // orchestration-framework | vector-db | llm-sdk | job-queue | etc.
     maturityTier: text("maturity_tier").notNull().default("Emerging"),
@@ -136,7 +137,7 @@ export const manifestTools = pgTable(
 // ── manifest_patterns ─────────────────────────────────────────────────────────
 
 export const manifestPatterns = pgTable("manifest_patterns", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   patternName: text("pattern_name").notNull().unique(),
   maturityTier: text("maturity_tier").notNull().default("Emerging"),
   confidenceScore: integer("confidence_score").notNull().default(5),
@@ -154,7 +155,7 @@ export const manifestPatterns = pgTable("manifest_patterns", {
 // ── manifest_failure_modes ────────────────────────────────────────────────────
 
 export const manifestFailureModes = pgTable("manifest_failure_modes", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   failureModeName: text("failure_mode_name").notNull().unique(),
   maturityTier: text("maturity_tier").notNull().default("Established"),
   confidenceScore: integer("confidence_score").notNull().default(9),
@@ -169,10 +170,27 @@ export const manifestFailureModes = pgTable("manifest_failure_modes", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
 
+// ── manifest_proposals ────────────────────────────────────────────────────────
+// Proposed manifest changes queued for Manifest Gatekeeper review.
+// Proposing agent writes here; Gatekeeper worker reads and resolves each entry.
+
+export const manifestProposals = pgTable("manifest_proposals", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  toolName: text("tool_name").notNull(),
+  proposedEntry: jsonb("proposed_entry").notNull(),
+  proposingAgent: text("proposing_agent").notNull(),
+  // pending | approved | rejected | escalated
+  status: text("status").notNull().default("pending"),
+  gatekeeperFindings: jsonb("gatekeeper_findings"),
+  cycleCount: integer("cycle_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
 // ── org_list ──────────────────────────────────────────────────────────────────
 
 export const orgList = pgTable("org_list", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   orgName: text("org_name").notNull(),
   tier: integer("tier").notNull(), // 1 | 2 | 3
   signals: jsonb("signals").notNull().default({}),
@@ -186,7 +204,7 @@ export const orgList = pgTable("org_list", {
 // ── org_list_proposals ────────────────────────────────────────────────────────
 
 export const orgListProposals = pgTable("org_list_proposals", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   orgId: uuid("org_id").references(() => orgList.id),
   action: text("action").notNull(), // add | remove | tier-change
   justification: text("justification"),
@@ -199,7 +217,7 @@ export const orgListProposals = pgTable("org_list_proposals", {
 // ── vendor_relationship_cache ─────────────────────────────────────────────────
 
 export const vendorRelationshipCache = pgTable("vendor_relationship_cache", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   vendorName: text("vendor_name").notNull(),
   parentOrg: text("parent_org"),
   affiliates: jsonb("affiliates").notNull().default([]),
@@ -224,7 +242,7 @@ export const config = pgTable(
 // ── user_holds ────────────────────────────────────────────────────────────────
 
 export const userHolds = pgTable("user_holds", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id),
@@ -239,7 +257,7 @@ export const userHolds = pgTable("user_holds", {
 // ── admin_holds ───────────────────────────────────────────────────────────────
 
 export const adminHolds = pgTable("admin_holds", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   orgId: uuid("org_id")
     .notNull()
     .references(() => orgList.id),
@@ -254,7 +272,7 @@ export const adminHolds = pgTable("admin_holds", {
 // Primary job state lives in Redis/BullMQ — this table is read-only for dashboards.
 
 export const jobs = pgTable("jobs", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   type: text("type").notNull(),
   status: text("status").notNull().default("queued"),
   payload: jsonb("payload").notNull().default({}),
