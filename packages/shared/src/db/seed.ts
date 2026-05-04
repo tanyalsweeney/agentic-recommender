@@ -8,7 +8,8 @@ import "dotenv/config";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { manifestTools, manifestPatterns, manifestFailureModes, orgList } from "./schema.js";
+import { manifestTools, manifestPatterns, manifestFailureModes, orgList, themes, themeAssignments, config } from "./schema.js";
+import { computeThemeVersion } from "./themes.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
@@ -723,12 +724,209 @@ async function seedOrgList() {
   console.log(`org_list: inserted ${inserted}, skipped ${skipped} existing`);
 }
 
+// ── Themes ────────────────────────────────────────────────────────────────────
+
+const TOKEN_VOCABULARY_KEYS = [
+  "color.primary", "color.secondary", "color.accent", "color.surface",
+  "color.text.primary", "color.text.secondary",
+  "typography.fontFamily.heading", "typography.fontFamily.body",
+  "radius.base", "radius.large",
+];
+
+type TokenMap = Record<string, string>;
+
+const SYSTEM_FONTS = "Inter, system-ui, sans-serif";
+const MONO_FONTS = "JetBrains Mono, ui-monospace, monospace";
+
+const THEME_PRESETS: Array<{ name: string; tokenMap: TokenMap }> = [
+  {
+    name: "default_light",
+    tokenMap: {
+      "color.primary": "#1a1a2e", "color.secondary": "#16213e", "color.accent": "#7c3aed",
+      "color.surface": "#ffffff", "color.text.primary": "#1a1a2e", "color.text.secondary": "#6b7280",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "6px", "radius.large": "12px",
+    },
+  },
+  {
+    name: "default_dark",
+    tokenMap: {
+      "color.primary": "#e2e8f0", "color.secondary": "#cbd5e1", "color.accent": "#7c3aed",
+      "color.surface": "#0f172a", "color.text.primary": "#f1f5f9", "color.text.secondary": "#94a3b8",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "6px", "radius.large": "12px",
+    },
+  },
+  {
+    name: "professional_light",
+    tokenMap: {
+      "color.primary": "#1e40af", "color.secondary": "#1d4ed8", "color.accent": "#2563eb",
+      "color.surface": "#f8fafc", "color.text.primary": "#0f172a", "color.text.secondary": "#475569",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "4px", "radius.large": "8px",
+    },
+  },
+  {
+    name: "professional_dark",
+    tokenMap: {
+      "color.primary": "#93c5fd", "color.secondary": "#60a5fa", "color.accent": "#3b82f6",
+      "color.surface": "#0c1426", "color.text.primary": "#e2e8f0", "color.text.secondary": "#94a3b8",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "4px", "radius.large": "8px",
+    },
+  },
+  {
+    name: "minimal_light",
+    tokenMap: {
+      "color.primary": "#171717", "color.secondary": "#404040", "color.accent": "#525252",
+      "color.surface": "#fafafa", "color.text.primary": "#171717", "color.text.secondary": "#737373",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "2px", "radius.large": "4px",
+    },
+  },
+  {
+    name: "minimal_dark",
+    tokenMap: {
+      "color.primary": "#e5e5e5", "color.secondary": "#d4d4d4", "color.accent": "#a3a3a3",
+      "color.surface": "#0a0a0a", "color.text.primary": "#fafafa", "color.text.secondary": "#a3a3a3",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "2px", "radius.large": "4px",
+    },
+  },
+  {
+    name: "bold_light",
+    tokenMap: {
+      "color.primary": "#7c3aed", "color.secondary": "#6d28d9", "color.accent": "#f59e0b",
+      "color.surface": "#ffffff", "color.text.primary": "#1c1917", "color.text.secondary": "#57534e",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "8px", "radius.large": "16px",
+    },
+  },
+  {
+    name: "bold_dark",
+    tokenMap: {
+      "color.primary": "#a78bfa", "color.secondary": "#8b5cf6", "color.accent": "#f59e0b",
+      "color.surface": "#0c0a09", "color.text.primary": "#fafaf9", "color.text.secondary": "#a8a29e",
+      "typography.fontFamily.heading": SYSTEM_FONTS, "typography.fontFamily.body": SYSTEM_FONTS,
+      "radius.base": "8px", "radius.large": "16px",
+    },
+  },
+];
+
+async function seedThemes() {
+  let inserted = 0;
+  let skipped = 0;
+
+  const themeIds: Record<string, string> = {};
+
+  for (const preset of THEME_PRESETS) {
+    const version = computeThemeVersion(preset.tokenMap, null);
+    const existing = await db.select().from(themes).where(eq(themes.name, preset.name)).limit(1);
+    if (existing.length > 0) {
+      themeIds[preset.name] = existing[0].id;
+      skipped++;
+      continue;
+    }
+    const [row] = await db.insert(themes).values({
+      name: preset.name,
+      owner: "global",
+      tokenMap: preset.tokenMap,
+      customCss: null,
+      version,
+      status: "published",
+    }).returning();
+    themeIds[preset.name] = row.id;
+    inserted++;
+  }
+
+  console.log(`themes: inserted ${inserted}, skipped ${skipped} existing`);
+
+  // Seed global assignments: light → default_light, dark → default_dark
+  const GLOBAL_ASSIGNMENTS = [
+    { mode: "light", themeName: "default_light" },
+    { mode: "dark",  themeName: "default_dark" },
+  ];
+
+  let aInserted = 0;
+  let aSkipped = 0;
+  for (const { mode, themeName } of GLOBAL_ASSIGNMENTS) {
+    const existing = await db
+      .select()
+      .from(themeAssignments)
+      .where(eq(themeAssignments.owner, "global"))
+      .limit(10);
+
+    if (existing.some(a => a.mode === mode)) {
+      aSkipped++;
+      continue;
+    }
+
+    const themeId = themeIds[themeName];
+    if (!themeId) continue;
+
+    const version = computeThemeVersion(
+      THEME_PRESETS.find(p => p.name === themeName)!.tokenMap,
+      null
+    );
+
+    await db.insert(themeAssignments).values({
+      owner: "global",
+      mode,
+      themeId,
+      tokenOverrides: {},
+      logoUrl: null,
+      status: "published",
+      version,
+    });
+    aInserted++;
+  }
+
+  console.log(`theme_assignments: inserted ${aInserted}, skipped ${aSkipped} existing`);
+}
+
+// ── UI string defaults ────────────────────────────────────────────────────────
+
+const UI_STRING_DEFAULTS: Array<{ key: string; value: string }> = [
+  { key: "ui.string.productName",    value: "Agent12" },
+  { key: "ui.string.tagline",        value: "Architecture recommendations for agentic systems" },
+  { key: "ui.string.ctaLabel",       value: "Analyze Architecture" },
+  { key: "ui.string.section.wave1",  value: "Core Architecture" },
+  { key: "ui.string.section.wave2",  value: "Failure & Control" },
+  { key: "ui.string.section.cv",     value: "Compatibility & Validation" },
+  { key: "ui.string.section.pass1",  value: "Architecture Recommendation" },
+];
+
+async function seedUiStrings() {
+  let inserted = 0;
+  let skipped = 0;
+
+  for (const { key, value } of UI_STRING_DEFAULTS) {
+    const existing = await db
+      .select()
+      .from(config)
+      .where(eq(config.key, key))
+      .limit(1);
+
+    if (existing.length > 0) {
+      skipped++;
+      continue;
+    }
+
+    await db.insert(config).values({ key, value, owner: "global" });
+    inserted++;
+  }
+
+  console.log(`ui.string config: inserted ${inserted}, skipped ${skipped} existing`);
+}
+
 async function main() {
   console.log("Seeding database...");
   await seedTools();
   await seedPatterns();
   await seedFailureModes();
   await seedOrgList();
+  await seedThemes();
+  await seedUiStrings();
   console.log("Done.");
   await client.end();
 }
