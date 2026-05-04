@@ -143,58 +143,64 @@ runtime for every multi-word agent. The worker layer had never been exercised
 end-to-end — this was caught during a completion audit. Fixed in the Wave 2
 cooperative exchange PR; all worker keys are now camelCase.
 
-### 3e. Maintenance workers `[Upcoming]`
-BullMQ workers for manifest refresh and Gatekeeper runs. Same infrastructure
-as the wave workers — new job types on the existing queue.
+### 3e. Maintenance workers `[Done]`
+BullMQ workers for manifest refresh and Gatekeeper runs on a separate
+`maintenance` queue (pipeline queue is not blocked by maintenance jobs).
 
-Schema additions before workers (neither exists yet — add both before writing
-any worker code):
-1. Add `last_refreshed_at` column to `manifest_tools`, `manifest_patterns`,
-   and `manifest_failure_modes` (the three typed tables from migration 0006)
-2. Add `manifest_proposals` table: id, tool_name, proposed_entry (jsonb),
-   proposing_agent, status (pending/approved/rejected/escalated),
-   gatekeeper_findings (jsonb nullable), cycle_count
+**Schema additions (migration 0007):**
+- `manifest_proposals` table added (was incorrectly listed as pre-existing in
+  earlier handoff). `last_refreshed_at` was already present on typed manifest
+  tables from migration 0006.
+- All uuid primary keys switched from DB-side `gen_random_uuid()` to
+  application-side `uuidv7()` via Drizzle `$defaultFn` (better B-tree index
+  performance; no Railway infrastructure change needed). Drizzle meta snapshot
+  collision between 0004/0005 repaired; missing 0006 snapshot added.
 
-**Manifest refresh worker:** Lazy trigger — fires when a tool is referenced by
-a run and last_refreshed exceeds the staleness threshold (tier-based, configurable
-via admin dashboard). Fetches updated data, proposes changes, hands to Manifest
-Gatekeeper worker.
+**Workers built:**
+- `maintenance.staleness_check`: finds stale tools, deduplicates against
+  existing pending proposals, creates `manifest_proposals` entries and queues
+  a Gatekeeper run for each
+- `maintenance.manifest_gatekeeper`: runs ManifestGatekeeperAgent against a
+  proposal; handles accepted/rejected/escalated/needs_more_cycles with 2-cycle
+  cap; passes prior findings back on cycle 2
+- `maintenance.org_list_gatekeeper`: runs OrgListGatekeeperAgent; stores
+  findings on the proposal without applying changes — org list changes require
+  human approval via admin dashboard
 
-**Manifest Gatekeeper worker:** Runs the Manifest Gatekeeper agent against each
-proposed change. Writes approved entries, drops rejected entries, escalates to
-admin hold queue on ambiguous cases.
+**Tests:** 10 integration tests (staleness check: 4; proposal processing: 6).
+All tests use unique identifiers (uuidv7) and scoped afterEach cleanup —
+concurrent-safe, no global table wipes.
 
-**Org List Gatekeeper worker:** Same pattern for org list proposals from
-org_list_proposals table.
+### 3f. Multi-tenancy schema `[Done]`
+Schema gap closed. All 6 missing tables added in migration 0008.
 
-Integration tests: lazy trigger fires on reference past staleness threshold;
-Gatekeeper rejection drops entry without affecting existing approved entries;
-human escalation creates an admin hold correctly.
+**Schema additions:**
+- `tenants` (id, name, slug, plan)
+- `tenant_id` FK on `users` (nullable — global users have null)
+- `tenant_secrets`: BYOK keys stored AES-256-GCM encrypted via Node.js crypto
+  built-in; `ENCRYPTION_KEY` env var required (32 bytes, base64). Key in
+  `.env.example` and `.env.local`.
+- `themes`: token map + optional custom_css + computed version
+  (YYYY-MM-DD-{sha256_8}). Version recomputed on every write.
+- `theme_assignments`: owner+mode → theme, with time-bounded support
+  (valid_from/valid_until nullable)
+- `user_theme_preferences`: stub only, no resolution logic yet
 
-### 3f. Multi-tenancy schema `[Upcoming]`
-Multi-tenancy is in scope for initial rollout. Close the schema gap before
-any Phase 4 frontend work begins.
+**Utilities:**
+- `computeThemeVersion()` in `packages/shared/src/db/themes.ts`
+- `getActiveThemeAssignment()` — respects published status and time bounds
+- `encryptKey()` / `decryptKey()` in `packages/shared/src/crypto.ts`
 
-1. Add `tenants` table (id, name, slug, plan, created_at)
-2. Add `tenant_id` to `users` table
-3. Add `tenant_secrets` table for BYOK keys (field-level encryption, never in
-   config table)
-4. Add `themes` table (id, name, owner, token_map flat jsonb, custom_css nullable
-   text, version, status). Seed eight global rows: default_light, default_dark,
-   professional_light, professional_dark, minimal_light, minimal_dark, bold_light,
-   bold_dark
-5. Add `theme_assignments` table (id, owner, mode, theme_id, token_overrides flat
-   jsonb, logo_url, status, version, valid_from nullable, valid_until nullable).
-   Seed two global assignments: light → default_light, dark → default_dark
-6. Add `user_theme_preferences` stub table (user_id, theme_id, activated_at,
-   expires_at nullable) — schema only, no resolution logic yet
-7. Seed `ui.string.*` global defaults in config table (productName, tagline,
-   ctaLabel, section headers)
-8. Set up Vercel Blob for tenant logo uploads
-9. Thread `tenant_id` from auth through every `getConfig` call and agent invocation
-10. Integration tests: tenant isolation; theme version updates when token_map or
-    custom_css changes; mode lock when one assignment present; time-bounded
-    assignment inactive outside valid_from/valid_until window
+**Seeded:** 8 global theme presets, 2 global assignments (light/dark →
+default_light/default_dark), 7 `ui.string.*` config defaults.
+
+**Deferred items:**
+- Vercel Blob for tenant logo uploads: deferred to Phase 4 (no frontend yet)
+- `tenant_id` threading from auth: deferred to Phase 4a (auth doesn't exist);
+  worker layer already threads correctly
+
+**Tests:** 19 tenancy tests + 9 tenant context injection tests. All
+concurrent-safe via unique identifiers and scoped cleanup.
 
 ### 3g. Streaming in agent caller `[Upcoming]`
 Without streaming, complex user systems trigger responses long enough to drop
