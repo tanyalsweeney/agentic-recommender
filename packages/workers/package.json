@@ -14,7 +14,8 @@
     "@agent12/shared": "workspace:*",
     "bullmq": "^5.0.0",
     "drizzle-orm": "^0.40.0",
-    "postgres": "^3.4.5"
+    "postgres": "^3.4.5",
+    "uuidv7": "^1.2.1"
   },
   "devDependencies": {
     "dotenv": "^17.4.2",

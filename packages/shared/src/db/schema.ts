@@ -14,11 +14,24 @@ import {
 import { sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 
+// ── tenants ───────────────────────────────────────────────────────────────────
+
+export const tenants = pgTable("tenants", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  // standard | premium | enterprise — controls attribution and white-label options
+  plan: text("plan").notNull().default("standard"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
 // ── users ─────────────────────────────────────────────────────────────────────
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
   email: text("email").notNull().unique(),
+  // Null for global (non-tenant) users
+  tenantId: uuid("tenant_id").references(() => tenants.id),
   tier: text("tier").notNull().default("free"), // free | pass1 | pass2
   mfaEnabled: boolean("mfa_enabled").notNull().default(false),
   suspended: boolean("suspended").notNull().default(false),
@@ -281,3 +294,86 @@ export const jobs = pgTable("jobs", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
+
+// ── tenant_secrets ────────────────────────────────────────────────────────────
+// BYOK API keys. Field-level encrypted — never stored plaintext.
+// Encryption/decryption handled by packages/shared/src/crypto.ts.
+
+export const tenantSecrets = pgTable("tenant_secrets", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id),
+  // anthropic | kimi | openai | etc.
+  provider: text("provider").notNull(),
+  // AES-256-GCM ciphertext: "{iv_hex}:{ciphertext_hex}:{auth_tag_hex}"
+  encryptedKey: text("encrypted_key").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+});
+
+// ── themes ────────────────────────────────────────────────────────────────────
+// System presets (owner = 'global') and tenant-specific themes.
+// Version is YYYY-MM-DD-{sha256_8(token_map + custom_css)}, computed on write.
+
+export const themes = pgTable("themes", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  name: text("name").notNull(),
+  // 'global' for system presets; tenant_id for tenant-specific themes
+  owner: text("owner").notNull().default("global"),
+  // Flat token map: color.primary, typography.fontFamily.heading, radius.base, etc.
+  tokenMap: jsonb("token_map").notNull().default({}),
+  // Optional CSS for animations and keyframes — not encodeable as tokens
+  customCss: text("custom_css"),
+  // Auto-computed from token_map + custom_css. Changes when either changes.
+  version: text("version").notNull(),
+  // draft | published
+  status: text("status").notNull().default("published"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+// ── theme_assignments ─────────────────────────────────────────────────────────
+// Maps an owner+mode to a theme. Mode (light/dark) is a relationship here,
+// not encoded in the theme itself — allows independent designs per mode.
+
+export const themeAssignments = pgTable("theme_assignments", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  // 'global' for the system default; tenant_id for tenant-specific assignments
+  owner: text("owner").notNull().default("global"),
+  // light | dark
+  mode: text("mode").notNull(),
+  themeId: uuid("theme_id")
+    .notNull()
+    .references(() => themes.id),
+  // Per-assignment token overrides (e.g. tenant logo color tweak)
+  tokenOverrides: jsonb("token_overrides").notNull().default({}),
+  // Tenant logo URL (Vercel Blob). Null for global assignments.
+  logoUrl: text("logo_url"),
+  // draft | published
+  status: text("status").notNull().default("published"),
+  // Cache key for theme resolution: version-as-cache-key strategy
+  version: text("version").notNull(),
+  // Time-bounded seasonal themes. Null = always active.
+  validFrom: timestamp("valid_from", { withTimezone: true }),
+  validUntil: timestamp("valid_until", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+// ── user_theme_preferences ────────────────────────────────────────────────────
+// Stub for future user-level opt-in (seasonal/novelty themes).
+// Schema in place; resolution logic and UI deferred.
+
+export const userThemePreferences = pgTable(
+  "user_theme_preferences",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    themeId: uuid("theme_id")
+      .notNull()
+      .references(() => themes.id),
+    activatedAt: timestamp("activated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.themeId] })]
+);
