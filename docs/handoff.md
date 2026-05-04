@@ -1,222 +1,157 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-01)
+## Current state (2026-05-04)
 
-Phases 0, 1, 2, and 3a-3d complete. Phase 3e (maintenance workers) is next,
-followed by 3f (multi-tenancy schema), 3g (streaming), and 3h (CV API
-integration and worker decomposition).
+Phases 0, 1, 2, and 3a-3f complete. Phase 3g (streaming) is next.
 
 **What's built:**
 - Monorepo scaffolded: pnpm workspaces, TypeScript, Vitest workspace
-- Database schema: 14 tables, 6 migrations applied
+- Database schema: 20 tables, 8 migrations applied
   - Original 12 tables from Phases 0-1
-  - Migration 0006: `manifest_entries` retired; replaced by three typed tables:
-    `manifest_tools`, `manifest_patterns`, `manifest_failure_modes`
-  - NOTE: 7 spec tables are not yet built — see "Schema gaps" below
-- Agent layer: 12 Zod output schemas, 12 callers, 3-layer prompt caching, multi-provider dispatch
-  - 10 pipeline agents (intake through technical-writer)
-  - Manifest Gatekeeper and Org List Gatekeeper (Phase 2e)
-  - Agent version registry (YYYY-MM-DD-{sha256_8chars} of prompt file)
-- Manifest seeder (Phase 2f): 15 tools, 6 patterns, 6 failure modes seeded into
-  three typed tables. Run: `pnpm --filter shared db:seed`
-- `loadManifest()` in `packages/shared/src/db/manifest.ts` -- unified query helper
-  returning `{ tools, patterns, failureModes }` for agents and workers
-- Agent call logger: set `AGENT_CALL_LOG=packages/evals/logs/agent-calls.csv`
-  to capture timing, token counts (with cache breakdown), and estimated cost
-  per call. Appends CSV rows; committed to git for trend tracking.
-- **Phase 3d eval baselines established (2026-05-01):**
-  - Skeptic: 6/6 (P1 gate cleared)
-  - Intake: 8/8
-  - Orchestration: 3/3
-  - Technical Writer: 5/5
-  - Security: 6/6 (split into two scenarios -- see below)
-  - Gatekeeper: 26/26
-  - Cooperative, CV: placeholder suites, all tests skipped -- wiring needed
-- Wave 2 cooperative exchange fully implemented (2026-05-01):
-  - Full 2-cycle F&O/T&C exchange with early exit when uncoveredRisks is empty
-  - `checkpointName` field on `RunAgentOpts` for distinct checkpoints per cycle
-  - See PLAN.md Phase 3d note and wave2.ts for implementation
+  - Migration 0006: `manifest_entries` retired; replaced by three typed tables
+  - Migration 0007: `manifest_proposals` added; all uuid PKs switched to UUIDv7
+    via `$defaultFn` (app-side); Drizzle meta snapshot collision repaired
+  - Migration 0008: `tenants`, `tenant_id` on users, `tenant_secrets`,
+    `themes`, `theme_assignments`, `user_theme_preferences`
+- Agent layer: 12 Zod output schemas, 12 callers, 3-layer prompt caching,
+  multi-provider dispatch. All agent keys camelCase (registry bug fixed).
+- Manifest seeder: 15 tools, 6 patterns, 6 failure modes
+- Theme seeder: 8 global presets, 2 global assignments, 7 `ui.string.*` defaults
+- Wave 2 cooperative exchange: full 2-cycle F&O/T&C with early exit on empty
+  `uncoveredRisks`; `checkpointName` field on `RunAgentOpts` for distinct
+  checkpoints per cycle
+- Maintenance workers (Phase 3e): `maintenance.staleness_check`,
+  `maintenance.manifest_gatekeeper`, `maintenance.org_list_gatekeeper` on a
+  separate `maintenance` BullMQ queue
+- Multi-tenancy schema (Phase 3f): all 6 previously missing tables added;
+  AES-256-GCM encryption for BYOK secrets; theme utilities
+- Agent call logger: `AGENT_CALL_LOG` env var → CSV; DB write deferred to Phase 5
+- **Eval baselines (2026-05-01):** Skeptic 6/6, Intake 8/8, Orchestration 3/3,
+  Technical Writer 5/5, Security 6/6, Gatekeeper 26/26. Cooperative and CV
+  placeholder suites still skipped — wiring needed before next prompt change.
 
-**Schema gaps (7 tables in spec not yet built):**
+**Test counts:** 30 shared + 38 workers = 68 passing. All test files use unique
+identifiers (uuidv7) and scoped afterEach cleanup; safe to run concurrently.
 
-| Table | Needed for |
-|---|---|
-| `manifest_proposals` | Phase 3e maintenance workers (queue for Gatekeeper review) |
-| `agent_call_log` | Phase 5 admin dashboard (logger currently writes CSV only) |
-| `tenants` | Phase 3f multi-tenancy |
-| `tenant_secrets` | Phase 3f BYOK (keys currently stored plaintext in config table -- not production-safe) |
-| `themes` | Phase 3f branding |
-| `theme_assignments` | Phase 3f branding |
-| `user_theme_preferences` | Phase 3f (stub only) |
-
-**Local dev:** Docker needed for DB (Postgres :5432, Redis :6379). `.env.local` complete.
+**Local dev:** Docker needed (Postgres :5432, Redis :6379). `.env.local` must
+include `ENCRYPTION_KEY` (32-byte base64, generate with
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`).
 
 ## What's immediately next
 
-**Phase 3e: Maintenance workers.** Before writing any worker code, add two
-schema items that do not yet exist: `last_refreshed_at` on the three typed
-manifest tables, and the `manifest_proposals` table. See PLAN.md Phase 3e for
-the full column list. Do not assume either exists.
-
-**Phase 3f: Multi-tenancy schema.** Must land before any Phase 4 API routes
-that touch `users` or `runs`. tenant_id is a FK column on both tables; routes
-written without it will need rewriting when 3f lands.
-
-**Phase 3g: Streaming in agent caller.** Must complete before production
-traffic. See below and PLAN.md Phase 3g.
+**Phase 3g: Streaming in agent caller.** Must complete before any production
+traffic. `callAnthropicAgent` in `base.ts` uses `client.messages.create()` —
+TCP connection drops at ~6 min on complex responses (confirmed in security
+eval). Switch to `client.messages.stream()`, accumulate `input_json_delta`
+chunks, parse on `content_block_stop`. Same unblocks CV progressive disclosure
+in Phase 4e. See PLAN.md Phase 3g.
 
 **Phase 3h: CV API integration and worker decomposition.** Replace the current
-single-call CV with a decomposed, API-backed implementation. GHSA primary for
-CVEs, NVD fallback, PyPI/npm/GitHub Releases for version data, LLM web search
-for pricing and regional availability. See PLAN.md Phase 3h and spec.md CV
-section for full data source hierarchy.
+single-call CV with API-backed parallel per-tool lookups inside the wave2_5
+BullMQ job. GHSA primary for CVEs, NVD fallback, PyPI/npm/GitHub Releases for
+versions, LLM web search for pricing and trip hazards. See PLAN.md Phase 3h
+and spec.md CV section.
+
+**Phase 4 (frontend) can begin after 3g.** The `tenant_id` threading from auth
+is a Phase 4a concern — dev auth stub must match the shape real auth will
+return. All tables that API routes will touch now have the correct schema.
 
 ## Deployment requirements
 
-- Apply migrations to prod DB before any production traffic: `pnpm db:migrate`
+- Apply migrations to prod DB: `pnpm db:migrate`
 - Run seeder after migrations: `pnpm --filter shared db:seed`
-- **Redis AOF persistence must be enabled** in Railway Redis settings before
-  production traffic. BullMQ job durability depends on it.
-- **GITHUB_TOKEN** (free) and **NVD_API_KEY** (free) required before production
-  traffic for CV API integration (Phase 3h). Add to `.env.example`.
+- **Redis AOF persistence must be enabled** in Railway before production traffic
+- **`ENCRYPTION_KEY`** (32-byte base64): required before any tenant provides a
+  BYOK key. Add to Railway environment before Phase 3h ships.
+- **`GITHUB_TOKEN`** and **`NVD_API_KEY`** (both free): required before Phase
+  3h production traffic for CV API integration.
 
-## Architecture decisions made this session (2026-05-01 session 2)
+## Architecture decisions made this session (2026-05-04)
 
-**Wave 2 cooperative exchange implemented:** Full 2-cycle F&O/T&C exchange.
-F&O runs initial analysis, T&C places gates, F&O checks coverage and populates
-`uncoveredRisks`. Empty `uncoveredRisks` = early exit. Non-empty = T&C gets a
-second pass; remaining risks after cycle 2 pass to The Skeptic as
-`unresolvedTensions`. `checkpointName` field added to `RunAgentOpts` so the
-same agent caller can produce distinct checkpoints across cycles.
+**UUIDv7 for all primary keys:** All uuid PKs switched from DB-side
+`gen_random_uuid()` to application-side `uuidv7()` via Drizzle `$defaultFn`.
+Sequential IDs give better B-tree index performance. No Railway infrastructure
+change required — `pg_uuidv7` extension not needed. Existing DB defaults
+dropped (safe: no production data). Migration 0007.
 
-**AgentKey registry bug fixed:** All multi-word agent keys in the worker layer
-used snake_case while the version registry and `DEFAULT_PROVIDER_CONFIGS` used
-camelCase. Version lookup would throw at runtime for every multi-word agent.
-The worker layer had never been exercised end-to-end. All worker keys now
-camelCase. Same fix applied to Skeptic cycle keys in wave3.ts.
+**Drizzle meta corruption repaired:** Snapshots 0004 and 0005 shared the same
+id (collision); 0006 had no snapshot entry. Repaired programmatically before
+generating migration 0007. Future migrations generate cleanly.
 
-**CV data sourcing strategy settled:** API-first for structured data (GHSA for
-CVEs, NVD fallback, PyPI/npm/GitHub Releases for versions), LLM web search for
-pricing and regional availability. CV worker decomposition deferred to Phase 3h.
-Current CV implementation is a single agent call -- not production-quality but
-functional for eval purposes. See spec.md Settled Decisions (Compatibility
-Validator) for full rationale.
+**Separate maintenance queue:** BullMQ maintenance jobs run on a `maintenance`
+queue, not `pipeline`. Prevents slow Gatekeeper runs from delaying user-facing
+pipeline jobs. Both queues started in `index.ts`.
 
-**Kimi evaluated and scoped:** Kimi K2.6 swarm is not suitable for CV (black-box
-aggregation incompatible with per-tool checkpointing and granular failure
-escalation; $7-100+ per swarm execution). Kimi K2.6 non-swarm via the existing
-OpenAI-compatible path is worth evaluating as a cheaper provider for individual
-agent calls ($0.74/M input vs $3.00/M for Sonnet). Not yet wired. Kimi entry
-already exists in PROVIDER_REGISTRY.
+**Org List Gatekeeper does not apply changes:** The worker stores gatekeeper
+research findings on the proposal but never updates `org_list` directly. All
+org list changes require human approval via admin dashboard (Phase 5).
 
-**Cooperative and CV evals need wiring:** Both eval suites exist but all tests
-are `it.skip`'d. The callers now exist and work. Wiring is straightforward but
-has not been done. These should be completed before the next prompt change to
-either agent.
+**Field-level encryption for BYOK:** AES-256-GCM via Node.js built-in `crypto`.
+Storage format: `{iv_hex}:{ciphertext_hex}:{auth_tag_hex}`. Key source:
+`ENCRYPTION_KEY` env var. The `tenant_secrets` table is the only place API
+keys are stored — never `config`. `packages/shared/src/crypto.ts`.
 
-## Architecture decisions made this session (2026-05-01 session 1)
+**Theme version computation:** `computeThemeVersion(tokenMap, customCss)` →
+`YYYY-MM-DD-{sha256_8(JSON.stringify(tokenMap) + customCss)}`. Same pattern as
+agent versions. Computed on every write; never stored without recomputing.
+`packages/shared/src/db/themes.ts`.
 
-**Manifest table split:** `manifest_entries` retired. Three typed tables replace
-it: `manifest_tools` (tool-specific columns present), `manifest_patterns`
-(domainKnowledgePayload NOT NULL, pattern shape), `manifest_failure_modes`
-(domainKnowledgePayload NOT NULL, failure mode shape). Migration 0006.
+**Vercel Blob deferred:** `logo_url` column in `theme_assignments` is in place.
+Actual Blob setup deferred to Phase 4 when the frontend exists.
 
-**Streaming required before production (Phase 3g):** The security eval surfaced
-a TCP timeout at ~6 minutes on complex responses. The Anthropic API streams
-responses; without streaming mode the connection can drop before the full
-response arrives. `callAnthropicAgent` must switch from `messages.create()` to
-`messages.stream()`, accumulating `input_json_delta` chunks and parsing on
-`content_block_stop`. Same work unblocks CV progressive disclosure in Phase 4e.
-Settled decision added to spec.md.
+**Concurrent-safe test isolation:** All integration tests now use uuidv7 for
+unique identifiers and `afterEach` targeted cleanup instead of global table
+deletes. Multiple test files run concurrently without DB state interference.
+This pattern must be followed for all future test files.
 
-**Security eval split:** The original single scenario (fully autonomous web
-agent with arbitrary URLs, form submission, purchases) generated a response
-long enough to drop the TCP connection. Split into two sequential scenarios:
-(A) read-only web research -- tests prompt injection via web content, trust
-boundaries, exfiltration via reasoning; (B) write-access form submission --
-tests tool misuse, excessive autonomy, financial impact. Both pass.
+**Tenant context injection tests added:** 9 new tests in
+`packages/workers/src/__tests__/tenant-context.test.ts` covering content
+injection, context preservation, version matching, null paths, and prohibited
+tools. This gap was identified during Phase 3f work.
 
-**Agent call logger:** Opt-in via `AGENT_CALL_LOG` env var. Appends one CSV
-row per agent call: timestamp, agent name, provider, model, duration, input
-tokens, output tokens, cache read tokens, cache write tokens, estimated cost.
-Pricing constants for Sonnet 4.6, Opus 4.7, Haiku 4.5. Good for tracking cost
-and latency trends as prompts are edited.
+## Architecture decisions from previous sessions
 
-**Pipeline latency reality:** A full Pass 1 takes 6-10 minutes. Individual
-agent calls take 25-60 seconds each. Wave 1 runs 4 agents in parallel (~60s);
-Wave 3 runs up to 4 Skeptic cycles (~2.5 min). The async BullMQ + email
-notification design is the right answer -- users submit and come back.
-Prompt caching reduces cost but not wall-clock time (output generation dominates).
+**Wave 2 cooperative exchange (2026-05-01):** Full 2-cycle F&O/T&C exchange.
+F&O populates `uncoveredRisks`; empty = early exit, non-empty = T&C gets
+second pass. `checkpointName` field on `RunAgentOpts` for distinct per-cycle
+checkpoints.
 
-**Eval `beforeAll` refactor:** Eval suites previously called the agent once
-per `it` block. Refactored to use `beforeAll` per scenario: one API call per
-unique input, shared across all assertions. Reduced total eval calls from ~38
-to ~23 for the full suite.
+**CV data sourcing strategy (2026-05-01):** API-first (GHSA, PyPI, npm,
+GitHub), LLM web search for unstructured data. Promise.all() within wave2_5
+BullMQ job; cv_result_cache as per-tool checkpoint. See spec.md CV section.
 
-## Cost observations (2026-05-01)
+**AgentKey registry bug fixed (2026-05-01):** snake_case/camelCase mismatch
+would have thrown at runtime for all multi-word agents. Worker layer had never
+been exercised end-to-end.
 
-Spent ~$20 running evals today. Inflated by: redundant calls before `beforeAll`
-refactor, multiple timeout retry runs, no cache benefit between spread-out calls.
+**Streaming required before production (2026-05-01):** TCP timeout at ~6 min
+confirmed via security eval. Phase 3g.
 
-Estimated real Pass 1 cost with warm caches: $2-5 (to be measured with first
-real pipeline run). Eval suite after refactor: ~$2-4 per full run.
+**Manifest table split (2026-04-30):** `manifest_entries` retired. Three typed
+tables: `manifest_tools`, `manifest_patterns`, `manifest_failure_modes`.
+Migration 0006.
 
-Free tier (3 runs/day) economics need validation against real cost data before
-launch. Already tracked in TODOS.md as P1.
-
-## Architecture decisions from 2026-04-30 session
-
-**Tenant context (formerly Wave 0):** Wave 0 retired. Tenant-specific domain
-context injected into verifiedContext before Wave 1. Not a BullMQ job.
-Versioned with `YYYY-MM-DD-{hash8}` pattern. Migration 0005.
-
-**Manifest facts vs conclusions:** `platformCompat` and `modelCompat` removed.
-CV derives compatibility from first principles; manifest stores facts as floors.
-
-**Multi-tenancy:** In scope for initial rollout. Schema gap closed in Phase 3f.
-Multi-tenant branding system designed: themes table, theme_assignments (mode as
-relationship, not token encoding), token vocabulary (color, typography, radius),
-presets seeded in DB, version-as-cache-key strategy. See spec.md settled decisions.
-
-**Branding / white-label:** Standard (attribution required), Premium (optional),
-Enterprise (full white-label). Design complete, implementation in Phase 6.
-
-**Communication context templates:** Design agreed, not built. Phase 6.
-
-**Plan restructure (2026-04-30):**
-- Maintenance pipeline moved from Phase 7 into Phases 2 and 3 (it is the
-  differentiating feature)
-- Admin dashboard (Phase 5) before tenant dashboard (Phase 6) -- operator
-  controls before tenant-facing tools
-- Real auth deferred to Phase 4f; dev auth stub is Phase 4a
-- Phase 3e/3f ordering: maintenance before multi-tenancy (core before distribution)
-
-## Prompt review -- complete (2026-04-29)
-
-All 10 pipeline agents reviewed. Key changes:
-- Prime directive: cover what senior engineers anticipate (completeness), then
-  surface what they would not find until deep into implementation (value).
-- First-principles trip hazard reasoning: manifest as floor, not ceiling
-- Domain-specific failure mode named for each agent
-- No em dashes in prompt files
+**Multi-tenancy in scope for initial rollout (2026-04-30):** Schema complete as
+of Phase 3f. Branding tiers: Standard (attribution required), Premium
+(optional), Enterprise (full white-label). Phase 6 for tenant dashboard.
 
 ## Collaboration notes
 
 - No em dashes in any written output. Commas, colons, or parentheses instead.
   Prefer short sentences. Applies to responses AND prompt files.
 - Show the diff before writing. User prefers to approve changes before they land.
+- Always create a feature branch before writing any code or docs.
 - Push back by default when something is off. User explicitly requested this.
 - User is growing as an agentic engineer and architect. Honest pushback, not generous credit.
 - User has strong UX instincts rooted in React engineering background. Reliable.
 - User responds well to "show value early, minimize friction" as a design principle.
-- User's standard for agent rigor: cover what senior engineers anticipate, then
-  surface what they would not find until deep into implementation. Both matter.
-- User wakes up with insight -- sleep on hard decisions before finalizing.
-- First user: husband (Sr. Data Scientist, Microsoft, award-winning). His team
-  incorporated Pass 1 output into a real project.
-- Target users: senior technical builders doing agentic work, outpaced by the ecosystem.
+- First user: husband (Sr. Data Scientist, Microsoft). His team incorporated
+  Pass 1 output into a real project.
+- Target users: senior technical builders doing agentic work.
 - No marketing language in written output.
-- User follows general-audience AI news, not deep technical press.
 - LinkedIn newsletter documenting this build. Drafts at ~/Desktop/blog entries/.
   Claude.ai handles newsletter; Claude Code handles implementation.
 - Old codebase exists but is deliberately excluded.
+- Tests first at every phase where possible.
+- Integration tests must use unique identifiers (uuidv7) and scoped cleanup
+  — never delete all rows from shared tables.
