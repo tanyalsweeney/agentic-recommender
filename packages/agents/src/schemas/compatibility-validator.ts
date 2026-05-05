@@ -24,7 +24,9 @@ const PerToolResult = z.object({
 });
 
 const CrossToolResult = z.object({
-  pair: z.tuple([z.string(), z.string()]),
+  // z.tuple generates prefixItems which Anthropic's schema validator rejects.
+  // z.array(z.string()).length(2) produces the same semantic with valid JSON Schema.
+  pair: z.array(z.string()).length(2),
   compatible: z.boolean(),
   notes: z.string(),
 });
