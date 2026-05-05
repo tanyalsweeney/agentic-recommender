@@ -1,12 +1,13 @@
 import { eq, and, sql } from "drizzle-orm";
 import { cvResultCache } from "@agent12/shared";
+import type { WebSearchResult } from "@agent12/agents";
 import type { CveSummary } from "../cv-apis/cve-lookup.js";
 import type { Db } from "../db.js";
 
 export interface PerToolLookupDeps {
   queryCves: (ecosystem: string, packageName: string, nvdApiKey: string) => Promise<CveSummary>;
   queryVersion: (toolName: string) => Promise<{ version: string; license: string | null } | null>;
-  searchWeb?: (query: string) => Promise<string>;
+  searchToolData?: (toolName: string, version: string | null) => Promise<WebSearchResult>;
 }
 
 export interface PerToolCvResult {
@@ -16,31 +17,32 @@ export interface PerToolCvResult {
   cves: { critical: string[]; high: string[] };
   license: string | null;
   isCopyleft: boolean;
-  sourceUrl: string;
+  eolDate: string | null;
+  breakingChanges: string[];
+  pricing: string | null;
+  tripHazards: string[];
+  sourceUrls: Record<string, string>; // one URL per source consulted, for human audit
   fromCache: boolean;
-  flagged: string[];
+  flagged: string[];                  // flaggable data points that could not be retrieved
 }
 
-const PRICING_UNAVAILABLE_PATTERNS = [
-  "not publicly available",
-  "not found",
-  "no pricing",
-  "pricing information not",
-  "contact sales",
-  "custom pricing",
-];
+// Stored in compatStatus jsonb as { tripHazards, sourceUrls } to avoid a migration.
+// A dedicated sourceUrls column will be added in Phase 5 when the admin dashboard lands.
+interface CachedCompatStatus {
+  tripHazards?: string[];
+  sourceUrls?: Record<string, string>;
+}
 
 /**
  * Run a per-tool CV lookup with cache-first behaviour.
  *
- * Cache hit (fresh entry in cv_result_cache) → return immediately, no API calls.
- * Cache miss → call API clients, write result to cv_result_cache, return result.
+ * Cache hit  → return immediately, no API or LLM calls.
+ * Cache miss → queryCves (fatal if throws) + queryVersion + searchToolData
+ *              (flaggable if throws or pricingFlagged), write to cv_result_cache.
  *
- * Fatal errors (CVE API failure) re-throw so the wave2_5 job fails and BullMQ
- * retries. Completed siblings' cache entries survive because they were written
- * before the failure.
- *
- * Flaggable failures (pricing unavailable) populate result.flagged and do not throw.
+ * cv_result_cache is the per-tool checkpoint: BullMQ retries the wave2_5 job
+ * on any failure; completed tools read from cache and are skipped. Siblings'
+ * cache entries are unaffected by a failing tool's lookup.
  */
 export async function runPerToolLookup(
   db: Db,
@@ -55,7 +57,6 @@ export async function runPerToolLookup(
     .where(
       and(
         eq(cvResultCache.toolName, toolName),
-        // Entry is fresh if cachedAt + ttlSeconds > now()
         sql`cached_at + (ttl_seconds * interval '1 second') > now()`
       )
     )
@@ -63,6 +64,7 @@ export async function runPerToolLookup(
 
   if (cached.length > 0) {
     const entry = cached[0];
+    const compatStatus = (entry.compatStatus ?? {}) as CachedCompatStatus;
     const cveStatus = (entry.cveStatus ?? { critical: [], high: [] }) as {
       critical: string[];
       high: string[];
@@ -70,11 +72,15 @@ export async function runPerToolLookup(
     return {
       toolName,
       version: entry.toolVersion ?? null,
-      isCurrentVersion: null, // not tracked in cache
+      isCurrentVersion: null,
       cves: cveStatus,
       license: entry.license ?? null,
       isCopyleft: isLicenseCopyleft(entry.license ?? null),
-      sourceUrl: entry.sourceUrl ?? "",
+      eolDate: entry.eolDate ?? null,
+      breakingChanges: (entry.breakingChanges as string[]) ?? [],
+      pricing: (entry.pricing as { text: string } | null)?.text ?? null,
+      tripHazards: compatStatus.tripHazards ?? [],
+      sourceUrls: compatStatus.sourceUrls ?? {},
       fromCache: true,
       flagged: [],
     };
@@ -83,24 +89,31 @@ export async function runPerToolLookup(
   // ── live lookup ──────────────────────────────────────────────────────────────
 
   // queryCves throws on API failure — intentionally not caught so the job fails
+  // and BullMQ retries. Completed siblings remain cached.
   const cveData = await deps.queryCves(ecosystem, toolName, process.env.NVD_API_KEY ?? "");
 
   const versionInfo = await deps.queryVersion(toolName);
   const version = versionInfo?.version ?? null;
   const license = versionInfo?.license ?? null;
 
-  // Pricing via web search — flaggable, never fatal
-  const flagged: string[] = [];
-  let sourceUrl = `https://pypi.org/project/${toolName}/`;
+  // Build sourceUrls — start with any GHSA advisory URLs from CVE data
+  const sourceUrls: Record<string, string> = {};
+  const firstAdvisory = [...cveData.critical, ...cveData.high][0];
+  if (firstAdvisory?.ghsaId?.startsWith("GHSA")) {
+    sourceUrls.advisory = firstAdvisory.advisoryUrl;
+  }
 
-  if (deps.searchWeb) {
+  // Web search covers pricing, EOL, breaking changes, trip hazards, and docs URLs.
+  // pricingFlagged: true or a thrown error → flaggable, not fatal.
+  const flagged: string[] = [];
+  let webSearch: WebSearchResult | null = null;
+
+  if (deps.searchToolData) {
     try {
-      const pricingText = await deps.searchWeb(`${toolName} pricing cost tier`);
-      if (PRICING_UNAVAILABLE_PATTERNS.some((p) => pricingText.toLowerCase().includes(p))) {
-        flagged.push("pricing");
-      }
+      webSearch = await deps.searchToolData(toolName, version);
+      if (webSearch.pricingFlagged) flagged.push("pricing");
+      Object.assign(sourceUrls, webSearch.sourceUrls);
     } catch {
-      // Web search failure is also flaggable, not fatal
       flagged.push("pricing");
     }
   }
@@ -115,7 +128,11 @@ export async function runPerToolLookup(
     },
     license,
     isCopyleft: isLicenseCopyleft(license),
-    sourceUrl,
+    eolDate: webSearch?.eolDate ?? null,
+    breakingChanges: webSearch?.breakingChanges ?? [],
+    pricing: webSearch?.pricing ?? null,
+    tripHazards: webSearch?.tripHazards ?? [],
+    sourceUrls,
     fromCache: false,
     flagged,
   };
@@ -128,7 +145,15 @@ export async function runPerToolLookup(
       toolVersion: version ?? "unknown",
       cveStatus: result.cves,
       license,
-      sourceUrl,
+      pricing: result.pricing ? { text: result.pricing } : null,
+      eolDate: result.eolDate,
+      breakingChanges: result.breakingChanges,
+      // compatStatus stores tripHazards + sourceUrls until Phase 5 adds dedicated columns
+      compatStatus: {
+        tripHazards: result.tripHazards,
+        sourceUrls: result.sourceUrls,
+      },
+      sourceUrl: sourceUrls.registry ?? sourceUrls.docs ?? null,
       ttlSeconds: 86400,
     })
     .onConflictDoUpdate({
@@ -136,7 +161,14 @@ export async function runPerToolLookup(
       set: {
         cveStatus: result.cves,
         license,
-        sourceUrl,
+        pricing: result.pricing ? { text: result.pricing } : null,
+        eolDate: result.eolDate,
+        breakingChanges: result.breakingChanges,
+        compatStatus: {
+          tripHazards: result.tripHazards,
+          sourceUrls: result.sourceUrls,
+        },
+        sourceUrl: sourceUrls.registry ?? sourceUrls.docs ?? null,
         cachedAt: sql`now()`,
       },
     });

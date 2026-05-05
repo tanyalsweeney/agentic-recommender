@@ -1,5 +1,5 @@
 import type { Job } from "bullmq";
-import { callCompatibilityValidator } from "@agent12/agents";
+import { callCompatibilityValidator, searchToolData } from "@agent12/agents";
 import { runAgent } from "../runner.js";
 import { runPerToolLookup, type PerToolLookupDeps } from "./per-tool-lookup.js";
 import { runCrossAgentConflictCheck } from "./cv-conflict-check.js";
@@ -97,7 +97,6 @@ export async function processWave2_5Job(
 
 function buildDeps(): PerToolLookupDeps {
   const nvdApiKey = process.env.NVD_API_KEY ?? "";
-  const githubToken = process.env.GITHUB_TOKEN ?? "";
 
   return {
     queryCves: (ecosystem, packageName) =>
@@ -112,12 +111,7 @@ function buildDeps(): PerToolLookupDeps {
       return null;
     },
 
-    // Web search is wired in Phase 3h+ when the Anthropic tool use integration lands.
-    // For now, returns a stub so per-tool lookup flags pricing as unavailable.
-    searchWeb: async (_query: string) => {
-      void githubToken; // referenced to avoid lint warning; used by github-releases client
-      return "Pricing information not publicly available — web search not yet wired.";
-    },
+    searchToolData: (toolName, version) => searchToolData(toolName, version),
   };
 }
 

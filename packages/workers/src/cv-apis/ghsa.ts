@@ -3,6 +3,7 @@ export interface GhsaAdvisory {
   severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW";
   summary: string;
   fixedVersions: string[];
+  advisoryUrl: string; // canonical GitHub Advisory URL for human audit
 }
 
 /**
@@ -47,6 +48,7 @@ export async function queryGhsaAdvisories(
     fixedVersions: (advisory.vulnerabilities ?? [])
       .map((v) => v.first_patched_version)
       .filter((v): v is string => !!v),
+    advisoryUrl: `https://github.com/advisories/${advisory.ghsa_id}`,
   }));
 }
 
