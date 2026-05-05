@@ -202,21 +202,34 @@ default_light/default_dark), 7 `ui.string.*` config defaults.
 **Tests:** 19 tenancy tests + 9 tenant context injection tests. All
 concurrent-safe via unique identifiers and scoped cleanup.
 
-### 3g. Streaming in agent caller `[Upcoming]`
+### 3g. Streaming in agent caller `[Done]`
 Without streaming, complex user systems trigger responses long enough to drop
 the underlying TCP connection before the full response arrives (~6 min
 confirmed via security eval). Must be resolved before any production traffic.
 
-Switch `callAnthropicAgent` in `base.ts` from `client.messages.create()` to
-`client.messages.stream()`. Accumulate `input_json_delta` chunks on
-`content_block_start` events; parse assembled JSON on `content_block_stop`.
-OpenAI-compatible path: same pattern via `stream: true`.
+`callAnthropicAgent` switched from `client.messages.create()` to
+`client.messages.stream()`. Accumulates `input_json_delta` chunks via the
+SDK's `inputJson` event; parses assembled JSON after `stream.finalMessage()`
+resolves. `callOpenAICompatibleAgent` switched to `stream: true` with
+`stream_options: { include_usage: true }`; iterates the async iterable to
+accumulate tool call argument chunks. Usage stats sourced from `finalMessage`
+(Anthropic) and the trailing usage chunk (OpenAI-compatible).
 
-This also unblocks CV progressive disclosure in Phase 4e — the same streaming
-infrastructure will emit per-tool results as sub-tasks complete.
+Two helpers exported from `base.ts` for testability: `assembleChunks` (joins
+partial JSON strings) and `parseAssembledInput` (JSON.parse with agent-named
+error). 14 unit tests cover partial chunk accumulation, single-byte
+fragmentation, output parity with direct JSON.parse, and mid-stream error
+propagation.
 
-Unit tests: partial chunk accumulation produces valid JSON; mid-stream error
-surfaces as a thrown exception; complete stream matches non-streaming output.
+**Also fixed in this phase:** three parallel-run test isolation bugs found
+during CI investigation:
+- `schema.test.ts`: global `beforeEach` deletes on users/runs/runCheckpoints
+  replaced with uuidv7 identifiers and scoped `afterEach` cleanup
+- `tenancy.test.ts`: global `db.delete(config)` in `ui.string.*` `beforeEach`
+  was racing with tenant-context tests; replaced with unique key suffix and
+  scoped cleanup; hardcoded emails replaced with uuidv7-based values
+- `technical-writer.eval.ts`: `DEFAULT_PROVIDER_CONFIGS.technical_writer`
+  (snake_case) resolved to `undefined`; corrected to `technicalWriter`
 
 ### 3h. CV API integration layer and worker decomposition `[Upcoming]`
 
