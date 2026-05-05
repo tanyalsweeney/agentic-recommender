@@ -231,7 +231,7 @@ during CI investigation:
 - `technical-writer.eval.ts`: `DEFAULT_PROVIDER_CONFIGS.technical_writer`
   (snake_case) resolved to `undefined`; corrected to `technicalWriter`
 
-### 3g.1. SDK mock tests for streaming callers `[Must do before 3h]`
+### 3g.1. SDK mock tests for streaming callers `[Done]`
 
 The streaming callers in `base.ts` are validated by evals (real API calls) but have
 no unit tests covering the SDK integration paths. This means CI has no coverage for:
@@ -240,28 +240,18 @@ no unit tests covering the SDK integration paths. This means CI has no coverage 
 - Usage stat extraction from `stream.finalMessage()` and trailing usage chunk
 - Empty-stream error paths (`!assembled`, `!toolCallSeen`)
 
-These are excluded from CI because evals are never run there. A silent revert of the
-streaming code would not be caught until a manual eval run.
+**8 tests in `packages/agents/src/__tests__/streaming-integration.test.ts`.**
 
-**Required before 3h** because 3h adds more callers and parallel per-tool sub-tasks
-that depend on streaming working correctly. Catching regressions in CI matters more
-once the worker layer is decomposed.
+Two fake implementations (no real SDK classes imported): `FakeAnthropicStream`
+emits `inputJson` events synchronously inside `finalMessage()` so chunk accumulation
+is fully testable without a live connection; `makeOpenAIStream()` is an async
+generator yielding typed chunk objects.
 
-**What to build** (`packages/agents/src/__tests__/streaming-integration.test.ts`):
-- Anthropic path: mock `client.messages.stream()` to return a fake `MessageStream`
-  that emits `inputJson` events in sequence; verify chunk accumulation and final parse
-- Anthropic error path: fake stream that emits error before `finalMessage()` resolves;
-  verify error propagates and does not produce a result
-- Anthropic empty path: fake stream with zero `inputJson` events; verify the
-  `no tool_use block in stream` error is thrown
-- OpenAI-compatible path: mock `client.chat.completions.create({ stream: true })`
-  to return a fake async iterable yielding tool call argument chunks; verify assembly
-- OpenAI usage path: verify `streamedUsage` is populated from the trailing usage chunk
-- OpenAI empty path: fake stream with no tool call chunks; verify the
-  `no tool call in stream` error is thrown
+Anthropic path (4 tests): multi-chunk accumulation and Zod parse, usage stat
+extraction from `finalMessage`, empty-stream error, `finalMessage` error propagation.
 
-Mocking approach: implement a minimal fake `MessageStream` event emitter and a fake
-`AsyncIterable<ChatCompletionChunk>` — do not import real SDK classes in tests.
+OpenAI-compatible path (4 tests): multi-chunk accumulation and Zod parse, trailing
+usage chunk capture, usage colocated with content chunk, empty-stream error.
 
 ### 3h. CV API integration layer and worker decomposition `[Upcoming]`
 
