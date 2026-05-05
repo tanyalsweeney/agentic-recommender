@@ -38,6 +38,18 @@ export interface CallAgentOptions<T> {
   providerConfig: ProviderConfig;
 }
 
+export function assembleChunks(chunks: string[]): string {
+  return chunks.join("");
+}
+
+export function parseAssembledInput(json: string, agentName: string): unknown {
+  try {
+    return JSON.parse(json);
+  } catch {
+    throw new Error(`${agentName}: failed to parse assembled tool input JSON`);
+  }
+}
+
 export async function callAgent<T>(opts: CallAgentOptions<T>): Promise<T> {
   const entry = PROVIDER_REGISTRY[opts.providerConfig.provider as ProviderName];
   if (!entry) {
@@ -71,7 +83,7 @@ async function callAnthropicAgent<T>(
     : "";
 
   const startMs = Date.now();
-  const response = await client.messages.create({
+  const stream = client.messages.stream({
     model: providerConfig.model,
     max_tokens: MAX_TOKENS,
     system: [
@@ -110,23 +122,30 @@ async function callAnthropicAgent<T>(
     ],
   });
 
+  const toolInputChunks: string[] = [];
+  stream.on("inputJson", (partialJson: string) => {
+    toolInputChunks.push(partialJson);
+  });
+
+  const finalMessage = await stream.finalMessage();
+
   logAgentCall({
     agentName,
     provider: "anthropic",
     model: providerConfig.model,
     durationMs: Date.now() - startMs,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    cacheReadTokens: (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0,
-    cacheWriteTokens: (response.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0,
+    inputTokens: finalMessage.usage.input_tokens,
+    outputTokens: finalMessage.usage.output_tokens,
+    cacheReadTokens: (finalMessage.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0,
+    cacheWriteTokens: (finalMessage.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0,
   });
 
-  const toolUse = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  if (!toolUse) {
-    throw new Error(`${agentName}: no tool_use block in response — model did not call the tool`);
+  const assembled = assembleChunks(toolInputChunks);
+  if (!assembled) {
+    throw new Error(`${agentName}: no tool_use block in stream — model did not call the tool`);
   }
 
-  return zodSchema.parse(toolUse.input);
+  return zodSchema.parse(parseAssembledInput(assembled, agentName));
 }
 
 async function callOpenAICompatibleAgent<T>(
@@ -151,7 +170,7 @@ async function callOpenAICompatibleAgent<T>(
   // are sent in full every call. Mitigated by checkpoint reuse; filtered manifest
   // per agent is a planned fast follow to reduce token cost further.
   const startMs = Date.now();
-  const response = await client.chat.completions.create({
+  const stream = await client.chat.completions.create({
     model: providerConfig.model,
     max_tokens: MAX_TOKENS,
     messages: [
@@ -175,26 +194,40 @@ async function callOpenAICompatibleAgent<T>(
       },
     ],
     tool_choice: { type: "function", function: { name: toolName } },
+    stream: true,
+    stream_options: { include_usage: true },
   });
+
+  const toolInputChunks: string[] = [];
+  let toolCallSeen = false;
+  let streamedUsage = { prompt_tokens: 0, completion_tokens: 0 };
+
+  for await (const chunk of stream) {
+    if (chunk.usage) {
+      streamedUsage = {
+        prompt_tokens: chunk.usage.prompt_tokens ?? 0,
+        completion_tokens: chunk.usage.completion_tokens ?? 0,
+      };
+    }
+    const tc = chunk.choices[0]?.delta?.tool_calls?.[0];
+    if (tc) toolCallSeen = true;
+    if (tc?.function?.arguments) toolInputChunks.push(tc.function.arguments);
+  }
 
   logAgentCall({
     agentName,
     provider: entry.type,
     model: providerConfig.model,
     durationMs: Date.now() - startMs,
-    inputTokens: response.usage?.prompt_tokens ?? 0,
-    outputTokens: response.usage?.completion_tokens ?? 0,
+    inputTokens: streamedUsage.prompt_tokens,
+    outputTokens: streamedUsage.completion_tokens,
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
   });
 
-  const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-  if (!toolCall) {
-    throw new Error(`${agentName}: no tool call in response — model did not call the function`);
+  if (!toolCallSeen) {
+    throw new Error(`${agentName}: no tool call in stream — model did not call the function`);
   }
-  if (!('function' in toolCall)) {
-    throw new Error(`${agentName}: tool call is not a function call`);
-  }
-  const parsed = JSON.parse((toolCall as { function: { arguments: string } }).function.arguments);
-  return zodSchema.parse(parsed);
+
+  return zodSchema.parse(parseAssembledInput(assembleChunks(toolInputChunks), agentName));
 }

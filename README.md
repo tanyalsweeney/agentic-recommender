@@ -27,15 +27,17 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Status
 
-**Active development.** Phases 0-3d complete. Maintenance workers and multi-tenancy schema next.
+**Active development.** Phases 0-3g complete. CV API integration and web frontend next.
 
 | Phase | Description | Status |
 |---|---|---|
 | 0 | Monorepo scaffolding (pnpm workspaces, TypeScript, Vitest) | Done |
-| 1 | Database schema — 19 tables, config resolution | Done |
+| 1 | Database schema — 20 tables, config resolution | Done |
 | 2 | Agent layer — 12 agents, Zod schemas, multi-provider callers, prompt caching, eval baselines | Done |
 | 3a-3d | Pipeline workers — BullMQ wave orchestration, checkpointing, evals | Done |
-| 3e-3g | Maintenance workers, multi-tenancy schema, streaming in agent caller | In Progress |
+| 3e-3f | Maintenance workers, multi-tenancy schema | Done |
+| 3g | Streaming in agent caller — resolves TCP timeout on complex responses | Done |
+| 3h | CV API integration — GHSA, NVD, PyPI, npm clients; wave2_5 worker decomposition | Upcoming |
 | 4 | Web frontend — intake flow, Pass 1 output rendering, auth | Upcoming |
 | 5 | Admin dashboard — pipeline observability, agent performance, manifest health, themes, config | Upcoming |
 | 6 | Tenant dashboard and config interface | Upcoming |
