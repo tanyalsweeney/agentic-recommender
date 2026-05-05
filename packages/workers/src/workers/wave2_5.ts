@@ -1,6 +1,11 @@
 import type { Job } from "bullmq";
 import { callCompatibilityValidator } from "@agent12/agents";
 import { runAgent } from "../runner.js";
+import { runPerToolLookup, type PerToolLookupDeps } from "./per-tool-lookup.js";
+import { runCrossAgentConflictCheck } from "./cv-conflict-check.js";
+import { queryCves } from "../cv-apis/cve-lookup.js";
+import { queryNpm } from "../cv-apis/npm.js";
+import { queryPypi } from "../cv-apis/pypi.js";
 import type { Db } from "../db.js";
 
 export async function processWave2_5Job(
@@ -12,14 +17,116 @@ export async function processWave2_5Job(
 ): Promise<{ output: unknown; checkpointVersion: string }> {
   const { runId, tenantId } = job.data as { runId: string; tenantId?: string };
 
+  const w1 = wave1Results as {
+    toolIntegration?: {
+      recommendedTools?: Array<{ tool: string }>;
+      declaredConstraints?: string[];
+    };
+    orchestration?: { declaredConstraints?: string[] };
+    security?: { declaredConstraints?: string[] };
+  };
+
+  // Collect the full tool list from Wave 1 recommendations
+  const toolNames: string[] = (w1.toolIntegration?.recommendedTools ?? []).map((t) => t.tool);
+
+  // ── per-tool lookups (parallel) ───────────────────────────────────────────
+  //
+  // Each lookup is independently checkpointed via cv_result_cache.
+  // A failed lookup throws, causing the wave2_5 job to fail and BullMQ to retry.
+  // On retry, completed tools read from cache; only failed tools re-run their lookup.
+
+  const deps = buildDeps();
+
+  const perToolResults = await Promise.all(
+    toolNames.map((toolName) =>
+      runPerToolLookup(db, toolName, inferEcosystem(toolName), deps)
+    )
+  );
+
+  // ── cross-agent conflict checks (sequential) ──────────────────────────────
+  const conflicts = await runCrossAgentConflictCheck(
+    perToolResults.map((r) => ({
+      toolName: r.toolName,
+      version: r.version,
+      cves: r.cves,
+      license: r.license,
+      isCopyleft: r.isCopyleft,
+    })),
+    w1
+  );
+
+  // Enrich upstream outputs with API-sourced data before calling the CV agent
+  const enrichedUpstream = {
+    wave1: wave1Results,
+    wave2: wave2Results,
+    apiData: Object.fromEntries(
+      perToolResults.map((r) => [
+        r.toolName,
+        {
+          resolvedVersion: r.version,
+          cves: r.cves,
+          license: r.license,
+          flagged: r.flagged,
+          fromCache: r.fromCache,
+        },
+      ])
+    ),
+    crossAgentConflicts: conflicts,
+  };
+
+  // ── CV agent synthesis ────────────────────────────────────────────────────
   const result = await runAgent({
-    db, runId, tenantId,
+    db,
+    runId,
+    tenantId,
     agentKey: "compatibilityValidator",
     wave: "2_5",
     upstreamHashes: upstreamCheckpointVersions,
-    upstreamOutputs: { wave1: wave1Results, wave2: wave2Results },
-    callAgent: (m, c, p, u) => callCompatibilityValidator(m, c, u as { wave1: unknown; wave2: unknown }, p),
+    upstreamOutputs: enrichedUpstream,
+    callAgent: (m, c, p, u) =>
+      callCompatibilityValidator(
+        m,
+        c,
+        u as { wave1: unknown; wave2: unknown },
+        p
+      ),
   });
 
   return { output: result.output, checkpointVersion: result.checkpointVersion };
+}
+
+function buildDeps(): PerToolLookupDeps {
+  const nvdApiKey = process.env.NVD_API_KEY ?? "";
+  const githubToken = process.env.GITHUB_TOKEN ?? "";
+
+  return {
+    queryCves: (ecosystem, packageName) =>
+      queryCves(ecosystem, packageName, nvdApiKey),
+
+    queryVersion: async (toolName) => {
+      // Try npm first (covers JS/TS tools), fall back to PyPI (Python tools)
+      const npm = await queryNpm(toolName).catch(() => null);
+      if (npm) return { version: npm.currentVersion, license: npm.license };
+      const pypi = await queryPypi(toolName).catch(() => null);
+      if (pypi) return { version: pypi.currentVersion, license: pypi.license };
+      return null;
+    },
+
+    // Web search is wired in Phase 3h+ when the Anthropic tool use integration lands.
+    // For now, returns a stub so per-tool lookup flags pricing as unavailable.
+    searchWeb: async (_query: string) => {
+      void githubToken; // referenced to avoid lint warning; used by github-releases client
+      return "Pricing information not publicly available — web search not yet wired.";
+    },
+  };
+}
+
+function inferEcosystem(toolName: string): string {
+  const JS_TOOLS = new Set(["bullmq", "openai-sdk", "mcp-server-filesystem", "playwright"]);
+  const PY_TOOLS = new Set(["langchain", "langgraph", "chromadb", "anthropic-sdk"]);
+
+  if (JS_TOOLS.has(toolName)) return "npm";
+  if (PY_TOOLS.has(toolName)) return "pip";
+  // Default to npm; the per-tool lookup will fall back to pypi if npm returns null
+  return "npm";
 }
