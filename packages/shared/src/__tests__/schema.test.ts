@@ -1,15 +1,19 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { eq } from "drizzle-orm";
+import { uuidv7 } from "uuidv7";
 import { getTestDb } from "./test-db.js";
-import { users, runs, runCheckpoints, cvResultCache, config } from "../db/schema.js";
+import { users, runs, runCheckpoints, cvResultCache } from "../db/schema.js";
 import { sql } from "drizzle-orm";
 
 async function createTestUser(db: ReturnType<typeof getTestDb>) {
   const [user] = await db
     .insert(users)
-    .values({ email: `test-${Date.now()}@example.com` })
+    .values({ email: `schema-test-${uuidv7()}@example.com` })
     .returning();
   return user;
 }
+
+// ── runs table ────────────────────────────────────────────────────────────────
 
 describe("runs table", () => {
   let db: ReturnType<typeof getTestDb>;
@@ -17,11 +21,13 @@ describe("runs table", () => {
 
   beforeEach(async () => {
     db = getTestDb();
-    await db.delete(runCheckpoints);
-    await db.delete(runs);
-    await db.delete(users);
     const user = await createTestUser(db);
     userId = user.id;
+  });
+
+  afterEach(async () => {
+    await db.delete(runs).where(eq(runs.userId, userId));
+    await db.delete(users).where(eq(users.id, userId));
   });
 
   it("inserts and retrieves a run", async () => {
@@ -43,17 +49,17 @@ describe("runs table", () => {
   });
 });
 
+// ── run_checkpoints table ─────────────────────────────────────────────────────
+
 describe("run_checkpoints table", () => {
   let db: ReturnType<typeof getTestDb>;
   let runId: string;
+  let userId: string;
 
   beforeEach(async () => {
     db = getTestDb();
-    await db.delete(runCheckpoints);
-    await db.delete(runs);
-    await db.delete(users);
-
     const user = await createTestUser(db);
+    userId = user.id;
     const [run] = await db
       .insert(runs)
       .values({
@@ -65,6 +71,12 @@ describe("run_checkpoints table", () => {
       })
       .returning();
     runId = run.id;
+  });
+
+  afterEach(async () => {
+    await db.delete(runCheckpoints).where(eq(runCheckpoints.runId, runId));
+    await db.delete(runs).where(eq(runs.id, runId));
+    await db.delete(users).where(eq(users.id, userId));
   });
 
   it("stores upstream_hashes for recursive checkpoint validity", async () => {
@@ -108,7 +120,8 @@ describe("run_checkpoints table", () => {
       .select()
       .from(runCheckpoints)
       .where(
-        sql`agent_name = 'orchestration'
+        sql`run_id = ${runId}
+          AND agent_name = 'orchestration'
           AND agent_version = '2026-04-27-a1b2c3d4'
           AND manifest_version = 'manifest_hash_001'
           AND context_hash = 'ctx_hash_001'`
@@ -119,19 +132,28 @@ describe("run_checkpoints table", () => {
   });
 });
 
+// ── cv_result_cache table ─────────────────────────────────────────────────────
+
 describe("cv_result_cache table", () => {
   let db: ReturnType<typeof getTestDb>;
+  let toolName: string;
 
   beforeEach(async () => {
     db = getTestDb();
-    await db.delete(cvResultCache);
+    // Unique tool name per test run — avoids unique constraint collisions
+    // when tests run concurrently across packages
+    toolName = `langchain-${uuidv7()}`;
+  });
+
+  afterEach(async () => {
+    await db.delete(cvResultCache).where(eq(cvResultCache.toolName, toolName));
   });
 
   it("stores and retrieves per-tool CV results", async () => {
     const [cached] = await db
       .insert(cvResultCache)
       .values({
-        toolName: "langchain",
+        toolName,
         toolVersion: "0.3.0",
         cveStatus: { critical: [], high: [] },
         pricing: { tier: "open-source", cost: null },
@@ -141,27 +163,29 @@ describe("cv_result_cache table", () => {
       })
       .returning();
 
-    expect(cached.toolName).toBe("langchain");
+    expect(cached.toolName).toBe(toolName);
     expect(cached.license).toBe("MIT");
     expect(cached.cveStatus).toEqual({ critical: [], high: [] });
   });
 
   it("enforces unique constraint on tool_name + tool_version", async () => {
     await db.insert(cvResultCache).values({
-      toolName: "langchain",
+      toolName,
       toolVersion: "0.3.0",
       ttlSeconds: 86400,
     });
 
     await expect(
       db.insert(cvResultCache).values({
-        toolName: "langchain",
+        toolName,
         toolVersion: "0.3.0",
         ttlSeconds: 86400,
       })
     ).rejects.toThrow();
   });
 });
+
+// ── required indexes ──────────────────────────────────────────────────────────
 
 describe("required indexes", () => {
   let db: ReturnType<typeof getTestDb>;

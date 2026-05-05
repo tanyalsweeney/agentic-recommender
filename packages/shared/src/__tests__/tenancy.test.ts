@@ -3,8 +3,9 @@
  * All tests hit the real test database. Written before schema implementation.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { eq, and, isNull, isNotNull, lte, gte, or } from "drizzle-orm";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { eq, and, isNull, isNotNull, lte, gte, or, inArray } from "drizzle-orm";
+import { uuidv7 } from "uuidv7";
 import { getTestDb } from "./test-db.js";
 import {
   tenants,
@@ -46,44 +47,62 @@ const BASE_TOKEN_MAP = {
 
 describe("tenant isolation", () => {
   let db: ReturnType<typeof getTestDb>;
+  let createdUserIds: string[] = [];
+  let createdTenantIds: string[] = [];
 
   beforeEach(async () => {
     db = getTestDb();
-    // Clean up only tenant-scoped data -- avoid touching global runs/checkpoints
-    // which are shared across the test DB and would corrupt other test files.
-    await db.delete(tenantSecrets);
-    // Delete tenant-scoped users first (FK users.tenant_id → tenants)
-    await db.delete(users).where(isNotNull(users.tenantId));
-    await db.delete(tenants);
+    createdUserIds = [];
+    createdTenantIds = [];
+  });
+
+  afterEach(async () => {
+    // Scoped cleanup: only remove rows this test created, in FK-safe order
+    if (createdTenantIds.length) {
+      await db.delete(tenantSecrets).where(inArray(tenantSecrets.tenantId, createdTenantIds));
+    }
+    if (createdUserIds.length) {
+      await db.delete(users).where(inArray(users.id, createdUserIds));
+    }
+    if (createdTenantIds.length) {
+      await db.delete(tenants).where(inArray(tenants.id, createdTenantIds));
+    }
   });
 
   it("tenant_id FK enforces that users belong to a known tenant", async () => {
+    const id = uuidv7();
     const [tenant] = await db.insert(tenants)
-      .values({ name: "Acme", slug: "acme", plan: "standard" })
+      .values({ name: `Acme-${id}`, slug: `acme-${id}`, plan: "standard" })
       .returning();
+    createdTenantIds.push(tenant.id);
 
     const [user] = await db.insert(users)
-      .values({ email: "alice@acme.com", tenantId: tenant.id })
+      .values({ email: `alice-${id}@acme.com`, tenantId: tenant.id })
       .returning();
+    createdUserIds.push(user.id);
 
     expect(user.tenantId).toBe(tenant.id);
   });
 
   it("global users have null tenant_id", async () => {
     const [user] = await db.insert(users)
-      .values({ email: "global@example.com" })
+      .values({ email: `global-${uuidv7()}@example.com` })
       .returning();
+    createdUserIds.push(user.id);
 
     expect(user.tenantId).toBeNull();
   });
 
   it("tenant secrets are scoped to their tenant", async () => {
+    const idA = uuidv7();
+    const idB = uuidv7();
     const [tenantA] = await db.insert(tenants)
-      .values({ name: "Tenant A", slug: "tenant-a", plan: "standard" })
+      .values({ name: `Tenant-A-${idA}`, slug: `tenant-a-${idA}`, plan: "standard" })
       .returning();
     const [tenantB] = await db.insert(tenants)
-      .values({ name: "Tenant B", slug: "tenant-b", plan: "standard" })
+      .values({ name: `Tenant-B-${idB}`, slug: `tenant-b-${idB}`, plan: "standard" })
       .returning();
+    createdTenantIds.push(tenantA.id, tenantB.id);
 
     await db.insert(tenantSecrets).values({
       tenantId: tenantA.id,
@@ -91,7 +110,6 @@ describe("tenant isolation", () => {
       encryptedKey: "encrypted-key-a",
     });
 
-    // Tenant B should have no secrets
     const bSecrets = await db
       .select()
       .from(tenantSecrets)
@@ -287,15 +305,22 @@ describe("getActiveThemeAssignment — time-bounded", () => {
 
 describe("ui.string.* config defaults", () => {
   let db: ReturnType<typeof getTestDb>;
+  let configKey: string;
 
   beforeEach(async () => {
     db = getTestDb();
-    await db.delete(config);
+    // Unique key per test run — prevents concurrent tests from deleting each
+    // other's config rows (a global delete here would race with tenant-context tests)
+    configKey = `ui.string.productName.test-${uuidv7()}`;
+  });
+
+  afterEach(async () => {
+    await db.delete(config).where(eq(config.key, configKey));
   });
 
   it("productName default resolves from config", async () => {
     await db.insert(config).values({
-      key: "ui.string.productName",
+      key: configKey,
       value: "Agent12",
       owner: "global",
     });
@@ -303,22 +328,21 @@ describe("ui.string.* config defaults", () => {
     const rows = await db
       .select()
       .from(config)
-      .where(and(eq(config.key, "ui.string.productName"), eq(config.owner, "global")));
+      .where(and(eq(config.key, configKey), eq(config.owner, "global")));
 
     expect(rows[0]?.value).toBe("Agent12");
   });
 
   it("tenant override takes precedence over global default", async () => {
     await db.insert(config).values([
-      { key: "ui.string.productName", value: "Agent12",   owner: "global"     },
-      { key: "ui.string.productName", value: "MyProduct", owner: "tenant-xyz" },
+      { key: configKey, value: "Agent12",   owner: "global"     },
+      { key: configKey, value: "MyProduct", owner: "tenant-xyz" },
     ]);
 
-    // Tenant-specific value
     const tenantRow = await db
       .select()
       .from(config)
-      .where(and(eq(config.key, "ui.string.productName"), eq(config.owner, "tenant-xyz")));
+      .where(and(eq(config.key, configKey), eq(config.owner, "tenant-xyz")));
 
     expect(tenantRow[0]?.value).toBe("MyProduct");
   });
