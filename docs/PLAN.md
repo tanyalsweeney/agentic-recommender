@@ -231,6 +231,38 @@ during CI investigation:
 - `technical-writer.eval.ts`: `DEFAULT_PROVIDER_CONFIGS.technical_writer`
   (snake_case) resolved to `undefined`; corrected to `technicalWriter`
 
+### 3g.1. SDK mock tests for streaming callers `[Must do before 3h]`
+
+The streaming callers in `base.ts` are validated by evals (real API calls) but have
+no unit tests covering the SDK integration paths. This means CI has no coverage for:
+- `stream.on("inputJson", ...)` event accumulation (Anthropic)
+- `for await (const chunk of stream)` loop and tool call detection (OpenAI-compatible)
+- Usage stat extraction from `stream.finalMessage()` and trailing usage chunk
+- Empty-stream error paths (`!assembled`, `!toolCallSeen`)
+
+These are excluded from CI because evals are never run there. A silent revert of the
+streaming code would not be caught until a manual eval run.
+
+**Required before 3h** because 3h adds more callers and parallel per-tool sub-tasks
+that depend on streaming working correctly. Catching regressions in CI matters more
+once the worker layer is decomposed.
+
+**What to build** (`packages/agents/src/__tests__/streaming-integration.test.ts`):
+- Anthropic path: mock `client.messages.stream()` to return a fake `MessageStream`
+  that emits `inputJson` events in sequence; verify chunk accumulation and final parse
+- Anthropic error path: fake stream that emits error before `finalMessage()` resolves;
+  verify error propagates and does not produce a result
+- Anthropic empty path: fake stream with zero `inputJson` events; verify the
+  `no tool_use block in stream` error is thrown
+- OpenAI-compatible path: mock `client.chat.completions.create({ stream: true })`
+  to return a fake async iterable yielding tool call argument chunks; verify assembly
+- OpenAI usage path: verify `streamedUsage` is populated from the trailing usage chunk
+- OpenAI empty path: fake stream with no tool call chunks; verify the
+  `no tool call in stream` error is thrown
+
+Mocking approach: implement a minimal fake `MessageStream` event emitter and a fake
+`AsyncIterable<ChatCompletionChunk>` — do not import real SDK classes in tests.
+
 ### 3h. CV API integration layer and worker decomposition `[Upcoming]`
 
 Two related pieces of work that ship together. The current CV implementation is a single agent call that relies on the model's training knowledge for version and CVE data. This phase replaces it with a decomposed, API-backed implementation.
