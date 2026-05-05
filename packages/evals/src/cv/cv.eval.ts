@@ -192,3 +192,106 @@ describe("CV eval 13: current anthropic-sdk version, clean CVE record → confir
     expect(result!.sourceUrl).toMatch(/^https?:\/\//);
   });
 });
+
+// ── scenario 3: cost aggregation from wave1/wave2 signals + intake context ────
+//
+// CV should synthesize costSignals from all upstream agents together with
+// confirmed intake context (scale, model, orchestration pattern) and produce
+// a populated costAggregation with a total estimate and a breakdown.
+// This eval defines the quality bar before the cost aggregation implementation
+// is wired — it will fail until buildCostContext feeds into enrichedUpstream.
+
+const costAggregationContext = {
+  description:
+    "Document processing pipeline on AWS Lambda, Claude Sonnet, processing ~500 documents per day",
+  confirmedDecisions: {
+    orchestrationPattern: "pipeline",
+    platform: "AWS",
+    scale: "medium_volume",
+    modelPreferences: "claude-sonnet-4-6",
+  },
+};
+
+const costAggregationUpstream = {
+  wave1: {
+    orchestration: {
+      recommendedPattern: "pipeline",
+      costSignals: { computeIntensity: "low" },
+      agentStructure: { agentCount: "3", coordinationMechanism: "sequential hand-off", stateSharing: "shared context" },
+      tradeoffs: { advantages: ["simple"], limitations: ["no parallelism"], alternativesConsidered: [] },
+    },
+    security: {
+      agenticAttackSurface: { promptInjectionRisks: [], toolMisuseRisks: [], trustBoundaryViolations: [], dataExfiltrationViaReasoning: [], excessiveAutonomyRisks: [] },
+      trustBoundaries: [],
+      recommendedControls: [],
+      declaredConstraints: [],
+      costSignals: { computeIntensity: "low" },
+    },
+    memoryState: {
+      memoryPattern: { recommended: "in-context only", rationale: "Single-run batch job", reasoningExplained: "No cross-session state needed." },
+      persistence: { strategy: "none", sharedAgentState: false, sessionVsCrossSession: "session_only" },
+      recommendedTools: [],
+      tradeoffs: { advantages: ["simple"], limitations: ["no history"] },
+      costSignals: { computeIntensity: "low" },
+    },
+    toolIntegration: {
+      toolAgentBoundary: { principle: "tools for deterministic ops", applicationToThisSystem: "PDF extraction is a tool" },
+      recommendedTools: [{ tool: "anthropic-sdk", purpose: "Orchestration and summarisation", buildVsBuy: "buy", rationale: "Native Claude SDK" }],
+      mcpUsage: { recommended: false, rationale: "No external context needed" },
+      integrationPoints: [],
+      declaredConstraints: [],
+      costSignals: { computeIntensity: "medium" },
+    },
+  },
+  wave2: {
+    failureObservability: {
+      failureModes: [],
+      evalStrategy: { approach: "fixed test set", nonDeterministicHandling: "3x majority vote", suggestedEvalFramework: "vitest" },
+      tracingApproach: { reasoningChainTracing: "structured logging", interAgentHandoffTracing: "structured logs", intersectionsWithStandardTracing: [] },
+      costSignals: { computeIntensity: "low" },
+    },
+    trustControl: {
+      hitlGates: [],
+      autonomyEnforcement: { capturedLevel: "fully_autonomous", enforcementMechanism: "output schema validation", overrideConditions: [] },
+      approvalWorkflow: { recommended: false },
+      costSignals: { computeIntensity: "low" },
+    },
+  },
+  apiData: {
+    "anthropic-sdk": {
+      resolvedVersion: "0.39.0",
+      cves: { critical: [], high: [] },
+      license: "MIT",
+      fromCache: false,
+      flagged: [],
+    },
+  },
+};
+
+let costOutput: CompatibilityValidatorOutput;
+
+describe("CV eval 14: cost aggregation — produces populated estimate from upstream signals", () => {
+  beforeAll(async () => {
+    costOutput = await callCompatibilityValidator(
+      SEED_MANIFEST,
+      costAggregationContext,
+      costAggregationUpstream,
+      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator
+    );
+  }, 120_000);
+
+  it("produces a non-null totalEstimatedMonthlyCost", () => {
+    expect(costOutput.costAggregation.totalEstimatedMonthlyCost).toBeTruthy();
+  });
+
+  it("produces a cost breakdown with at least one entry", () => {
+    expect(costOutput.costAggregation.breakdown.length).toBeGreaterThan(0);
+  });
+
+  it("each breakdown entry has a component label and estimate", () => {
+    for (const entry of costOutput.costAggregation.breakdown) {
+      expect(entry.component).toBeTruthy();
+      expect(entry.estimate).toBeTruthy();
+    }
+  });
+});
