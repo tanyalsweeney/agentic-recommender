@@ -55,6 +55,10 @@ describe("queryGhsaAdvisories", () => {
     expect(result[0].severity).toBe("HIGH");
     expect(result[0].summary).toBe("Command injection in lodash");
     expect(result[0].fixedVersions).toContain("4.17.21");
+    // Advisory URL is the human-clickable source for this CVE finding
+    expect(result[0].advisoryUrl).toBe(
+      "https://github.com/advisories/GHSA-jf85-cpcp-j695"
+    );
   });
 
   it("returns an empty array when the package has no advisories", async () => {

@@ -22,11 +22,20 @@ import { runPerToolLookup, type PerToolLookupDeps } from "../workers/per-tool-lo
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+const DEFAULT_SEARCH_RESULT = {
+  pricing: null,
+  pricingFlagged: true,
+  eolDate: null,
+  breakingChanges: [],
+  tripHazards: [],
+  sourceUrls: { registry: "https://pypi.org/project/test-tool/" },
+};
+
 function makeDeps(overrides: Partial<PerToolLookupDeps> = {}): PerToolLookupDeps {
   return {
     queryCves: vi.fn().mockResolvedValue({ critical: [], high: [], source: "none" }),
     queryVersion: vi.fn().mockResolvedValue({ version: "1.0.0", license: "MIT" }),
-    searchWeb: vi.fn().mockResolvedValue("No pricing information found."),
+    searchToolData: vi.fn().mockResolvedValue(DEFAULT_SEARCH_RESULT),
     ...overrides,
   };
 }
@@ -82,13 +91,24 @@ describe("runPerToolLookup", () => {
 
   // ── cache miss: APIs called, result written to cv_result_cache ────────────
 
-  it("calls API clients on a cache miss and writes the result to cv_result_cache", async () => {
+  it("calls API clients on a cache miss, populates all fields, and writes to cv_result_cache", async () => {
     const toolName = `test-tool-${uuidv7()}`;
     toolNames.push(toolName);
 
     const deps = makeDeps({
       queryVersion: vi.fn().mockResolvedValue({ version: "3.1.0", license: "Apache-2.0" }),
       queryCves: vi.fn().mockResolvedValue({ critical: [], high: [], source: "GHSA" }),
+      searchToolData: vi.fn().mockResolvedValue({
+        pricing: "Free",
+        pricingFlagged: false,
+        eolDate: null,
+        breakingChanges: [],
+        tripHazards: ["Requires Redis 6+ as backing store"],
+        sourceUrls: {
+          registry: "https://www.npmjs.com/package/test-tool/v/3.1.0",
+          docs: "https://test-tool.dev/docs/",
+        },
+      }),
     });
 
     const result = await runPerToolLookup(db, toolName, "npm", deps);
@@ -96,10 +116,15 @@ describe("runPerToolLookup", () => {
     expect(result.fromCache).toBe(false);
     expect(result.version).toBe("3.1.0");
     expect(result.license).toBe("Apache-2.0");
+    expect(result.pricing).toBe("Free");
+    expect(result.tripHazards).toHaveLength(1);
+    expect(result.sourceUrls.registry).toContain("npmjs.com");
+    expect(result.sourceUrls.docs).toContain("test-tool.dev");
     expect(deps.queryVersion).toHaveBeenCalledOnce();
     expect(deps.queryCves).toHaveBeenCalledOnce();
+    expect(deps.searchToolData).toHaveBeenCalledOnce();
 
-    // Verify the result was written to cv_result_cache for future retries
+    // Written to cv_result_cache so retries skip completed tools
     const cached = await db.select().from(cvResultCache)
       .where(eq(cvResultCache.toolName, toolName));
     expect(cached).toHaveLength(1);
@@ -108,26 +133,31 @@ describe("runPerToolLookup", () => {
 
   // ── integration test 4: flaggable failure ships flagged, run continues ────
   //
-  // Pricing data being unavailable is a flaggable failure — the tool result
-  // is included in the CV output with a flag, but the wave2_5 job does not
-  // throw. This is different from a CVE API failure (which would throw).
+  // Pricing unavailable (pricingFlagged: true) is a flaggable failure — the
+  // tool result ships with flagged: ["pricing"] but the job does not throw.
 
-  it("includes the tool result with a pricing flag when pricing data is unavailable", async () => {
+  it("includes the tool result with a pricing flag when pricing is unavailable", async () => {
     const toolName = `test-tool-${uuidv7()}`;
     toolNames.push(toolName);
 
     const deps = makeDeps({
-      // searchWeb returns no pricing signal — this is the "unavailable" case
-      searchWeb: vi.fn().mockResolvedValue("Pricing information not publicly available."),
+      searchToolData: vi.fn().mockResolvedValue({
+        pricing: null,
+        pricingFlagged: true,
+        eolDate: null,
+        breakingChanges: [],
+        tripHazards: [],
+        sourceUrls: { registry: "https://pypi.org/project/test-tool/" },
+      }),
     });
 
     const result = await runPerToolLookup(db, toolName, "npm", deps);
 
-    // Should not throw — flaggable failures are surfaced via the flagged field
     expect(result.flagged).toContain("pricing");
-    // The result is still complete enough to include in CV output
     expect(result.toolName).toBe(toolName);
     expect(result.version).toBeDefined();
+    // Source URL still present — human can verify other fields even when pricing is unknown
+    expect(result.sourceUrls.registry).toBeDefined();
   });
 
   // ── integration test 3: conflict check with resolution path ──────────────
