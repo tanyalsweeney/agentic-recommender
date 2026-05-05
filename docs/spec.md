@@ -680,12 +680,23 @@ These checks are primarily structural comparisons against data already collected
 
 All recommended tools remain in scope for this phase. Tools are never silently removed from the recommendation — every conflict the Skeptic sees in its input must have an agent response attached explaining what was decided and why.
 
-Meaningful tool pairs are identified via two layers:
+**Group-based analysis:** Tools that share a common dependency form a dependency group — one group per dependency. A tool with multiple dependencies participates in multiple groups, one per dependency, each assessed independently. Compatibility is assessed across each full group simultaneously. If tools A, B, and C all depend on `openai`, the check finds a version (or version set) that satisfies all three at once.
 
-- **Algorithmic:** package manifests collected during per-tool API calls encode declared dependencies and version requirements. Tools sharing a declared dependency are checked for version range conflicts deterministically — no LLM reasoning required. If Tool A requires `openai>=1.0.0` and Tool B requires `openai>=0.28.0,<1.0.0`, the conflict is detected from manifest data alone.
-- **LLM reasoning:** one call over the full tool set, manifest `knownConstraints` and `domainKnowledgePayload` fields, and per-tool findings identifies architectural incompatibilities not captured in package declarations (e.g., competing orchestration frameworks, embedding dimension mismatches between vector store and embedding model). Flags a small number of pairs for targeted web investigation.
+**CV as verifier, not arbiter:** The recommending agent already made the judgment about which tool and version is appropriate for its role. CV does not override that judgment. Instead, CV verifies that the full set of agent choices works together as a system and produces a documented rationale for the version choices — a statement the Skeptic can challenge.
 
-Targeted web searches fire only for pairs the LLM flags — typically a handful per run. Per-tool trip hazard findings from the per-tool phase are available as context, reducing re-search. Where a compatible version or configuration exists, it is identified before the correction exchange runs.
+Two valid outcomes from group analysis:
+
+- **Single version supports all:** one version (or range) satisfies every tool in the dependency group. CV documents: "Version X satisfies all agents' requirements. We support this version because..." — covering why this version, not an older or newer one.
+- **Multiple versions are intentional:** different agents use different versions of the same tool because their roles have genuinely different requirements (capability, cost, latency, or context window). CV documents: "We support version A for agent X and version B for agent Y because..." — covering the role-specific reasoning behind each choice. This is a design decision, not a conflict.
+
+A genuine conflict exists only when no version (or intentional version set) can satisfy the full group — i.e., when requirements cannot coexist and neither agent's version supports the other's use case.
+
+Compatibility is detected and confirmed via two sequential layers:
+
+- **Algorithmic (candidate flags):** package manifests encode declared dependencies and version requirements. All tools sharing a declared dependency are assessed as a group, finding the range intersection that satisfies all of them simultaneously. Where no intersection exists, a candidate conflict flag is raised. These flags are candidates only — they proceed to LLM reasoning for review before any correction exchange is triggered.
+- **LLM reasoning (confirmation and dismissal):** one call over the full tool set, all candidate flags from the algorithmic layer, manifest `knownConstraints` and `domainKnowledgePayload` fields, and per-tool findings. The LLM reviews each flag in full architectural context and either confirms it as a genuine conflict or dismisses it — for example, because the flagged tools run in isolated environments, because the version difference reflects intentional multi-version design, or because one dependency is dev-only and irrelevant at runtime. The LLM also surfaces architectural incompatibilities not captured in package declarations (e.g., competing orchestration frameworks, embedding dimension mismatches). Only conflicts confirmed by the LLM layer proceed to the correction exchange.
+
+Targeted web searches fire only for cases the LLM flags as requiring external verification — typically a handful per run. Per-tool trip hazard findings from the per-tool phase are available as context, reducing re-search. Where a compatible version or version set exists, it is identified and the rationale is drafted before the correction exchange runs.
 
 *Conflict correction exchange (1-cycle, runs after both conflict check phases complete):*
 
