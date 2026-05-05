@@ -674,16 +674,37 @@ After Promise.all() resolves, sequential phases execute in order: cross-agent co
 - Constraint violations: checks whether any tool or decision recommended by one agent violates a constraint declared by another (e.g., Security declares no third-party data exfiltration; Tool & Integration recommends a SaaS tool with no on-premises option)
 - Integration gaps: verifies that every tool dependency an agent assumes is actually accounted for by some agent in the set
 
-These checks are primarily structural comparisons against data already collected from the per-tool sub-tasks. Where a version conflict or constraint violation is found, CV performs additional API or web lookup to identify a mutually compatible version or alternative — the rejection message includes a resolution path, not just a flag. Definitive elimination applies only where no resolution exists: binary constraint violations with no workaround (e.g., SaaS-only tool against a no-cloud constraint), platform incompatibilities with no compatible version, or unpatched CVEs affecting all available stable versions. Any tools definitively eliminated here are removed from scope before the cross-tool compatibility checks run, avoiding unnecessary research on rejected candidates.
+These checks are primarily structural comparisons against data already collected from the per-tool sub-tasks. Where a conflict is found, CV performs additional API or web lookup to identify a mutually compatible version or alternative before the correction exchange runs.
 
-*Cross-tool compatibility checks (run after cross-agent conflict checks complete, scoped to the surviving tool set):*
+*Cross-tool compatibility checks (run after cross-agent conflict checks complete):*
+
+All recommended tools remain in scope for this phase. Tools are never silently removed from the recommendation — every conflict the Skeptic sees in its input must have an agent response attached explaining what was decided and why.
 
 Meaningful tool pairs are identified via two layers:
 
 - **Algorithmic:** package manifests collected during per-tool API calls encode declared dependencies and version requirements. Tools sharing a declared dependency are checked for version range conflicts deterministically — no LLM reasoning required. If Tool A requires `openai>=1.0.0` and Tool B requires `openai>=0.28.0,<1.0.0`, the conflict is detected from manifest data alone.
 - **LLM reasoning:** one call over the full tool set, manifest `knownConstraints` and `domainKnowledgePayload` fields, and per-tool findings identifies architectural incompatibilities not captured in package declarations (e.g., competing orchestration frameworks, embedding dimension mismatches between vector store and embedding model). Flags a small number of pairs for targeted web investigation.
 
-Targeted web searches fire only for pairs the LLM flags — typically a handful per run. Per-tool trip hazard findings from the per-tool phase are available as context, reducing re-search. Same resolution-seeking behavior as conflict checks: where a compatible alternative version or configuration exists, it is surfaced alongside the incompatibility finding.
+Targeted web searches fire only for pairs the LLM flags — typically a handful per run. Per-tool trip hazard findings from the per-tool phase are available as context, reducing re-search. Where a compatible version or configuration exists, it is identified before the correction exchange runs.
+
+*Conflict correction exchange (1-cycle, runs after both conflict check phases complete):*
+
+For every conflict found — whether from cross-agent or cross-tool checks — CV sends a correction request to the affected agent(s). Who receives the message depends on the conflict type:
+
+- **Compatible version found:** only the agent(s) whose current recommendation does not already satisfy the compatible version receive the correction message. An agent whose recommendation is already compatible is not contacted — its recommendation is correct as-is. The full conflict, including all agents involved, is still recorded in CV's output so the Skeptic sees the complete picture.
+- **No compatible version:** all agents involved in the conflict receive the correction message, because no single agent is "correct" — each must decide how to respond.
+
+Each correction request includes: the conflict description, the compatible version if one was found, the other agent's conflicting requirement, and an explicit statement if no compatible version exists.
+
+Each affected agent responds with exactly one of three outcomes:
+
+1. **Accept compatible version** (only available when a compatible version was found): the agent updates its recommendation to the compatible version. The updated recommendation proceeds to the Skeptic.
+2. **Propose a different tool**: the agent recommends an alternative tool that avoids the conflict entirely. The alternative proceeds to the Skeptic. The original conflicting tool does not appear in the final output.
+3. **Flag as unresolvable with reasoning**: the agent cannot find an acceptable alternative and documents why (e.g., "this tool is a hard requirement given the declared constraint"). The conflict and the agent's reasoning proceed to the Skeptic as a flagged open issue.
+
+This is a 1-cycle exchange — agents respond once, no further back-and-forth. The Skeptic always sees the outcome: the resolved recommendation, the proposed alternative, or the flagged conflict with the agent's reasoning. No conflict is ever resolved silently without the Skeptic seeing what was decided.
+
+The correction exchange runs after both conflict check phases so all conflicts across the full tool set are known before any agent is asked to respond. An agent may receive correction requests covering more than one conflict; each is addressed in the same response.
 
 *Cost aggregation:*
 - Aggregates cost signals from Wave 1 and Wave 2 agents and calculates cost estimates using verified intake context (run volume, concurrency, model selection, usage patterns)
