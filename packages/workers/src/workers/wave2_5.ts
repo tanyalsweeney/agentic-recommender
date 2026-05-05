@@ -1,8 +1,11 @@
 import type { Job } from "bullmq";
+import { eq } from "drizzle-orm";
+import { runs } from "@agent12/shared";
 import { callCompatibilityValidator, searchToolData } from "@agent12/agents";
 import { runAgent } from "../runner.js";
 import { runPerToolLookup, type PerToolLookupDeps } from "./per-tool-lookup.js";
 import { runCrossAgentConflictCheck } from "./cv-conflict-check.js";
+import { buildCostContext } from "./cost-context.js";
 import { queryCves } from "../cv-apis/cve-lookup.js";
 import { queryNpm } from "../cv-apis/npm.js";
 import { queryPypi } from "../cv-apis/pypi.js";
@@ -55,10 +58,18 @@ export async function processWave2_5Job(
     w1
   );
 
+  // Read verifiedContext from the run — contains confirmed intake fields
+  // (scale, modelPreferences, orchestrationPattern) used for cost aggregation.
+  const runRow = await db.select().from(runs).where(eq(runs.id, runId)).limit(1);
+  const verifiedContext = runRow[0]?.verifiedContext ?? {};
+
+  const costContext = buildCostContext(wave1Results, wave2Results, verifiedContext);
+
   // Enrich upstream outputs with API-sourced data before calling the CV agent
   const enrichedUpstream = {
     wave1: wave1Results,
     wave2: wave2Results,
+    costContext,
     apiData: Object.fromEntries(
       perToolResults.map((r) => [
         r.toolName,
