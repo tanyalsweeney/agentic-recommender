@@ -165,6 +165,29 @@ describe("queryPypi", () => {
     expect(result!.releaseCount).toBe(4);
   });
 
+  it("parses declared dependencies from requires_dist", async () => {
+    const fetch = mockFetch({
+      info: {
+        version: "0.3.2",
+        license: "MIT",
+        requires_dist: ["pydantic>=1.7.4,<3", "requests>=2.26,<3", "SQLAlchemy>=1.4,<3"],
+      },
+      releases: { "0.3.2": [] },
+    });
+
+    const result = await queryPypi("langchain", fetch);
+
+    expect(result!.dependencies).toContain("pydantic>=1.7.4,<3");
+    expect(result!.dependencies).toContain("requests>=2.26,<3");
+    expect(result!.dependencies).toHaveLength(3);
+  });
+
+  it("returns empty dependencies array when requires_dist is absent", async () => {
+    const fetch = mockFetch(PYPI_RESPONSE); // no requires_dist field
+    const result = await queryPypi("langchain", fetch);
+    expect(result!.dependencies).toEqual([]);
+  });
+
   it("returns null when the package is not found", async () => {
     const fetch = mockFetch({ message: "Not Found" }, 404);
     const result = await queryPypi("nonexistent-pkg", fetch);
@@ -188,6 +211,38 @@ describe("queryNpm", () => {
     expect(result).not.toBeNull();
     expect(result!.currentVersion).toBe("5.7.2");
     expect(result!.license).toBe("MIT");
+  });
+
+  it("parses peer dependencies from the npm manifest", async () => {
+    const fetch = mockFetch({
+      version: "5.7.2",
+      license: "MIT",
+      peerDependencies: { ioredis: ">=4.0.0" },
+    });
+
+    const result = await queryNpm("bullmq", fetch);
+
+    expect(result!.dependencies.some((d) => d.startsWith("ioredis"))).toBe(true);
+  });
+
+  it("merges regular and peer dependencies", async () => {
+    const fetch = mockFetch({
+      version: "1.0.0",
+      license: "MIT",
+      dependencies: { uuid: "^9.0.0" },
+      peerDependencies: { ioredis: ">=4.0.0" },
+    });
+
+    const result = await queryNpm("some-pkg", fetch);
+
+    expect(result!.dependencies.some((d) => d.startsWith("uuid"))).toBe(true);
+    expect(result!.dependencies.some((d) => d.startsWith("ioredis"))).toBe(true);
+  });
+
+  it("returns empty dependencies array when none are declared", async () => {
+    const fetch = mockFetch(NPM_RESPONSE); // no dependencies fields
+    const result = await queryNpm("bullmq", fetch);
+    expect(result!.dependencies).toEqual([]);
   });
 
   it("returns null when the package is not found", async () => {

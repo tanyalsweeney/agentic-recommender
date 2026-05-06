@@ -295,3 +295,110 @@ describe("CV eval 14: cost aggregation — produces populated estimate from upst
     }
   });
 });
+
+// ── scenario 5: cross-tool compatibility — shared dep version conflict ─────────
+//
+// Two tools in the same architecture that require incompatible versions of a
+// shared dependency. The CV agent should surface this in crossToolCompatibility
+// with compatible: false and a note describing the conflict.
+//
+// This eval defines the quality bar before the algorithmic cross-tool check
+// is wired into enrichedUpstream. The CV agent may produce the right answer
+// from training knowledge alone on this well-known conflict — when the
+// algorithmic check runs first and injects the structured conflict into
+// enrichedUpstream, accuracy should improve further.
+
+const crossToolContext = {
+  description:
+    "Research assistant using langchain 0.1.0 and a custom OpenAI SDK wrapper that requires openai<1.0.0",
+  confirmedDecisions: {
+    orchestrationPattern: "pipeline",
+    platform: "AWS",
+  },
+};
+
+const crossToolUpstream = {
+  wave1: {
+    toolIntegration: {
+      recommendedTools: [
+        { tool: "langchain",   purpose: "Orchestration", buildVsBuy: "buy", rationale: "Community standard" },
+        { tool: "openai-sdk",  purpose: "LLM calls",     buildVsBuy: "buy", rationale: "Native OpenAI SDK" },
+      ],
+      declaredConstraints: ["openai>=1.0.0 required by langchain 0.1+"],
+      costSignals: { computeIntensity: "medium" },
+    },
+  },
+  wave2: {
+    failureObservability: {
+      failureModes: [],
+      evalStrategy: { approach: "fixed test set", nonDeterministicHandling: "3x majority vote", suggestedEvalFramework: "vitest" },
+      tracingApproach: { reasoningChainTracing: "structured logging", interAgentHandoffTracing: "structured logs", intersectionsWithStandardTracing: [] },
+      costSignals: { computeIntensity: "low" },
+    },
+    trustControl: {
+      hitlGates: [],
+      autonomyEnforcement: { capturedLevel: "fully_autonomous", enforcementMechanism: "output schema validation", overrideConditions: [] },
+      approvalWorkflow: { recommended: false },
+      costSignals: { computeIntensity: "low" },
+    },
+  },
+  // Pre-resolved tool data including dependency declarations
+  apiData: {
+    langchain: {
+      resolvedVersion: "0.1.0",
+      cves: { critical: [], high: [] },
+      license: "MIT",
+      fromCache: false,
+      flagged: [],
+      dependencies: ["openai>=1.0.0", "pydantic>=1.7.4,<3"],
+    },
+    "openai-sdk": {
+      resolvedVersion: "0.28.0",
+      cves: { critical: [], high: [] },
+      license: "MIT",
+      fromCache: false,
+      flagged: [],
+      dependencies: ["openai>=0.28.0,<1.0.0"],
+    },
+  },
+};
+
+let crossToolOutput: CompatibilityValidatorOutput;
+
+describe("CV eval 15: cross-tool compatibility — shared dep version conflict surfaced", () => {
+  beforeAll(async () => {
+    crossToolOutput = await callCompatibilityValidator(
+      SEED_MANIFEST,
+      crossToolContext,
+      crossToolUpstream,
+      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator
+    );
+  }, 120_000);
+
+  it("includes a crossToolCompatibility entry for the langchain / openai-sdk pair", () => {
+    const entry = crossToolOutput.crossToolCompatibility.find(
+      (e) =>
+        e.pair.some((t) => t.toLowerCase().includes("langchain")) &&
+        e.pair.some((t) => t.toLowerCase().includes("openai"))
+    );
+    expect(entry).toBeDefined();
+  });
+
+  it("marks the conflicting pair as incompatible", () => {
+    const entry = crossToolOutput.crossToolCompatibility.find(
+      (e) =>
+        e.pair.some((t) => t.toLowerCase().includes("langchain")) &&
+        e.pair.some((t) => t.toLowerCase().includes("openai"))
+    );
+    expect(entry!.compatible).toBe(false);
+  });
+
+  it("includes a notes field describing the conflict", () => {
+    const entry = crossToolOutput.crossToolCompatibility.find(
+      (e) =>
+        e.pair.some((t) => t.toLowerCase().includes("langchain")) &&
+        e.pair.some((t) => t.toLowerCase().includes("openai"))
+    );
+    expect(entry!.notes.length).toBeGreaterThan(10);
+  });
+});
