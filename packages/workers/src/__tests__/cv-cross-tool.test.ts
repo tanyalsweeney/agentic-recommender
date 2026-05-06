@@ -362,6 +362,12 @@ describe("runConflictResolutionExchange", () => {
       compatibleVersion:   null,
       outOfLineAgent:      null,
       allInvolvedAgents:   ["toolIntegration"],
+      // Original constraints — needed so verifyProposedAlternative can check
+      // the alternative against the actual dep requirements of existing tools
+      toolDependencies: {
+        "langchain":  ["openai>=1.0.0"],
+        "openai-sdk": ["openai>=0.28.0,<1.0.0"],
+      },
     };
 
     const caller = vi.fn().mockResolvedValue({
@@ -388,8 +394,8 @@ describe("runConflictResolutionExchange", () => {
     // Not clean — Skeptic sees the scope and can decide whether to push back
     expect(results[0].alternativeVerified).toBe(false);
     expect(results[0].alternativeVerificationScope).toBe("dependency-only");
-    expect(results[0].alternativeConflicts.length).toBeGreaterThan(0);
-    expect(results[0].alternativeConflicts[0].sharedDependency).toBe("openai");
+    expect(results[0].alternativeConflicts!.length).toBeGreaterThan(0);
+    expect(results[0].alternativeConflicts![0].sharedDependency).toBe("openai");
   });
 
   // ── multi-conflict batching ───────────────────────────────────────────────
