@@ -253,7 +253,7 @@ extraction from `finalMessage`, empty-stream error, `finalMessage` error propaga
 OpenAI-compatible path (4 tests): multi-chunk accumulation and Zod parse, trailing
 usage chunk capture, usage colocated with content chunk, empty-stream error.
 
-### 3h. CV API integration layer and worker decomposition `[In Progress]`
+### 3h. CV API integration layer and worker decomposition `[Done]`
 
 Replaced the single CV agent call (training-knowledge-only) with a fully
 decomposed, API-backed implementation covering every data point in the spec.
@@ -262,7 +262,8 @@ decomposed, API-backed implementation covering every data point in the spec.
 - `ghsa.ts` + `nvd.ts` + `cve-lookup.ts`: GHSA primary, NVD fallback; each
   advisory carries an `advisoryUrl` for human verification
 - `pypi.ts` + `npm.ts` + `github-releases.ts`: version and license from package
-  registries; dependencies field added (tests written, implementation next)
+  registries; `dependencies` field populated from `requires_dist` (PyPI) and
+  merged `dependencies` + `peerDependencies` (npm)
 - `web-search.ts`: re-export from `@agent12/agents`
 
 **Web search** (`packages/agents/src/web-search.ts`):
@@ -291,14 +292,33 @@ decomposed, API-backed implementation covering every data point in the spec.
   candidates reviewed by LLM reasoning layer before correction exchange
 - `PerToolCvResult.agentKey` + `isUserSpecified` design settled
 
-**Still to implement (tests written, failing on missing modules):**
-- `dependencies` field on `PypiResult` and `NpmResult` (cv-apis.test.ts)
-- `cross-tool-check.ts`: group-based algorithmic check + LLM scaffold
-- `conflict-resolution.ts`: 1-cycle correction exchange orchestrator
+**Cross-tool check** (`cross-tool-check.ts`): group-based algorithmic conflict
+detection using version range intersection across the full dependency group (not
+pairwise). `hasIntersection` handles `>=/>/<=/< ` combinations; when no intersection
+exists the group is flagged as a candidate conflict. LLM reasoning scaffold returns
+`[]` pending full implementation — confirms or dismisses algorithmic flags in
+architectural context. `runCrossToolLlmCheck` interface and output shape defined.
 
-**Tests:** 14 cv-apis unit tests + 7 web-search unit tests (agents package) +
-6 cost-context unit tests + 5 wave2_5 integration tests + cv-cross-tool tests
-(11, fail on missing modules) + CV eval wired (3 scenarios; web-search eval added)
+**Conflict correction exchange** (`conflict-resolution.ts`): 1-cycle feedback loop
+from CV to affected wave 1/2 agents. Requests batched per agent (one call per agent
+covering all its conflicts). Compatible version found: only the out-of-line agent
+contacted. No compatible version: all involved agents contacted. Three agent
+responses: `accepted_compatible_version` / `proposed_alternative` /
+`flagged_unresolvable`. Proposed alternatives verified via lightweight dependency-
+only lookup (no CVE/pricing/web search) checked against the full tool group using
+`toolDependencies` from the request. `ConflictResolutionResponse` carries
+`alternativeVerificationScope: "dependency-only"` so the Skeptic knows what was
+checked and can use one of its 4 cycles to request full verification if needed.
+
+**Deferred (not blocking Phase 4):**
+- LLM reasoning layer for cross-tool check (confirms/dismisses algorithmic flags)
+- `sourceUrls` dedicated DB column (currently stored in `compatStatus` jsonb)
+- Pairwise cross-tool compatibility → already superseded by group-based approach
+
+**Tests:** 19 cv-apis unit tests + 7 web-search unit tests (agents package) +
+6 cost-context unit tests + 5 wave2_5 integration tests + 24 cv-cross-tool tests
+(algorithmic, LLM scaffold, correction exchange with dependency verification) +
+CV eval wired (3 scenarios); web-search eval added. 87/87 passing.
 
 ---
 

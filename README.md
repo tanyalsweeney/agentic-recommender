@@ -27,7 +27,7 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Status
 
-**Active development.** Phases 0-3g complete. CV API integration and web frontend next.
+**Active development.** Phases 0-3h complete. Web frontend next.
 
 | Phase | Description | Status |
 |---|---|---|
@@ -37,7 +37,7 @@ The system walks users through a structured intake flow, infers architecture dec
 | 3a-3d | Pipeline workers — BullMQ wave orchestration, checkpointing, evals | Done |
 | 3e-3f | Maintenance workers, multi-tenancy schema | Done |
 | 3g | Streaming in agent caller — resolves TCP timeout on complex responses | Done |
-| 3h | CV API integration — GHSA, NVD, PyPI, npm clients; wave2_5 worker decomposition | Upcoming |
+| 3h | CV API integration — GHSA, NVD, PyPI, npm; web search; cross-tool check; correction exchange | Done |
 | 4 | Web frontend — intake flow, Pass 1 output rendering, auth | Upcoming |
 | 5 | Admin dashboard — pipeline observability, agent performance, manifest health, themes, config | Upcoming |
 | 6 | Tenant dashboard and config interface | Upcoming |
