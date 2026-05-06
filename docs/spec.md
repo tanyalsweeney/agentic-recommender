@@ -634,7 +634,8 @@ CV's work is decomposed into independently checkpointable sub-tasks (see Pipelin
 - Pricing and tier data
 - For managed cloud services: availability in the target cloud provider and region — whether specified by the user or recommended by the system
 - Known production trip hazards and common integration gotchas for the recommended version — version-specific issues not captured in CVEs or breaking change logs
-- Direct link to the source visited — included in CV's report as the source reference and as a manual verification path if any data is flagged as unavailable
+- Source URLs for every data category fetched, recorded as a structured field (one URL per category: cve, version, license, eol, pricing, regional_availability, breaking_changes, trip_hazards). Each URL is the source CV visited for that data point, retained for human audit and as a manual verification path if any data is flagged as unavailable.
+- Data availability per category, recorded as a structured field listing which categories were successfully fetched and which were not. Failure handling per category follows the rules in Pipeline failure handling: safety-critical categories (cve, compatibility) failing causes the run to fail; non-critical categories (pricing, eol, license, regional_availability, breaking_changes, trip_hazards) failing ships the result with the affected categories marked unavailable. The vendor documentation URL for manual verification is sourced from the tool's manifest entry.
 
 *Data source hierarchy (per-tool sub-tasks):*
 
@@ -705,7 +706,13 @@ For every conflict found — whether from cross-agent or cross-tool checks — C
 - **Compatible version found:** only the agent(s) whose current recommendation does not already satisfy the compatible version receive the correction message. An agent whose recommendation is already compatible is not contacted — its recommendation is correct as-is. The full conflict, including all agents involved, is still recorded in CV's output so the Skeptic sees the complete picture.
 - **No compatible version:** all agents involved in the conflict receive the correction message, because no single agent is "correct" — each must decide how to respond.
 
-Each correction request includes: the conflict description, the compatible version if one was found, the other agent's conflicting requirement, and an explicit statement if no compatible version exists.
+Each correction request carries the full context an agent needs to reason well in a single shot:
+- The conflict description and its category (cross-agent constraint violation, cross-tool version incompatibility, integration gap)
+- The compatible version if one was found, including its verification depth (full per-tool checks, or dependency-only with a note that the Skeptic may request full verification later)
+- For each other agent involved in the conflict: their original recommendation, the rationale they provided for it, and any constraints they declared
+- CV's per-tool findings for every tool in the conflict (CVE status, license, EOL, pricing where available, source URLs)
+- The receiving agent's own original output, so it reasons against its prior position rather than starting fresh
+- An explicit reinforcement that "flag unresolvable" is a first-class, valid response. Agents are not penalized for declaring a constraint non-negotiable for their domain. Lowest-common-denominator architectures are a worse outcome than a flagged conflict that the Skeptic and the user can see.
 
 Each affected agent responds with exactly one of three outcomes:
 
@@ -714,6 +721,8 @@ Each affected agent responds with exactly one of three outcomes:
 3. **Flag as unresolvable with reasoning**: the agent cannot find an acceptable alternative and documents why (e.g., "this tool is a hard requirement given the declared constraint"). The conflict and the agent's reasoning proceed to the Skeptic as a flagged open issue.
 
 This is a 1-cycle exchange — agents respond once, no further back-and-forth. The Skeptic always sees the outcome: the resolved recommendation, the proposed alternative, or the flagged conflict with the agent's reasoning. No conflict is ever resolved silently without the Skeptic seeing what was decided.
+
+Resolution outcomes are recorded as a sibling field on the Wave 2.5 job result, separate from CV's agent output. CV's output describes what CV concluded; resolution outcomes describe what each affected agent concluded when CV asked them to respond. This separation matters because the Skeptic and the user-facing output need to attribute reasoning correctly: to the responding agent, not to CV.
 
 The correction exchange runs after both conflict check phases so all conflicts across the full tool set are known before any agent is asked to respond. An agent may receive correction requests covering more than one conflict; each is addressed in the same response.
 
@@ -774,9 +783,12 @@ Runs after CV, before Wave 3. Only active when the merged domain brief contains 
 - The Skeptic evaluates counter-arguments and accepts or rejects them; accepted overrides are surfaced in the output with their tradeoff reasoning
 - No human escalation — ships with a caveat tier if unresolved at cycle cap
 
+**Engagement pattern:**
+Skeptic engagement is non-prescriptive. The Skeptic alone sees the whole picture across all waves and exercises the most independent judgment of any agent in the pipeline. On each cycle, the Skeptic may push back, ask clarifying questions, or request additional verification from one or more agents from Waves 1, 2, or 2.5. CV is an addressable agent: when an agent's correction-exchange response was "propose a different tool" and CV verified the alternative dependency-only, the Skeptic may ask CV to run full per-tool checks (CVE, license, EOL, pricing) on the alternative before accepting it. Cycle actions are not constrained by type or by which agent receives them.
+
 **Termination conditions:**
 - **Early exit:** if all remaining unresolved concerns would not rise to Advisory (tier 1) when evaluated against the verified intake context, The Skeptic accepts and ships
-- **Cycle cap:** hard limit of 4 cycles; on cycle 4, any concerns still above threshold are assigned a caveat tier and output ships
+- **Cycle cap:** hard limit of 4 cycles. If after 4 cycles the Skeptic still lacks confidence in a clean recommendation, it ships a qualified recommendation: any concerns still above threshold are assigned a caveat tier and surfaced in the output with their reasoning. The qualified-recommendation framing reflects the Skeptic's role as the agent with the broadest context — when it cannot resolve, the architecture ships with the unresolved concerns visible, not silently.
 
 **Skeptic caveat tiers (assigned at cycle cap):**
 | Tier | Label | Meaning |
@@ -834,7 +846,7 @@ CV's work is further decomposed into independently checkpointable sub-tasks (per
 A persistent checkpoint is valid for reuse on a subsequent run when all four conditions hold:
 1. Verified context hash is identical -- same description, confirmed selections, and hard constraints
 2. Agent version is unchanged since the checkpoint was created
-3. The manifest has not been refreshed since the checkpoint was created (applies to agents that read from the manifest)
+3. None of the manifest entries the agent declared as referenced have been refreshed since the checkpoint was created. Each agent's structured output includes a `referencedManifestEntries` field listing the tools, patterns, and failure modes the agent reasoned with. Each manifest entry carries its own `version` (computed from content + last_refreshed_at). Checkpoint reuse compares per-entry version hashes for declared entries only -- an agent's checkpoint is invalidated only when entries it actually consulted have changed. Unrelated manifest activity (e.g., a tool refresh in a category the agent did not consult) does not invalidate the checkpoint.
 4. All upstream checkpoint hashes match -- if any upstream agent re-ran and produced different output, this checkpoint is stale even if conditions 1-3 hold. Each checkpoint stores the hashes of all checkpoints it depended on (stored in the upstream_hashes field). Reuse is only valid when all upstream hashes are identical.
 
 When a run starts, the system checks for a valid persistent checkpoint for each agent. Agents with valid checkpoints are skipped; only agents without valid checkpoints execute. This directly reduces cost and latency for users iterating toward a stable description -- the expected behavior for the primary audience.
@@ -1002,7 +1014,7 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | `users` | Auth + billing | id, email, tenant_id, tier (free/pass1/pass2), mfa_enabled, suspended, daily_run_count, daily_run_reset_at |
 | `runs` | Run storage and state | id, user_id, status, tier, verified_context (jsonb), verified_context_hash, tenant_context_tag, pass1_output (jsonb), pass2_output (jsonb nullable), maturity_label_distribution (jsonb), charged |
 | `run_checkpoints` | Cross-run reuse | id, run_id, agent_name, wave, status, output_jsonb, upstream_hashes (jsonb), agent_version, manifest_version, context_hash, expires_at |
-| `cv_result_cache` | Cross-user tool cache | id, tool_name, tool_version (UNIQUE pair), cve_status, compat_status, pricing, eol_date, license, breaking_changes, regional_availability, source_url, cached_at, ttl_seconds |
+| `cv_result_cache` | Cross-user tool cache | id, tool_name, tool_version (UNIQUE pair), cve_status, compat_status, pricing, eol_date, license, breaking_changes, regional_availability, source_urls (jsonb, keyed by data category), data_availability (jsonb with available/unavailable category lists), cached_at, ttl_seconds |
 | `manifest_entries` | Tool/pattern knowledge base | id, tool_name (UNIQUE), category, maturity_tier, confidence_score, adoption_signals (jsonb), maintenance_signals (jsonb), deploymentModel, minimumRuntimeRequirements, knownConstraints, domainKnowledgePayload (jsonb), vetted, last_refreshed_at, owner |
 | `org_list` | Practitioner org registry | id, org_name, tier, signals (jsonb), maintenance_active, last_reviewed_at, owner, status |
 | `org_list_proposals` | Pending org changes | id, org_id, action (add/remove/tier-change), justification, sources (jsonb), status, second_pass_findings (jsonb nullable) |
