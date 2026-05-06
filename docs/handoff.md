@@ -1,9 +1,41 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-05)
+## Current state (2026-05-06)
 
-Phases 0, 1, 2, and 3a-3g complete. Phase 3g.1 (SDK mock tests) is required
-before 3h. Phase 3h (CV API integration) is next after that.
+Phases 0, 1, 2, and 3a-3h complete. Phase 3.5a (backend wiring closure pass)
+is in flight on branch `tsweeney/phase-3-5a-backend-wiring`. Phase 4
+(frontend) is gated behind 3.5a completion.
+
+## Phase 3.5a in flight (2026-05-06)
+
+Backend completeness pass before UI work, scoped from a redteam audit that
+found three features marked done in PLAN/handoff but unwired in production:
+
+- **BYOK runtime wiring**: `runner.ts:108` discards the resolved API key;
+  `base.ts:74` reads `process.env` directly. Tenant keys never reach the SDK.
+  Phase 3f handoff note "worker layer already threads correctly" was incorrect.
+- **CV upstream wiring**: `queues.ts:46/49/56` pass `{}` as `wave1Results` to
+  wave2_5/wave3/pass1. CV runs with zero tools; Skeptic and Technical Writer
+  never see Wave 1's recommended stack. Phase 3h "Done" claim was overstated.
+- **Correction exchange unwired**: `conflict-resolution.ts` exported and
+  tested but never called from production.
+
+Bundled schema-lock additions (decided post-redteam):
+- Per-entry manifest versioning (Tier 2): each manifest entry gets a
+  `version` column; each agent declares `referencedManifestEntries` in its
+  output; checkpoint reuse compares per-entry hashes for declared entries
+  only.
+- `cv_result_cache.source_urls`: dedicated jsonb column (was nested in
+  `compat_status`).
+- `cv_result_cache.data_availability`: dedicated jsonb column with
+  enum-typed category lists for the "ship flagged as unavailable" behavior
+  per spec 853-854.
+
+See PLAN.md Phase 3.5a for full subsection breakdown and test plan. spec.md
+updates: Wave 2.5 per-tool fields and correction request payload, Wave 3
+Skeptic engagement pattern and qualified recommendation framing, Pipeline
+failure handling per-entry manifest versioning, data model `cv_result_cache`
+row.
 
 **What's built:**
 - Monorepo scaffolded: pnpm workspaces, TypeScript, Vitest workspace

@@ -322,6 +322,216 @@ CV eval wired (3 scenarios); web-search eval added. 87/87 passing.
 
 ---
 
+## Phase 3.5a — Backend wiring closure pass `[Upcoming]`
+
+Backend completeness pass before UI work begins. Closes wiring gaps identified
+in the post-3h completion audit (BYOK never reaches the SDK; Wave 1 outputs
+never reach CV/Skeptic/Pass 1; correction exchange exists but is unwired) and
+locks schema additions that would be painful to retrofit after frontend ships.
+
+Spec changes for this phase already applied: updated Wave 2.5 (per-tool data
+availability, source URLs, correction request payload, resolution outcomes
+storage), Wave 3 Skeptic (engagement pattern, qualified recommendation
+framing), and Pipeline failure handling (per-entry manifest version reuse).
+
+### 3.5a.1. BYOK runtime wiring `[Upcoming]`
+
+Tenant BYOK keys are stored in `tenant_secrets` with AES-256-GCM encryption
+(Phase 3f), but `runner.ts:108` discards the resolved key and `base.ts:74`
+reads `process.env` directly. Tenant keys never reach the Anthropic SDK.
+
+**Tests first:**
+- `runner.test.ts`: with a tenantId and a tenant_secrets row for that provider,
+  the value passed to `callAgent` matches the decrypted secret (mock SDK
+  constructor, assert `apiKey` arg).
+- `runner.test.ts`: without a tenant_secrets row, system env var is used.
+- `runner.test.ts`: tenant_secrets row for a different provider does not
+  satisfy the lookup; falls back to system env.
+- `key-resolution.test.ts`: reads from `tenant_secrets` (not `config`).
+- `base.test.ts`: when given an explicit apiKey, uses it instead of process.env.
+
+**Implementation:**
+- Update `getApiKey` to query `tenant_secrets` and decrypt via existing
+  `crypto.ts` helpers. Remove the unsafe `config` table fallback for tenant
+  keys (per the inline NOTE in `key-resolution.ts:12`).
+- Add `apiKey: string` parameter to `callAgent`, `callAnthropicAgent`,
+  `callOpenAICompatibleAgent`. Use it instead of `process.env`.
+- In `runner.ts`, capture `getApiKey()` return value and thread through
+  `callAgent`. Update `RunAgentOpts.callAgent` signature.
+- Update every caller in `packages/agents/src/callers/` to thread the apiKey.
+
+### 3.5a.2. CV upstream wiring `[Upcoming]`
+
+`queues.ts:46/49/56` pass `{}` as `wave1Results` to wave2_5/wave3/pass1. CV
+runs with zero tools to validate; Skeptic and Technical Writer never see Wave
+1's recommended stack. Spec 622-728 requires CV to consume Wave 1 outputs.
+
+**Tests first:**
+- `queues.test.ts` (new): worker dispatcher extracts wave1 outputs from
+  `childrenValues` correctly for wave2_5, wave3, and pass1 (mirror the
+  existing wave2.cooperative extraction at `queues.ts:32-39`).
+- `wave2_5.test.ts`: with non-empty
+  `wave1Results.toolIntegration.recommendedTools`, per-tool lookups fire for
+  each tool (assert deps.queryX called).
+- `wave2_5.test.ts`: user-specified tools from verifiedContext appear in
+  `agentTools` with `isUserSpecified: true` (per spec 723-727).
+
+**Implementation:**
+- In `queues.ts`, extract wave1 outputs from `childrenValues` for each
+  downstream stage. Pass into wave2_5, wave3, pass1.
+- In `wave2_5.ts`, add user-specified tool extraction from `verifiedContext`,
+  merge into `agentTools` with `isUserSpecified: true`.
+- Tighten `wave1Results: unknown` typing in `processWave2_5Job` and parallel
+  workers so this class of bug surfaces at compile time.
+
+### 3.5a.3. Per-tool data availability and source URLs `[Upcoming]`
+
+CV currently catches npm/pypi failures and returns null silently. Spec 853-854
+requires non-critical-data failures to ship flagged with a vendor doc link.
+Source URLs nested in `compat_status` jsonb; promoting to a dedicated column
+matches the updated spec and unlocks admin queries.
+
+**Tests first:**
+- Migration test: new columns exist with default values; existing rows backfill
+  cleanly.
+- `cv-apis.test.ts`: npm/pypi/web-search failures populate the `unavailable`
+  list for the affected category; do not return null silently.
+- `per-tool-lookup.test.ts`: `dataAvailability.unavailable` lists missing
+  categories; `sourceUrls` keyed by category from successful fetches.
+- Zod schema test: `PerToolCvResult` carries `dataAvailability` (enum-typed
+  available/unavailable lists) and `sourceUrls` (Record<DataPoint, string>).
+
+**Implementation:**
+- Migration `0009`: add `source_urls jsonb not null default '{}'` and
+  `data_availability jsonb not null default '{"available":[],"unavailable":[]}'`
+  to `cv_result_cache`. Backfill `source_urls` from
+  `compat_status->'sourceUrls'` where present.
+- Define `DataPoint` enum in shared:
+  `cve | compatibility | version | license | eol | pricing |
+   regional_availability | breaking_changes | trip_hazards`.
+- Update `PerToolCvResult` Zod schema with the two new fields.
+- Update `queryNpm`, `queryPypi`, `searchToolData` to record category failures
+  into `dataAvailability.unavailable` instead of catch-and-null.
+- Update `per-tool-lookup.ts` write path to populate the new columns.
+
+### 3.5a.4. Per-entry manifest versioning (Tier 2) `[Upcoming]`
+
+Current `manifestVersion` is a global hash; any manifest change invalidates
+every agent's checkpoint. Per-entry tracking via agent-declared dependencies
+recovers cross-run cache hits and removes the within-run race that
+mid-pipeline manifest refreshes can cause.
+
+**Tests first:**
+- Migration test: `version` column exists on all three manifest tables.
+- `manifest.test.ts`: `version` is recomputed on every write
+  (content + last_refreshed_at).
+- `checkpoint.test.ts`: agent's checkpoint is reusable when its declared
+  referenced entries are unchanged, even if other entries have changed.
+- `checkpoint.test.ts`: agent's checkpoint is invalidated when at least one
+  declared referenced entry has changed.
+- `runner.test.ts`: agents without `referencedManifestEntries` in their output
+  fail loudly (don't silently fall through to "no dependencies").
+
+**Implementation:**
+- Migration `0010`: add `version text not null` to `manifest_tools`,
+  `manifest_patterns`, `manifest_failure_modes`. App-side recompute on
+  insert/update (Drizzle `$default` or pre-write hook).
+- Add `referencedManifestEntries: { tools: string[], patterns: string[],
+  failureModes: string[] }` to every agent's Zod output schema.
+- Update agent prompts to instruct each agent to populate this field with
+  entries it actually consulted.
+- Update `runner.ts` to compute per-entry hashes for declared entries at
+  checkpoint write time; store in `upstream_hashes` jsonb under a
+  `manifest_entries:` namespace.
+- Update `checkpoint.ts` reuse logic to compare per-entry hashes for declared
+  entries only. The global `manifest_version` column on `run_checkpoints` is
+  retained for audit but no longer used for reuse.
+- Update existing eval suites — outputs now carry the new field. Re-baseline
+  if any eval shifts.
+
+### 3.5a.5. Correction exchange wiring `[Upcoming]`
+
+`runConflictResolutionExchange` is exported from `conflict-resolution.ts` and
+unit-tested but never called from production. Wiring requires: a richer
+correction request payload (per updated spec 708), six per-agent
+correction-response callers, a sibling field on the wave2_5 result for
+resolution outcomes, and Skeptic's CV re-verification capability (per updated
+spec 775).
+
+**Tests first:**
+- `conflict-resolution.test.ts`: exchange runs after both conflict-check
+  phases and only when conflicts exist.
+- `wave2_5.test.ts`: when CV detects a conflict, the wave2_5 result includes
+  a `correctionExchangeOutcomes` sibling field carrying agent responses.
+- `wave2_5.test.ts`: when no conflicts exist, no correction exchange runs.
+- Per-agent caller tests (e.g., `tool-integration.test.ts`):
+  correction-response caller produces output matching the three-outcome Zod
+  schema; uses the agent's own system prompt with the correction-protocol
+  addendum.
+- `wave3.test.ts`: Skeptic input includes `correctionExchangeOutcomes`.
+- `wave3.test.ts`: Skeptic can request CV re-verification of a proposed
+  alternative; CV runs full per-tool checks and returns an updated finding.
+
+**Implementation:**
+
+*Protocol layer:*
+- New `CorrectionRequest` and `CorrectionResponse` Zod schemas in
+  `packages/agents/src/schemas/correction-exchange.ts`. Outcomes:
+  `accepted_compatible_version | proposed_alternative | flagged_unresolvable`.
+- Enriched payload per spec 708: conflict description + category, compatible
+  version with verification depth, other agents' rationale, CV per-tool
+  findings for tools in conflict, agent's own original output,
+  flag-unresolvable reinforcement.
+- New shared `callCorrectionResponse` core in `base.ts`: takes the agent's
+  system prompt + correction-protocol addendum + agent-specific Zod schema.
+
+*Per-agent wrappers (six thin callers, ~30 lines each):*
+- `callOrchestrationCorrectionResponse`
+- `callSecurityCorrectionResponse`
+- `callMemoryStateCorrectionResponse`
+- `callToolIntegrationCorrectionResponse`
+- `callFailureObservabilityCorrectionResponse`
+- `callTrustControlCorrectionResponse`
+
+*Wiring in wave2_5.ts:*
+- After cross-agent and cross-tool LLM checks complete, if any confirmed
+  conflicts exist, invoke `runConflictResolutionExchange` with the per-agent
+  callers.
+- Add `correctionExchangeOutcomes` as a sibling field on the wave2_5 job
+  result, separate from the CV agent output.
+
+*Skeptic CV re-verification:*
+- Add a CV re-verification entry point: takes a tool and version, runs the
+  full per-tool sub-task suite, returns a `PerToolCvResult`.
+- Update Skeptic's prompt and Zod schema to support "request CV
+  re-verification" as a cycle action targeting a specific proposed
+  alternative.
+- Wire wave3 to dispatch CV re-verification calls and feed results back to
+  Skeptic on its next cycle.
+
+*Eval coverage:*
+- 2 correction-exchange eval scenarios:
+  1. CV detects a version conflict, agents accept the compatible version, no
+     unresolvable flags
+  2. CV detects an irreconcilable conflict, an agent flags unresolvable,
+     Skeptic correctly attaches the resulting caveat tier
+
+### 3.5a Acceptance gate
+
+Phase 3.5a is done when:
+- E2E worker test exists that submits a run with a mocked Anthropic SDK and
+  asserts: tenant API key reaches the SDK constructor; CV's per-tool lookups
+  fire for Wave 1's recommended tools; user-specified tools appear flagged in
+  CV's output; correction exchange fires when CV detects a conflict;
+  resolution outcomes appear on the wave2_5 result; Skeptic input includes
+  resolution outcomes.
+- All existing tests still pass (currently 87/87).
+- All eval baselines still pass (or are re-baselined with notes if any
+  prompt-touching change shifts a result).
+- New schema migrations apply cleanly to the test database.
+
+---
+
 ## Phase 4 — Web frontend `[Upcoming]`
 
 **E2E tests written alongside implementation (Playwright).**
