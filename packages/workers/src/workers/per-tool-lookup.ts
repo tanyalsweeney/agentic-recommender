@@ -12,6 +12,13 @@ export interface PerToolLookupDeps {
 
 export interface PerToolCvResult {
   toolName: string;
+  // Which wave 1/2 agent recommended this tool. Null for user-specified tools.
+  // The correction exchange skips null entries — no agent to call back.
+  agentKey: string | null;
+  // True when the user specified this tool directly during intake rather than
+  // an agent recommending it. Consistent with PerToolResult.isUserSpecified
+  // in the CV agent output schema.
+  isUserSpecified: boolean;
   version: string | null;
   isCurrentVersion: boolean | null;
   cves: { critical: string[]; high: string[] };
@@ -48,6 +55,8 @@ export async function runPerToolLookup(
   db: Db,
   toolName: string,
   ecosystem: string,
+  agentKey: string | null,
+  isUserSpecified: boolean,
   deps: PerToolLookupDeps
 ): Promise<PerToolCvResult> {
   // ── cache check ─────────────────────────────────────────────────────────────
@@ -71,6 +80,8 @@ export async function runPerToolLookup(
     };
     return {
       toolName,
+      agentKey,
+      isUserSpecified,
       version: entry.toolVersion ?? null,
       isCurrentVersion: null,
       cves: cveStatus,
@@ -120,6 +131,8 @@ export async function runPerToolLookup(
 
   const result: PerToolCvResult = {
     toolName,
+    agentKey,
+    isUserSpecified,
     version,
     isCurrentVersion: null,
     cves: {

@@ -29,34 +29,25 @@ export async function processWave2_5Job(
     security?: { declaredConstraints?: string[] };
   };
 
-  // Collect the full tool list from Wave 1 recommendations
-  const toolNames: string[] = (w1.toolIntegration?.recommendedTools ?? []).map((t) => t.tool);
+  // Preserve the tool-agent association from the source so it travels with
+  // each PerToolCvResult throughout the pipeline — no reconstruction later.
+  const agentTools = (w1.toolIntegration?.recommendedTools ?? []).map((t) => ({
+    tool:            t.tool,
+    agentKey:        "toolIntegration" as const,
+    isUserSpecified: false as const,
+  }));
 
   // ── per-tool lookups (parallel) ───────────────────────────────────────────
-  //
-  // Each lookup is independently checkpointed via cv_result_cache.
-  // A failed lookup throws, causing the wave2_5 job to fail and BullMQ to retry.
-  // On retry, completed tools read from cache; only failed tools re-run their lookup.
-
   const deps = buildDeps();
 
   const perToolResults = await Promise.all(
-    toolNames.map((toolName) =>
-      runPerToolLookup(db, toolName, inferEcosystem(toolName), deps)
+    agentTools.map(({ tool, agentKey, isUserSpecified }) =>
+      runPerToolLookup(db, tool, inferEcosystem(tool), agentKey, isUserSpecified, deps)
     )
   );
 
   // ── cross-agent conflict checks (sequential) ──────────────────────────────
-  const conflicts = await runCrossAgentConflictCheck(
-    perToolResults.map((r) => ({
-      toolName: r.toolName,
-      version: r.version,
-      cves: r.cves,
-      license: r.license,
-      isCopyleft: r.isCopyleft,
-    })),
-    w1
-  );
+  const conflicts = await runCrossAgentConflictCheck(perToolResults, w1);
 
   // Read verifiedContext from the run — contains confirmed intake fields
   // (scale, modelPreferences, orchestrationPattern) used for cost aggregation.

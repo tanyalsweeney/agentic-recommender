@@ -81,7 +81,7 @@ describe("runPerToolLookup", () => {
     });
 
     const deps = makeDeps();
-    const result = await runPerToolLookup(db, toolName, "npm", deps);
+    const result = await runPerToolLookup(db, toolName, "npm", "toolIntegration", false, deps);
 
     expect(result.fromCache).toBe(true);
     expect(result.toolName).toBe(toolName);
@@ -111,7 +111,7 @@ describe("runPerToolLookup", () => {
       }),
     });
 
-    const result = await runPerToolLookup(db, toolName, "npm", deps);
+    const result = await runPerToolLookup(db, toolName, "npm", "toolIntegration", false, deps);
 
     expect(result.fromCache).toBe(false);
     expect(result.version).toBe("3.1.0");
@@ -151,7 +151,7 @@ describe("runPerToolLookup", () => {
       }),
     });
 
-    const result = await runPerToolLookup(db, toolName, "npm", deps);
+    const result = await runPerToolLookup(db, toolName, "npm", "toolIntegration", false, deps);
 
     expect(result.flagged).toContain("pricing");
     expect(result.toolName).toBe(toolName);
@@ -172,21 +172,14 @@ describe("runPerToolLookup", () => {
     // Import it directly to test the conflict resolution behavior.
     const { runCrossAgentConflictCheck } = await import("../workers/cv-conflict-check.js");
 
+    const base = {
+      isUserSpecified: false, isCurrentVersion: null, eolDate: null,
+      breakingChanges: [], pricing: null, tripHazards: [], sourceUrls: {},
+      fromCache: false, flagged: [],
+    };
     const toolResults = [
-      {
-        toolName: "langchain",
-        version: "0.1.0",
-        cves: { critical: [], high: [] },
-        license: "MIT",
-        isCopyleft: false,
-      },
-      {
-        toolName: "openai-sdk",
-        version: "4.0.0",
-        cves: { critical: [], high: [] },
-        license: "MIT",
-        isCopyleft: false,
-      },
+      { ...base, toolName: "langchain",  agentKey: "toolIntegration", version: "0.1.0", cves: { critical: [], high: [] }, license: "MIT",  isCopyleft: false },
+      { ...base, toolName: "openai-sdk", agentKey: "toolIntegration", version: "4.0.0", cves: { critical: [], high: [] }, license: "MIT",  isCopyleft: false },
     ];
 
     // Wave 1 output declares a version constraint that conflicts with tool results
@@ -202,7 +195,7 @@ describe("runPerToolLookup", () => {
     // The conflict must include a resolution path, not just a rejection flag
     const conflict = conflicts[0];
     expect(conflict.description).toBeTruthy();
-    expect(conflict.compatibleAlternativeVersion).toBeTruthy();
+    expect(conflict.compatibleVersion).toBeTruthy();
   });
 
   // ── integration test 5: sibling checkpoint survives sibling failure ───────
@@ -218,7 +211,7 @@ describe("runPerToolLookup", () => {
 
     // Tool A: succeeds and writes to cache
     const depsA = makeDeps();
-    await runPerToolLookup(db, toolA, "npm", depsA);
+    await runPerToolLookup(db, toolA, "npm", "toolIntegration", false, depsA);
 
     // Verify tool A is now in cache
     const cachedA = await db.select().from(cvResultCache)
@@ -230,7 +223,7 @@ describe("runPerToolLookup", () => {
       queryCves: vi.fn().mockRejectedValue(new Error("GHSA API timeout")),
     });
 
-    await expect(runPerToolLookup(db, toolB, "npm", depsB)).rejects.toThrow("GHSA API timeout");
+    await expect(runPerToolLookup(db, toolB, "npm", "toolIntegration", false, depsB)).rejects.toThrow("GHSA API timeout");
 
     // Tool A's cache entry must still be present for retry
     const cachedAAfter = await db.select().from(cvResultCache)
