@@ -145,3 +145,6 @@ timestamp,agent_name,provider,model,duration_ms,input_tokens,output_tokens,cache
 2026-05-05T05:25:53.372Z,manifest-gatekeeper,anthropic,claude-sonnet-4-6,21937,264,1092,7468,0,0.018620
 2026-05-05T08:03:57.886Z,compatibility_validator,anthropic,claude-sonnet-4-6,32220,603,2179,0,5649,0.053869
 2026-05-05T08:04:00.360Z,compatibility_validator,anthropic,claude-sonnet-4-6,34694,641,1837,0,5649,0.048739
+2026-05-05T09:44:47.447Z,compatibility_validator,anthropic,claude-sonnet-4-6,33094,641,1740,0,5649,0.047284
+2026-05-05T09:44:48.978Z,compatibility_validator,anthropic,claude-sonnet-4-6,34625,603,1881,0,5649,0.049399
+2026-05-05T09:46:18.918Z,compatibility_validator,anthropic,claude-sonnet-4-6,89931,1163,5417,5649,0,0.082950

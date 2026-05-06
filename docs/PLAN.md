@@ -253,29 +253,52 @@ extraction from `finalMessage`, empty-stream error, `finalMessage` error propaga
 OpenAI-compatible path (4 tests): multi-chunk accumulation and Zod parse, trailing
 usage chunk capture, usage colocated with content chunk, empty-stream error.
 
-### 3h. CV API integration layer and worker decomposition `[Upcoming]`
+### 3h. CV API integration layer and worker decomposition `[In Progress]`
 
-Two related pieces of work that ship together. The current CV implementation is a single agent call that relies on the model's training knowledge for version and CVE data. This phase replaces it with a decomposed, API-backed implementation.
+Replaced the single CV agent call (training-knowledge-only) with a fully
+decomposed, API-backed implementation covering every data point in the spec.
 
-**API integration layer** (`packages/workers/src/cv-apis/`):
-- GHSA client: query GitHub Advisory Database by ecosystem and package name
-- PyPI client: fetch current version, release history, license from PyPI JSON API
-- npm client: fetch current version, release history, license from npm Registry API
-- GitHub Releases client: fetch latest release and release history for GitHub-hosted tools
-- NVD client: fetch CVEs by CPE or keyword; used as fallback when GHSA has no entry
-- Credential requirements: `GITHUB_TOKEN` (free) and `NVD_API_KEY` (free) — both required before production traffic; add to `.env.example` and deployment docs
+**API clients** (`packages/workers/src/cv-apis/`):
+- `ghsa.ts` + `nvd.ts` + `cve-lookup.ts`: GHSA primary, NVD fallback; each
+  advisory carries an `advisoryUrl` for human verification
+- `pypi.ts` + `npm.ts` + `github-releases.ts`: version and license from package
+  registries; dependencies field added (tests written, implementation next)
+- `web-search.ts`: re-export from `@agent12/agents`
 
-**CV worker decomposition** (`packages/workers/src/workers/wave2_5.ts`):
+**Web search** (`packages/agents/src/web-search.ts`):
+- `searchToolData`: one Anthropic beta `web_search_20250305` call per tool
+  covering pricing (dollar amounts), EOL date, breaking changes vs current
+  stable, trip hazards; `sourceUrls` keyed by source type for human audit
 
-Replace the single `runAgent` call with the full decomposed structure:
-- Run N per-tool lookups in parallel via Promise.all() within the wave2_5 job; each lookup: (1) checks cv_result_cache and exits early if a fresh result exists, (2) runs API calls + one LLM web search for all unstructured data points (pricing, regional availability, trip hazards, integration gotchas), (3) writes result to cv_result_cache; cv_result_cache is the per-tool checkpoint — failed mid-run retries read cached results for completed tools
-- Cross-agent conflict checks: sequential, after all per-tool sub-tasks complete; when a version conflict or constraint violation is found, CV does additional API or web lookup to identify a mutually compatible version to recommend back to the relevant Wave 1 and Wave 2 agents as part of the rejection message — surfacing a resolution path, not just a flag
-- Cross-tool compatibility checks: sequential, after conflict checks, scoped to surviving tool set; same resolution-seeking behavior for version conflicts between tool pairs
-- Cost aggregation: runs after compatibility checks, consumes Wave 1 and Wave 2 cost signals
+**CV worker decomposition** (`packages/workers/src/workers/`):
+- `per-tool-lookup.ts`: cache-first; carries `agentKey` (recommending wave 1/2
+  agent) and `isUserSpecified` natively on `PerToolCvResult`; full field set
+  (CVEs, version, license, EOL, breaking changes, pricing, trip hazards, sourceUrls)
+- `cv-conflict-check.ts`: clean rewrite — imports `PerToolCvResult` directly,
+  no separate input type, `agentKey` on `ConflictResult` from source
+- `cv-conflict-check.ts`: `compatibleVersion` (formerly `compatibleAlternativeVersion`)
+- `cost-context.ts`: `buildCostContext` extracts agent cost signals + confirmed
+  intake fields; null when confidence is low
+- `wave2_5.ts`: tool-agent association preserved from source through the full
+  pipeline; parallel per-tool lookups, sequential conflict checks, cost context,
+  CV agent synthesis with full `enrichedUpstream`
 
-Failure escalation applied per sub-task: CVE and compatibility failures fail the run; pricing, EOL, and license failures ship flagged with the source reference.
+**Spec fixes this session (see spec.md):**
+- Conflict resolution: no silent tool elimination; correction exchange added
+  (1-cycle feedback to affected agents, three possible responses)
+- Compatible version found: only the out-of-line agent receives the message
+- Cross-tool compatibility: group-based (not pairwise), algorithmic flags are
+  candidates reviewed by LLM reasoning layer before correction exchange
+- `PerToolCvResult.agentKey` + `isUserSpecified` design settled
 
-Integration tests: GHSA returns known advisory for a real package; NVD fallback triggers when GHSA entry is absent; conflict check surfaces a compatible alternative version, not just a rejection; per-tool sub-task failure with flaggable data point ships flagged rather than failing the run; per-tool checkpoint survives failure of a sibling sub-task.
+**Still to implement (tests written, failing on missing modules):**
+- `dependencies` field on `PypiResult` and `NpmResult` (cv-apis.test.ts)
+- `cross-tool-check.ts`: group-based algorithmic check + LLM scaffold
+- `conflict-resolution.ts`: 1-cycle correction exchange orchestrator
+
+**Tests:** 14 cv-apis unit tests + 7 web-search unit tests (agents package) +
+6 cost-context unit tests + 5 wave2_5 integration tests + cv-cross-tool tests
+(11, fail on missing modules) + CV eval wired (3 scenarios; web-search eval added)
 
 ---
 

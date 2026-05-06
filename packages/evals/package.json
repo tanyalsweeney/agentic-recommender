@@ -12,7 +12,8 @@
     "eval:technical-writer": "vitest run src/technical-writer",
     "eval:cooperative": "vitest run src/cooperative",
     "eval:cv": "vitest run src/cv",
-    "eval:gatekeeper": "vitest run src/gatekeeper"
+    "eval:gatekeeper": "vitest run src/gatekeeper",
+    "eval:web-search": "vitest run src/web-search"
   },
   "dependencies": {
     "@agent12/agents": "workspace:*",

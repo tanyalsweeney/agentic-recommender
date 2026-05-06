@@ -15,3 +15,4 @@ export * from "./callers/skeptic.js";
 export * from "./callers/technical-writer.js";
 export * from "./callers/manifest-gatekeeper.js";
 export * from "./callers/org-list-gatekeeper.js";
+export * from "./web-search.js";
