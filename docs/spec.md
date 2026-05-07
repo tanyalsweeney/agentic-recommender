@@ -37,6 +37,14 @@ Some areas look familiar but behave differently when agents are involved. The pi
 
 *These are traditional web application concerns. They do not affect the agent pipeline.*
 
+### Configuration governance
+
+All system configuration is admin-curated. Tenants do not have direct read or write access to configuration surfaces. This includes thresholds, communication contexts, branding, theme tokens, org list overrides, manifest entry preferences, and any other tunable parameter. Tenants who want changes submit modification requests through their dashboard; the admin processes the request, makes the change, and deploys it (typically billed as a service fee per the modification's complexity).
+
+The single exception is BYOK (Bring Your Own Key) credential management: tenants and individual users have direct self-service control over their own LLM provider API keys (registration, rotation, revocation). This is a security requirement: a user must be able to rotate a compromised key immediately without filing a ticket. BYOK lives in dedicated `tenant_secrets` and `user_secrets` tables (separate from the `config` table) precisely to make this access boundary explicit at the data model level.
+
+This principle is intentional: configuration is the system's IP. Exposing tunable values, prompts, and thresholds (even read-only) lets sophisticated tenants reverse-engineer the proprietary tuning that makes recommendations work. The product is sold as outcomes, not as access to the machine. The modification-request workflow keeps the conversation focused on intent ("we want recommendations to be more cost-conscious") rather than implementation ("change weight X from 0.6 to 0.8").
+
 ### Authentication
 - User accounts with MFA
 - Login required to access the system
@@ -362,6 +370,104 @@ The agent ranks implied requirements by severity, most critical first. Display r
 | 10 | Model preferences | Always surfaces. Platform (step 2) filters available options. Pre-populated with inference if confident, or "Choose for me" if not. Changing selection updates tool options in step 11. |
 | 11 | Tools | Always surfaces after model preferences are confirmed; multi-select variant (see intake flow above for conditional logic). User-specified tools not in the manifest can be added here — scoped to the run, researched live, and flagged as unvetted in the output. |
 
+### Code-aware intake
+
+An alternative intake path for users with an existing codebase. The user's AI assistant (Copilot, Claude Code, Cursor, or any MCP-aware assistant) reads the codebase, produces a structured digest matching our intake schema, and submits it via our MCP server. The user reviews the digest in our standard review screen, addresses any intent gaps, then submits.
+
+This path is code-first with text refinement: the analysis surfaces what the codebase IS; the user adds what they want it to BECOME. The two together form the verified context.
+
+**Audience:** Teams with an existing system (typically a multi-tool internal landscape) who want a recommendation for a target architecture, often a consolidation or migration target. A team running 20 loosely associated internal tools and looking to consolidate them into a unified agentic system is the canonical example.
+
+**Architecture:**
+
+The user runs Copilot Chat (or equivalent) in their IDE with the codebase open. They invoke our MCP `submit_codebase_digest` tool. Their AI assistant reads the codebase using its own context (which it already has access to), produces a structured digest matching our schema, and submits via the MCP tool. Our server creates a draft, returns a URL to the user. The user opens the URL, reviews and refines via our standard review screen, submits to the pipeline.
+
+The codebase never leaves the user's environment. Only the abstracted digest crosses the boundary. This satisfies the security posture required for sensitive corporate codebases (internal source cannot leave the corporate network; the AI assistant operating inside that boundary produces the abstracted digest, which the user can review before submission).
+
+**Digest schema:**
+
+The digest is a structured document with three components.
+
+1. *Intake step pre-fills.* Where the mapping from observed code signals to existing intake step answers is unambiguous, the digest pre-populates them. Observed cloud platform fills step 9; observed third-party APIs fill step 3; observed primary language hints at step 10 model preferences; observed scale signals (concurrency configs, observed latency SLAs in code or docs) hint at steps 4 and 5. Pre-fills appear on the review screen with a "what we observed" annotation per step so the user can verify or correct them.
+
+2. *Per-tool inventory.* One structured entry per discovered tool. Each entry carries:
+   - `id`: unique within the digest, auto-generated. Allows disambiguation when multiple tools share the same display name (a codebase routinely has both `services/auth-service-legacy/` and `services/auth-service/`) and stable cross-reference via internal dependencies.
+   - `displayName`: what the user calls it.
+   - `path`: location in the codebase, helps disambiguate.
+   - `primaryPurpose`: concrete description of what THIS tool does ("OAuth2 + Microsoft Entra SSO with session-based fallback for legacy clients"), not a category label ("handles auth").
+   - `language`, `framework`.
+   - `dependencies`: third-party (with versions) and internal (referenced by `id` to other digest entries).
+   - `inputs` and `outputs`: HTTP endpoints, queue topics, file watches, etc.
+   - `externalIntegrations`: third-party services this tool calls.
+   - `observedPatterns`: sync API, async queue, event-driven, batch worker, etc.
+   - `distinguishingCharacteristics`: what makes THIS instance unique, mechanism-level. The hardest reasoning the digest production has to do.
+   - `isPrivate`: true for internal-only tools, false for public packages. Defaults to true; user confirms public during review.
+   - Quality fields populated by the quality evaluator (see below): `qualityScore`, `qualityFlags`, `pendingClarifications`.
+
+3. *Intent gaps.* An explicit checklist of what the code couldn't tell us. Items the user must address during the text-refinement step on the review screen ("what is the target consolidation goal?", "what's driving this rewrite?", "what compliance domain does this work fall under?"). This is the UX device that operationalizes the code-first-with-refinement pattern: users know what's missing because we tell them.
+
+The digest carries structured summaries only. Source code never appears in the digest. Optional semi-raw artifacts that are facts rather than source (dependency manifests like `package.json` or `requirements.txt`, README contents, the file tree structure) may be included; the user can include or strip them during review.
+
+**Quality evaluation and clarification loop:**
+
+After digest production, the system evaluates each per-tool entry's `distinguishingCharacteristics` for specificity. Two layers:
+
+- *Heuristic layer:* deterministic. Minimum word count, penalty for generic verbs ("handles", "manages", "processes") and generic nouns ("data", "service") used without modifiers, bonus for known specific terms (OAuth2, JWT, gRPC, Kafka, etc.). Filters obvious thin descriptions.
+
+- *LLM evaluator layer:* a dedicated agent (the Quality Evaluator) that reads each per-tool entry above the heuristic floor. Returns `qualityScore` (1 to 5), `qualityFlags` (e.g., "too generic", "lacks protocol detail"), and `clarifyingQuestions` (specific questions the user's AI assistant should answer to improve the description).
+
+When entries are flagged as low quality, the user has two options on the review screen: edit the descriptions manually, or request that their AI assistant address the clarifications via the MCP `update_codebase_digest` flow. The user invokes their assistant ("Copilot, fetch pending clarifications for my agent12 draft and address them"). The assistant calls our `get_pending_clarifications` tool, retrieves our specific questions, examines the relevant code, and submits richer descriptions via `update_codebase_digest`.
+
+The quality evaluator runs at digest submit time and again after each `update_codebase_digest` call. The user can submit the draft to the pipeline once descriptions meet the quality bar, or explicitly waive the bar (with a recorded acknowledgment).
+
+**MCP tool surface:**
+
+Three MCP tools exposed by our server:
+
+| Tool | Purpose |
+|---|---|
+| `submit_codebase_digest` | Creates a new draft. Accepts the digest payload. Returns draft URL plus quality summary. |
+| `update_codebase_digest` | Modifies an existing draft by ID. Accepts updated per-tool entries (typically addressing pending clarifications). Returns updated quality summary. |
+| `get_pending_clarifications` | Returns the list of per-tool clarification questions for a draft, scoped to the calling user. |
+
+All tools require authentication via a user API token (see Authentication below). Tool responses include the active tenant communication context (admin-curated, see below) so the assistant can frame the digest appropriately for tenant-specific constraints (regulatory domain, prohibited tools, certifications).
+
+**Submission flow:**
+
+1. User invokes their AI assistant in their IDE: "submit this codebase to agent12."
+2. Assistant calls `submit_codebase_digest` with the produced digest.
+3. Server creates draft, runs quality evaluator, returns draft URL plus quality summary.
+4. User opens the URL in browser (or VS Code panel).
+5. Review screen shows: pre-filled intake steps with "what we observed" annotations, the per-tool inventory with quality flags surfaced, the intent-gap checklist.
+6. User addresses intent gaps (text refinement step), edits anything that needs editing.
+7. If quality flags are present, user either edits manually OR invokes assistant to address pending clarifications via the MCP loop.
+8. User clicks Analyze. Pipeline runs.
+
+Drafts persist for 30 days, after which they expire and are deleted. Drafts belong to the user (or tenant, if the user has tenant context) that created them; access requires authenticated session as that user.
+
+**Authentication and BYOK:**
+
+MCP authentication uses user-scoped API tokens. The user generates a token from their account dashboard, configures their AI assistant's MCP connection with the token, and the token identifies them on every MCP call.
+
+Code-aware intake is locked to BYOK. The user must have a registered LLM provider key (Anthropic or OpenAI) before the pipeline will run on their digest. This both shifts LLM cost to the party that owns the codebase and aligns the security posture (corporate code, corporate LLM billing).
+
+The Anthropic web search step in CV (used for tool research) requires an Anthropic key specifically; if the user's primary BYOK is OpenAI, they must additionally register a small Anthropic key for that step (see CV section). Multi-provider BYOK at user scope is supported; users register one or more keys per provider in their account dashboard.
+
+**Tenant context propagation:**
+
+When a user belongs to a tenant, their tenant communication context (admin-curated, includes regulatory constraints, prohibited tools, mandatory certifications) is included in the response to `submit_codebase_digest`. This lets the user's AI assistant frame the digest with awareness of those constraints: tools that violate constraints are flagged in the digest (rather than deeply analyzed and only later rejected), saving tokens on the user's side and giving the pipeline cleaner upstream input.
+
+**Cache and privacy:**
+
+Per-tool entries marked `isPrivate: true` bypass the global `cv_result_cache`. CV runs fresh per-tool sub-tasks for these on every code-aware run; results are not shared cross-user. This prevents internal corporate tools with colliding names (every organization has an "auth-service") from leaking into other tenants' lookups.
+
+Public tools surfaced from a code-aware digest (open-source packages with `isPrivate: false`) participate in the global cache normally, keyed by tool name plus version as today.
+
+**Failure handling:**
+
+Digest production failures (Copilot times out, produces malformed output, etc.) are visible to the user in their AI assistant's response; they retry from their assistant. No state lands on our side until a successful `submit_codebase_digest` call.
+
+Pipeline failures during a code-aware run follow the existing rules in Pipeline failure handling. The richer per-tool inventory makes CV's failure handling more important: a per-tool sub-task failure on an internal tool (no manifest fallback available) ships flagged with the digest's source URLs as the manual verification path, the same pattern as for any unavailable data category.
 
 ---
 
@@ -832,6 +938,40 @@ Direct and specific. Name components. Describe what they do and why they were ch
 **Faithfulness constraint:**
 The Technical Writer does not editorialize. Its judgment calls are structural — what to show, at what abstraction level, how to frame for the audience — not substantive. Concern strength, tradeoff weight, and caveat severity are determined by earlier agents and The Skeptic; the Technical Writer represents them faithfully in plain language.
 
+**Relationship to Pass 2 synthesis:** The Technical Writer renders the exec-summary layer for Pass 1 only. When the user triggers Pass 2, the Spec Synthesizer and Plan Synthesizer run as a separate render pass producing builder-depth output. The Technical Writer is not invoked for Pass 2; the three render-layer agents (Technical Writer, Spec Synthesizer, Plan Synthesizer) are distinct agents with distinct output contracts, sharing only the same upstream input and tenant communication context.
+
+### Pass 2 Synthesis — Spec Synthesizer
+
+Runs after Wave 3 completes, only when Pass 2 has been triggered (paid tier). Receives the same upstream input as the Technical Writer (validated outputs from Waves 1, 2, and 2.5, the Skeptic's resolved state, verified intake context), plus a specialist prompt fragment per invocation, plus the active tenant communication context.
+
+The Spec Synthesizer is invoked once per specialist domain. The system maintains six specialist prompt fragment files (orchestration, security, memory-state, tool-integration, trust-control, failure-observability), one per recommendation domain. Each fragment carries the depth and framing instructions for rendering that domain at builder-actionable detail. The specialist prompts are admin-managed, version-controlled artifacts; updating them follows the standard agent versioning pattern (`YYYY-MM-DD-{hash8}` per fragment).
+
+For code-aware runs, a seventh specialist prompt fragment (migration-mapping) is invoked with the per-tool inventory as additional input. This produces the Migration Mapping section of the spec doc.
+
+Each invocation produces one structured spec section. Sections are mechanically concatenated (with section headers and a brief intro and TOC) into the unified spec doc. No spec assembly agent is used in v1; cross-domain contradictions are rare because all specialist invocations reason from the same upstream inputs and Skeptic-resolved state. If contradictions surface in production, a spec assembly agent can be added later.
+
+The tenant communication context shapes the voice and audience framing of every section: a tenant whose context emphasizes formal compliance language gets formal compliance-framed sections; a tenant whose context targets engineering teams gets engineer-direct language. The same upstream reasoning, rendered with the tenant's chosen audience framing.
+
+**Faithfulness constraint:** The Spec Synthesizer does not editorialize. It renders upstream reasoning faithfully at builder depth. Substantive judgment (what to recommend, what to flag, what tradeoffs matter) is determined by the upstream agents and the Skeptic. The Spec Synthesizer's judgment is structural (what to include, at what abstraction, how to frame for the audience).
+
+### Pass 2 Synthesis — Plan Synthesizer
+
+Runs after the Spec Synthesizer's six (or seven, for code-aware) invocations complete and the spec is mechanically assembled. Takes the assembled spec, verified intake context, the Skeptic's resolved state (including caveat tier assignments), maturity labels per recommended tool, and the active tenant communication context as input. For code-aware runs, the per-tool inventory is also passed so the plan can reference specific existing tools per phase.
+
+Produces the plan doc: a phased build sequence with dependency ordering. Each phase carries:
+- Name and goal
+- Prerequisites (which prior phases must complete)
+- Tasks (concrete work items)
+- Suggested test approach
+- Completion criteria
+- For code-aware runs: explicit migration mapping (which existing tools this phase addresses, what happens to them: replaced / consolidated / retained / deprecated)
+
+The Plan Synthesizer's reasoning is genuinely new work (sequencing and dependency analysis), not rendering. It is a single holistic agent invoked once; its output schema differs structurally from the spec sections (phased structure vs prose-plus-details). It is therefore a separate agent from the Spec Synthesizer.
+
+The plan output explicitly frames itself as a starting sequence the user adapts: "this is a starting plan, not a contract; expect to discover new phase boundaries as work proceeds." This sets expectations correctly so users don't treat the plan as fixed and feel "off plan" when reality diverges.
+
+The Plan Synthesizer does not loop or push back. Skeptic already had its chance to challenge the architecture during Wave 3. The Plan Synthesizer produces the best plan it can from the resolved spec.
+
 ### Pipeline failure handling
 
 **Two types of checkpoints:**
@@ -938,34 +1078,26 @@ Contains:
 - **Shareable view-only link** — no account required to view. Recipients see exactly what the owner's tier unlocks: full Pass 1 for a Pass 1 purchaser, limited output for a free tier user. No paid content is exposed beyond what the owner has access to.
 
 ### Pass 2 — Implementation layer (user-initiated)
-**Audience:** The builder who will implement the architecture.
+**Audience:** The builder who will implement the architecture, working with AI-assisted development tooling.
 **Trigger:** User clicks through after reviewing Pass 1 and feeling confident in the direction.
-**Input:** Raw outputs from all recommendation pipeline agents (Waves 1, 2, and 2.5, and The Skeptic) plus verified intake context. The rendered Pass 1 document is a human artifact and is not re-fed into the pipeline.
+**Input:** Raw outputs from all recommendation pipeline agents (Waves 1, 2, and 2.5, and The Skeptic) plus verified intake context. For code-aware runs, the per-tool inventory from the digest is also passed. The rendered Pass 1 document is a human artifact and is not re-fed into the pipeline.
 
-Contains:
-- Architecture Decision Records (ADRs) — the *why* behind each decision, tradeoffs considered
-- Configuration
-- Specs
+Pass 2 produces two deliverables, returned together:
 
-> Note: ADRs require Wave 1 agents to reason about tradeoffs during their pass, not just make selections. This is a constraint on how agents are prompted. The Skeptic's debate output — accepted overrides and their tradeoff reasoning — feeds directly into ADR content.
+- **Spec doc:** the complete architectural specification at builder depth. Sections per domain (Orchestration, Security, Memory & State, Tool & Integration, Trust & Control, Failure & Observability), each rendering the recommendations from upstream agents at implementation-actionable detail. Settled decisions appear inline with the reasoning. For code-aware runs, an additional Migration Mapping section identifies which existing tools from the digest are replaced, consolidated, or retained per phase.
 
-**Pass 2 agent structure — dedicated synthesis agents, one per recommendation domain:**
+- **Plan doc:** a phased build plan derived from the spec. Each phase carries name, goal, prerequisites (which prior phases unblock it), tasks, suggested test approach, and completion criteria. An initial setup phase covers universal scaffolding (env, infrastructure baseline). For code-aware runs, each phase explicitly references which existing tools from the migration mapping it addresses. The plan is framed as a starting sequence the user adapts as work surfaces new phase boundaries, not as a contract.
 
-| Synthesis Agent | Expands |
-|---|---|
-| Orchestration synthesis | Orchestration agent output |
-| Security synthesis | Security agent output |
-| Memory & State synthesis | Memory & State agent output |
-| Tool & Integration synthesis | Tool & Integration agent output |
-| Trust & Control synthesis | Trust & Control agent output |
-| Failure & Observability synthesis | Failure & Observability agent output |
+Both documents are markdown, structured to be consumed by AI-assisted implementation tooling (Claude Code, Copilot Workspace, Cursor) without further transformation. Phase tasks translate cleanly to GitHub issues; settled-decision callouts survive copy-paste into commit messages.
 
-**Compatibility Validator output** feeds all six synthesis agents as shared input — it is not a synthesis domain in its own right but provides the version, pricing, and constraint data that makes configuration accurate.
+Pass 2 is produced by two render-layer agents working sequentially: the Spec Synthesizer (called once per specialist prompt fragment, six times for the six recommendation domains, plus once for migration mapping in code-aware runs) and the Plan Synthesizer (called once after spec assembly completes). Both compose the active tenant communication context (admin-curated; see Tenant communication context in Settled decisions) into their input alongside the upstream reasoning. See Agent pipeline > Pass 2 Synthesis for full details.
+
+**Note on the Pass 2 architectural model:** Pass 2 is not a separate reasoning pass. The substantive reasoning happens in Waves 1, 2, 2.5, and 3. Pass 2 is a deeper render of that reasoning for a builder audience, plus a new synthesis pass for phasing and dependency ordering. The user-facing "Pass 1 to Pass 2" framing reflects pricing tiers and a natural mental progression (assess, then commit, then build), not separate architectural passes.
 
 **Export and sharing:**
-- **Markdown export** — per section (ADRs, configuration, specs individually); builders can drop sections directly into a repo or wiki
-- **Copy to clipboard** — available per section
-- **Shareable link** — requires an account to view; Pass 2 content is implementation detail intended for the builder's team, not for broad distribution
+- **Markdown export:** spec doc and plan doc, per file or combined; builders can drop sections directly into a repo or wiki
+- **Copy to clipboard:** available per section
+- **Shareable link:** requires an account to view; Pass 2 content is implementation detail intended for the builder's team, not for broad distribution
 
 ---
 
@@ -980,7 +1112,10 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 | Free | Exec summary + validated tool list with maturity labels (Established / Emerging / Experimental / User-specified); CV category titles visible, values blurred; up to 3 runs/day | $0 |
 | Run Pack | 5 additional free-tier runs (same limited output as the free tier); purchasable when the daily limit is reached; for the description iteration phase | $9 / pack |
 | Pass 1 | Full Pass 1 output: architectural diagram, full CV detail (version, CVEs, license, EOL, breaking changes, pricing and tier data, regional availability, vendor documentation links), cost estimates, security summary | $49 / run |
-| Pass 2 | Full Pass 2 output: ADRs, configuration, specs | $199 / run (requires Pass 1) |
+| Pass 2 | Full Pass 2 output: spec doc + plan doc (per-domain builder-depth spec sections, phased build plan with dependency ordering); Anthropic LLM costs included | $199 / run (requires Pass 1) |
+| Code-Aware Pass 2 | Code-aware intake (codebase analysis via the user's AI assistant) + Pass 2 deliverables + Migration Mapping section in spec doc and per-phase migration references in plan doc; BYOK required (user's LLM costs billed to user) | $99 / run (BYOK required, no separate Pass 1 purchase needed) |
+
+**Code-Aware Pass 2 pricing model:** The $99 service fee covers our orchestration, infrastructure, per-tool inventory pipeline, CV API costs, quality evaluation, and engineering value. The user's LLM provider bill is paid directly by the user via their registered BYOK key. For typical 20-tool codebases the user's LLM cost lands in the $40 to $100 range, often making total cost lower than text-intake Pass 2 ($199 token-inclusive). Pricing scales with the user's codebase, not our flat fee. Failed runs are not billed (consistent with existing failure handling rules).
 
 **Free tier rate limit:**
 - Users may run up to 3 free runs per day
@@ -1030,6 +1165,13 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | `theme_assignments` | Owner-to-theme mapping by mode | id, owner, mode (light or dark), theme_id, token_overrides (flat jsonb), logo_url, status, version, valid_from nullable, valid_until nullable |
 | `user_theme_preferences` | User-level optional theme opt-in (stub) | user_id, theme_id, activated_at, expires_at nullable |
 | `agent_call_log` | Per-call agent performance log | id, timestamp, agent_name, agent_version, provider, model, source (eval or production), run_id (nullable), eval_suite (nullable), duration_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, estimated_cost_usd |
+| `user_secrets` | BYOK API keys at user scope (field-level encrypted) | id, user_id, provider, encrypted_key, created_at, rotated_at nullable |
+| `user_api_tokens` | User-scoped API tokens for MCP authentication | id, user_id, token_hash, name, created_at, last_used_at, revoked_at nullable |
+| `codebase_digest_drafts` | Drafts produced by the code-aware intake MCP submission, awaiting user review | id, user_id, tenant_id nullable, digest (jsonb: intake pre-fills, per-tool inventory, intent gaps), quality_summary (jsonb: flags, scores, pending clarifications), created_at, expires_at, submitted_at nullable |
+| `tenant_modification_requests` | Tenant-submitted requests for configuration changes; processed by admin | id, tenant_id, request_type, intent_description, status (submitted/quoted/approved/in_progress/deployed/declined), quoted_amount nullable, admin_notes nullable, created_at, updated_at |
+| `tenant_communication_contexts` | Admin-curated communication context artifacts (audience, tone, framing) per tenant; admin-only writes | id, tenant_id, name, prompt_fragment (text), version, status (draft or published), created_at, updated_at |
+
+**Note on the BYOK-vs-config split:** The `config` table holds admin-managed configuration with a tenant-override pattern (`owner = global` or `owner = tenant_id`). The `tenant_secrets` and `user_secrets` tables hold credentials with self-service access for the owning tenant or user. The two are deliberately separated so that the admin-only enforcement on `config` and the self-service access on secrets can be applied at the data layer rather than via application logic alone. Modification requests against admin-managed config flow through `tenant_modification_requests`. Modification of secrets flows directly through the tenant or user dashboard's secrets interface.
 
 **Required indexes in initial migration** (see settled decisions — Database indexes).
 
@@ -1066,6 +1208,7 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | String overrides | Reuse `config` table with owner = tenant_id; keys namespaced `ui.string.*` (productName, tagline, ctaLabel, section headers); global defaults seeded as owner = global | No new table; falls back to global defaults via existing config resolution pattern automatically | 2026-04-30 |
 | File storage | Vercel Blob for tenant logo uploads | Natural fit for Vercel-deployed Next.js; no infra addition | 2026-04-30 |
 | White-label tiers | Standard (Agent12 attribution required), Premium (attribution optional), Enterprise (full white-label, custom domain, liability transfer in contract) | Tiered attribution keeps brand visible at lower price points; full white-label is a meaningful Enterprise differentiator | 2026-04-30 |
+| Configuration governance | All config admin-curated; no tenant read or write access to configuration surfaces; BYOK is the one self-service exception | Configuration values are proprietary IP; exposing them (even read-only) lets tenants reverse-engineer proprietary tuning. Outcomes-focused dialogue is preserved by keeping intent (modification requests) separate from implementation (config values). BYOK self-service is required for security (key rotation cannot block on a ticket). | 2026-05-06 |
 | User theme preferences | `user_theme_preferences` stub table: user_id, theme_id, activated_at, expires_at (nullable). Resolution logic and UI deferred | Schema in place for future user-level opt-in (seasonal themes, novelty modes); no migration needed when UI ships | 2026-04-30 |
 | Free tier abuse prevention | Email verification + per-IP account creation rate limiting; admin visibility for consecutive daily-limit accounts and multi-account IP patterns | MFA already raises the bar; email verification and IP rate limiting close the multi-account gap; usage pattern signals are free given data already collected for rate limiting and conversion tracking | 2026-04-25 |
 
@@ -1132,6 +1275,10 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | Wave 1 agent distinctness | All four Wave 1 agents kept separate | Orchestration and Tool & Integration share a surface-level concern but use different reasoning frameworks — merging them produces shallower output on at least one domain for an audience that will notice wrong recommendations | 2026-04-23 |
 | Agent caller streaming | callAnthropicAgent switches from client.messages.create() to client.messages.stream(), accumulating input_json_delta chunks and parsing on content_block_stop | Complex user systems trigger responses long enough to drop the TCP connection before completion (~6 min confirmed in eval). Streaming keeps the connection active throughout. Also required for CV progressive disclosure to the frontend. Must ship before production traffic. | 2026-05-01 |
 | Agent performance monitoring | `agent_call_log` table stores per-call data (agent name, version, provider, model, source, run_id, eval_suite, duration, token breakdown, estimated cost). Logger writes to DB and CSV. Admin dashboard "Agent performance" panel queries this table. | Dev-time prompt tuning requires tracking cost and latency impact per agent version. Production observability (pipeline panel) tracks run-level metrics; agent performance tracks agent-level metrics. Both are needed. | 2026-05-01 |
+| Pass 2 render layer | Three agents: Technical Writer (exec summary), Spec Synthesizer (per-specialist builder-depth spec sections), Plan Synthesizer (phased plan). Six specialist prompt fragments as data files, plus migration-mapping fragment for code-aware runs. | The substantive reasoning happens in Waves 1, 2, 2.5, and Skeptic. Pass 2 was originally specced as six per-domain synthesis agents, but those agents were rendering existing reasoning, not producing new reasoning. Collapsing to one Synthesis agent invoked with specialist prompt fragments preserves domain framing without maintaining six separate agents. Plan Synthesizer is its own agent because plan generation is sequencing and dependency analysis (different cognitive shape than rendering, different output schema). | 2026-05-06 |
+| Tenant communication context | Composable prompt fragment passed to all render-layer agents (Technical Writer, Spec Synthesizer, Plan Synthesizer). Admin-curated artifact, version-pinned at curation time, eval'd at curation time, modification billed as service fee. | Tenants want output framed for their audience (compliance, engineering, board, etc.). Treating tenant context as a composable input to the render layer (rather than per-agent specialization) generalizes one customization pattern across all rendered output. Admin curation prevents runtime quality variance and protects proprietary tuning. | 2026-05-06 |
+| Code-aware intake | Code-first with text refinement. User's AI assistant produces a structured digest via our MCP server, user reviews and refines on our review screen, pipeline runs. Locked to BYOK. Drafts persist 30 days. Quality evaluator (heuristic + LLM) gates submission with clarification loop via MCP. | Strongest signal for what to recommend is code that already exists; user's intent for what should be built fills the gap code can't cover. MCP via the user's existing AI tooling keeps source code in the user's environment (security posture). BYOK lock aligns LLM cost with the party that owns the codebase. | 2026-05-06 |
+| Quality evaluator agent | Dedicated agent that scores per-tool digest entries (1 to 5) and produces clarifying questions when descriptions are too generic. Heuristic pre-filter avoids LLM calls on obviously thin entries. | Quality variance is the central risk in code-aware intake (we never see source, can't validate description accuracy). Unenforced quality assumptions produce unenforceable architectural recommendations. The clarification loop turns "we hope Copilot does well" into "we have a quality bar with a one-click path to ask Copilot to do better." | 2026-05-06 |
 
 ### Compatibility Validator
 
