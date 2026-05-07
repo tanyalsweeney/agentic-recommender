@@ -1,41 +1,71 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-06)
+## Current state (2026-05-07)
 
-Phases 0, 1, 2, and 3a-3h complete. Phase 3.5a (backend wiring closure pass)
-is in flight on branch `tsweeney/phase-3-5a-backend-wiring`. Phase 4
-(frontend) is gated behind 3.5a completion.
+Phases 0-3h **implementation** complete. Substantial **spec work** over the
+past two days has expanded scope significantly via spec-driven design
+discussion. **No implementation work this session** — entirely spec PRs.
+Next implementation phase is still Phase 3.5a (backend wiring closure)
+once spec activity stabilizes.
 
-## Phase 3.5a in flight (2026-05-06)
+**Spec PRs landed:**
+- **PR #52 merged**: Phase 3.5a backend wiring closure pass (specced;
+  implementation queued)
+- **PR #53 merged**: Code-aware intake architecture (MCP server, structured
+  digest with per-tool inventory, Quality Evaluator with clarification loop,
+  draft-then-review submission flow), Pass 2 reshape (spec+plan deliverables
+  via three render-layer agents: Technical Writer for exec, Spec Synthesizer
+  per specialist prompt, Plan Synthesizer; six specialist prompt fragments as
+  data files; tenant communication context as composable input), admin-curated
+  configuration governance principle, multi-provider BYOK at user scope,
+  data model additions (`user_secrets`, `user_api_tokens`,
+  `codebase_digest_drafts`, `tenant_modification_requests`,
+  `tenant_communication_contexts`)
+- **PR #54 merged**: Structured intent gaps with curated options + free text
+  (new `manifest_intent_gap_questions` manifest table, evolved by Manifest
+  Gatekeeper); product-level consolidation analysis (Pattern & Cluster
+  Analyzer agent, productCategory grouping, three Pass 1 surfacing modes:
+  Full / Brief / Omitted with prose-or-table rendering)
 
-Backend completeness pass before UI work, scoped from a redteam audit that
-found three features marked done in PLAN/handoff but unwired in production:
+**Spec PR in flight:**
+- **PR #55**: Code-aware pricing structure. Code-Aware Pass 1 at $49/run
+  (BYOK required, includes consolidation summary + migration orchestration
+  overview + Pass 2 pricing math); Code-Aware Pass 2 at $199 per spec+plan
+  (BYOK required, customer-selectable subset of target set, parity per
+  target with text-intake Pass 2). Provisional pricing principle generalized.
 
-- **BYOK runtime wiring**: `runner.ts:108` discards the resolved API key;
-  `base.ts:74` reads `process.env` directly. Tenant keys never reach the SDK.
-  Phase 3f handoff note "worker layer already threads correctly" was incorrect.
-- **CV upstream wiring**: `queues.ts:46/49/56` pass `{}` as `wave1Results` to
-  wave2_5/wave3/pass1. CV runs with zero tools; Skeptic and Technical Writer
-  never see Wave 1's recommended stack. Phase 3h "Done" claim was overstated.
-- **Correction exchange unwired**: `conflict-resolution.ts` exported and
-  tested but never called from production.
+**Queued PRs (deferred from current sequence to keep PR diffs reviewable):**
+- **Multi-tenancy data isolation**: `runs.tenant_id` denormalization,
+  account-to-tenant binding immutability, cross-account access prohibition,
+  user offboarding policy (suspend account, retain runs), shareable links
+  respect tenant boundaries, UI messaging on blocked access, IP allowlisting
+  as tenant config option, auth provider abstraction (Clerk default + WorkOS
+  routed per tenant via `tenants.auth_provider` field; `users.auth_provider`
+  + `users.auth_provider_id` for per-user provider routing)
+- **Static analysis hardening**: knip / ts-prune for dead-export detection,
+  ESLint rules for discarded returns and floating promises, E2E acceptance
+  gate template per phase, per-PR redteam pass cadence (Implementation Audit
+  Pattern memory captures the strategy)
 
-Bundled schema-lock additions (decided post-redteam):
-- Per-entry manifest versioning (Tier 2): each manifest entry gets a
-  `version` column; each agent declares `referencedManifestEntries` in its
-  output; checkpoint reuse compares per-entry hashes for declared entries
-  only.
-- `cv_result_cache.source_urls`: dedicated jsonb column (was nested in
-  `compat_status`).
-- `cv_result_cache.data_availability`: dedicated jsonb column with
-  enum-typed category lists for the "ship flagged as unavailable" behavior
-  per spec 853-854.
+**Phase 3.5a (specced in PR #52, implementation queued) covers:**
 
-See PLAN.md Phase 3.5a for full subsection breakdown and test plan. spec.md
-updates: Wave 2.5 per-tool fields and correction request payload, Wave 3
-Skeptic engagement pattern and qualified recommendation framing, Pipeline
-failure handling per-entry manifest versioning, data model `cv_result_cache`
-row.
+Three integration gaps found by a redteam audit explicitly disregarding all
+project documentation:
+- BYOK runtime wiring: `runner.ts:108` discards the resolved API key;
+  `base.ts:74` reads `process.env` directly. Tenant keys never reach the SDK
+- CV upstream wiring: `queues.ts:46/49/56` pass `{}` as `wave1Results` to
+  wave2_5/wave3/pass1; CV runs with zero tools
+- Correction exchange unwired: `conflict-resolution.ts` exported and tested
+  but never called from production
+
+Plus schema-lock additions: per-entry manifest versioning (Tier 2),
+`cv_result_cache.source_urls` dedicated column, `cv_result_cache.data_availability`
+dedicated column with enum-typed category lists.
+
+Phase 3.5a.1 expanded during the spec design pass to cover **multi-provider
+BYOK at user scope** (was tenant-only); a `user_secrets` table parallel to
+`tenant_secrets`, multi-provider per-user key registration, resolution chain
+extended to user → tenant → system env.
 
 **What's built:**
 - Monorepo scaffolded: pnpm workspaces, TypeScript, Vitest workspace
@@ -77,21 +107,38 @@ include `ENCRYPTION_KEY` (32-byte base64, generate with
 
 ## What's immediately next
 
-**Phase 3g.1: SDK mock tests for streaming callers.** Required before 3h.
-The streaming SDK integration paths (event listeners, async iteration, usage
-extraction, error paths) are covered by evals but not by unit tests, so CI has
-no regression coverage for them. See PLAN.md Phase 3g.1 for the full test list.
-New file: `packages/agents/src/__tests__/streaming-integration.test.ts`.
+**Phase 3.5a implementation** (specced in PR #52). Five subsections, ordered
+by dependency: BYOK runtime wiring (now multi-provider, user + tenant
+scopes); CV upstream wiring (queues.ts dispatcher fix, user-specified tool
+extraction, type tightening); per-tool data availability and source URLs
+(migration 0009, behavior fix in npm/pypi catch handlers); per-entry manifest
+versioning Tier 2 (migration 0010, all-agent schema additions, eval
+re-baselining); correction exchange wiring (six per-agent correction-response
+callers, Skeptic CV re-verification, two new eval scenarios). See PLAN.md
+Phase 3.5a for the full breakdown and test plan.
 
-**Phase 3h: CV API integration and worker decomposition.** Replace the current
-single-call CV with API-backed parallel per-tool lookups inside the wave2_5
-BullMQ job. GHSA primary for CVEs, NVD fallback, PyPI/npm/GitHub Releases for
-versions, LLM web search for pricing and trip hazards. See PLAN.md Phase 3h
-and spec.md CV section.
+**Static analysis hardening PR** (separate, can land in parallel with 3.5a).
+Adds knip / ts-prune to CI, ESLint discarded-return rules, establishes E2E
+acceptance gate template per phase. Catches the class of integration failures
+the audit found.
 
-**Phase 4 (frontend) is unblocked.** The `tenant_id` threading from auth is a
-Phase 4a concern — dev auth stub must match the shape real auth will return.
-All tables that API routes will touch have the correct schema.
+**Multi-tenancy data isolation PR** (after 3.5a or parallel). Spec only;
+covers the items listed above plus the auth provider abstraction.
+
+**Phase 4 (frontend) remains gated** behind 3.5a implementation completion.
+Per the substantial spec growth, frontend scope is now larger than originally
+planned: code-aware intake review screen, MCP server endpoint, Pass 2
+target-system selection UI, modification request submission UI, multi-provider
+BYOK key management UI, etc. Worth planning a Phase 4 scope review before
+starting.
+
+## Spec doc state (2026-05-07)
+
+spec.md has grown to ~1,400 lines / ~24k words across this session's work.
+Worth a re-read pass at some point to catch any drift introduced by the
+many small additions; specifically watch for any remaining references to
+sub-component-level examples (auth-service) where product-level examples
+were standardized in PR #54.
 
 ## Deployment requirements
 
