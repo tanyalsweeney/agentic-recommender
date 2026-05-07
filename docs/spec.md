@@ -390,11 +390,12 @@ The digest is a structured document with three components.
 
 1. *Intake step pre-fills.* Where the mapping from observed code signals to existing intake step answers is unambiguous, the digest pre-populates them. Observed cloud platform fills step 9; observed third-party APIs fill step 3; observed primary language hints at step 10 model preferences; observed scale signals (concurrency configs, observed latency SLAs in code or docs) hint at steps 4 and 5. Pre-fills appear on the review screen with a "what we observed" annotation per step so the user can verify or correct them.
 
-2. *Per-tool inventory.* One structured entry per discovered tool. Each entry carries:
-   - `id`: unique within the digest, auto-generated. Allows disambiguation when multiple tools share the same display name (a codebase routinely has both `services/auth-service-legacy/` and `services/auth-service/`) and stable cross-reference via internal dependencies.
+2. *Per-tool inventory.* One structured entry per discovered tool. For purposes of the digest, a tool is a discrete product or application within the codebase (e.g., FinanceLaunchRisk, ContractVolumePredictor), not an internal sub-component (an auth-service inside a tool, a data access layer). Internal sub-components are described as part of the tool's entry (in `dependencies` and `distinguishingCharacteristics`), not as separate entries. The migration unit is the tool, not the sub-component. Each entry carries:
+   - `id`: unique within the digest, auto-generated. Allows disambiguation when multiple tools share the same display name (a codebase routinely has both `apps/finance-launch-risk-v1/` and `apps/finance-launch-risk-v2/` reflecting different generations of the same product family) and stable cross-reference via internal dependencies.
    - `displayName`: what the user calls it.
    - `path`: location in the codebase, helps disambiguate.
-   - `primaryPurpose`: concrete description of what THIS tool does ("OAuth2 + Microsoft Entra SSO with session-based fallback for legacy clients"), not a category label ("handles auth").
+   - `productCategory`: structured category this tool belongs to (`name`: machine-readable identifier like "launch-risk-evaluation"; `displayName`: human-readable like "Launch Risk Evaluation"). Groups similar-function tools together for cluster analysis and consolidation reasoning. A category may contain one tool (a unique-purpose tool) or many (multiple Launch Risk Evaluators that may be candidates for consolidation).
+   - `primaryPurpose`: concrete description of what THIS tool does ("evaluates upcoming product launches against historical launch profiles to surface risk patterns observed in similar past launches"), not a category label ("handles risk evaluation").
    - `language`, `framework`.
    - `dependencies`: third-party (with versions) and internal (referenced by `id` to other digest entries).
    - `inputs` and `outputs`: HTTP endpoints, queue topics, file watches, etc.
@@ -426,6 +427,40 @@ After digest production, the system evaluates each per-tool entry's `distinguish
 When entries are flagged as low quality, the user has two options on the review screen: edit the descriptions manually, or request that their AI assistant address the clarifications via the MCP `update_codebase_digest` flow. The user invokes their assistant ("Copilot, fetch pending clarifications for my agent12 draft and address them"). The assistant calls our `get_pending_clarifications` tool, retrieves our specific questions, examines the relevant code, and submits richer descriptions via `update_codebase_digest`.
 
 The quality evaluator runs at digest submit time and again after each `update_codebase_digest` call. The user can submit the draft to the pipeline once descriptions meet the quality bar, or explicitly waive the bar (with a recorded acknowledgment).
+
+**Pattern & Cluster Analyzer:**
+
+A dedicated agent runs after digest production and examines the per-tool inventory at the `productCategory` level to identify consolidation opportunities. Cluster analysis is always performed for code-aware digests; whether the analysis surfaces prominently in Pass 1 depends on the user's stated consolidation intent and the assessed opportunity magnitude.
+
+The analyzer's work, per category:
+
+- *Categorize.* Groups tools by `productCategory`. A category may contain one tool (unique-purpose) or many (multiple tools serving similar functions, candidates for consolidation analysis).
+- *Cluster within categories.* For categories with multiple tools, identifies clusters of similar capability and notes capability variance (do all 5 Launch Risk Evaluators have similar capabilities, or do some require more robustness for compliance, scale, or feature reasons?). Captures historical context where observable (e.g., one cluster uses a newer technology stack reflecting later development).
+- *Assess consolidation opportunity.* Produces an assessment per category: `substantial` / `marginal` / `none`. Heuristics consider count of consolidatable tools, estimated complexity reduction, capability gains, and identified blockers (compliance boundaries, contractual obligations, technical incompatibilities).
+- *Generate targeted clarification questions.* When meaningful divergences are found within a category, the analyzer generates questions in the structured intent-gap format. Examples:
+   - "We see 5 Launch Risk Evaluation tools. 4 use a basic statistical model; 1 uses an ML-based approach. Was this driven by:" [check all that apply: compliance requirement, performance constraint, accuracy requirement, team preference, contract obligation, available training data] + free text
+   - "Your codebase contains 4 Contract Volume Predictor tools serving different lines of business. Are the differences between them:" [check all that apply: business-line-specific data sources, business-line-specific approval workflows, regulatory differences, team ownership] + free text
+- *Generate consolidation strategy intent question.* For each category with multiple tools, the analyzer surfaces the user's consolidation intent as a structured question: "What is your intended consolidation approach for the {N} {category displayName} tools?" Options: [1-to-1 modernization (replace each with a modern equivalent, no consolidation); full consolidation (collapse into one unified tool); group by business area; group by complexity / capability tier; group by team ownership; recommend one based on what you see] + free text. The user's answer flows into the pipeline as part of the verified context.
+
+The analyzer's questions surface as additional intent gaps on the user's review screen, alongside the standard intent gaps from digest production. They are scoped to the actual analysis result; categories with no meaningful divergence do not generate questions.
+
+The cluster analysis output (full categorization, capability variance, consolidation opportunity assessment per category, supporting reasoning) is always retained in the run record and rendered in the Pass 2 spec doc, regardless of Pass 1 prominence.
+
+The Skeptic has reconciliation responsibility when the user's stated consolidation intent diverges from what the agents would recommend (e.g., user says "consolidate everything into one" but agents see compliance boundaries that require separation). Skeptic surfaces the divergence through standard cycle action (push back, ask clarifying questions, or accept with caveat tier).
+
+**Consolidation analysis Pass 1 surfacing:**
+
+Pass 1 surfacing of the consolidation recommendation must work without depending on the architecture diagram, which is paid-tier only and not visible to free-tier users. The Spec Synthesizer's migration-mapping prompt chooses one of three modes per category:
+
+- **Full surfacing**: when the user explicitly requested consolidation guidance OR the assessment is `substantial`. Two rendering forms based on the structural complexity of the recommendation:
+   - *Prose*: when the recommendation is a single consolidation grouping with a short "from" list (typically under ~5 tools collapsing into one target). Two sentences at most. Example: "We propose consolidating the 5 Launch Risk Evaluation tools into RiskAgent, a single unified system that handles risk evaluation across all product lines."
+   - *Table*: when the recommendation has multiple consolidation groupings, mixed outcomes (consolidate some, retain others), or long "from" lists. Three columns: current tools, target system, rationale. Compact, scannable, conveys structure without requiring visual support.
+
+- **Brief surfacing**: when the user did not request guidance AND the assessment is `marginal`. Single-sentence callout: "We investigated consolidation opportunities across your tool set; gains assessed as marginal. Detailed analysis in Pass 2 spec doc."
+
+- **Omitted from Pass 1**: when the assessment is `none`. Analysis is still retained in the run record and rendered fully in Pass 2 spec doc.
+
+Pass 2 spec doc always carries the full Consolidation Strategy section regardless of Pass 1 prominence: cluster analysis per category, capability variance, target topology rationale, tradeoffs considered. Pass 2 plan doc structures phases around the consolidation: per-phase migration mapping (which existing tools merge into what, which retain, which retire), dependencies between phases.
 
 **MCP tool surface:**
 
@@ -466,7 +501,7 @@ When a user belongs to a tenant, their tenant communication context (admin-curat
 
 **Cache and privacy:**
 
-Per-tool entries marked `isPrivate: true` bypass the global `cv_result_cache`. CV runs fresh per-tool sub-tasks for these on every code-aware run; results are not shared cross-user. This prevents internal corporate tools with colliding names (every organization has an "auth-service") from leaking into other tenants' lookups.
+Per-tool entries marked `isPrivate: true` bypass the global `cv_result_cache`. CV runs fresh per-tool sub-tasks for these on every code-aware run; results are not shared cross-user. This prevents internal corporate tools with colliding names (multiple organizations may each have a tool internally named "user-api", "risk-engine", or "audit-trail" representing entirely different products) from leaking into other tenants' lookups.
 
 Public tools surfaced from a code-aware digest (open-source packages with `isPrivate: false`) participate in the global cache normally, keyed by tool name plus version as today.
 
@@ -1288,6 +1323,8 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | Code-aware intake | Code-first with text refinement. User's AI assistant produces a structured digest via our MCP server, user reviews and refines on our review screen, pipeline runs. Locked to BYOK. Drafts persist 30 days. Quality evaluator (heuristic + LLM) gates submission with clarification loop via MCP. | Strongest signal for what to recommend is code that already exists; user's intent for what should be built fills the gap code can't cover. MCP via the user's existing AI tooling keeps source code in the user's environment (security posture). BYOK lock aligns LLM cost with the party that owns the codebase. | 2026-05-06 |
 | Quality evaluator agent | Dedicated agent that scores per-tool digest entries (1 to 5) and produces clarifying questions when descriptions are too generic. Heuristic pre-filter avoids LLM calls on obviously thin entries. | Quality variance is the central risk in code-aware intake (we never see source, can't validate description accuracy). Unenforced quality assumptions produce unenforceable architectural recommendations. The clarification loop turns "we hope Copilot does well" into "we have a quality bar with a one-click path to ask Copilot to do better." | 2026-05-06 |
 | Intent gap question evolution | Curated catalog in `manifest_intent_gap_questions`; Copilot matches observed code patterns to known questions; Manifest Gatekeeper promotes frequently-occurring free-text answers to curated options over time | Free-text intent gaps are intimidating and produce harder-to-reason-about inputs. Curated options give users cognitive scaffolding and downstream agents cleaner data. Gatekeeper-driven evolution means the catalog gets smarter from real usage rather than from prompt tuning. | 2026-05-06 |
+| Pattern & Cluster Analyzer | Dedicated agent for code-aware digests that groups tools by `productCategory`, analyzes capability variance and clusters within categories, produces consolidation opportunity assessment per category (substantial / marginal / none), and generates targeted clarification questions for meaningful divergences. Generates the consolidation strategy intent question for each multi-tool category. | Cluster analysis at the `productCategory` (tool/product) level matches how users think about migration: consolidate tools that do similar things. Sub-component-level analysis would suggest absurdities like "consolidate auth services across products" that nobody actually wants. Targeted clarification surfaces context that would not otherwise be captured (regulatory, performance, contractual reasons that drove divergent choices). Always running the analysis is cheap; surfacing depends on user intent and assessment magnitude. | 2026-05-06 |
+| Consolidation analysis Pass 1 surfacing | Three modes based on user intent and assessment magnitude: Full (prose for simple cases under ~5 tools to one target; compact table for complex cases with multiple groupings or mixed outcomes), Brief (single-sentence callout when user did not request guidance and gains are marginal), Omitted (no Pass 1 surface when no opportunity exists). Pass 2 spec doc carries full analysis regardless. Both prose and table forms work without the architecture diagram. | Consolidation is the load-bearing decision in migration scenarios; the surface form must communicate it clearly to free-tier users (who do not see the diagram) and respect exec-summary length. Prose handles simple cases elegantly; structured table handles complex cases compactly without sacrificing clarity. Omitting Pass 1 mention when there is no real opportunity prevents the recommendation from being trained-out as noise. | 2026-05-06 |
 
 ### Compatibility Validator
 
