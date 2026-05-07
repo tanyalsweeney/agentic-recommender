@@ -21,13 +21,13 @@ The system walks users through a structured intake flow, infers architecture dec
 
 **Pipeline:** Multi-wave agent system. Wave 1 runs four specialist agents in parallel (Orchestration, Security, Memory & State, Tool & Integration). Wave 2 is a cooperative exchange between Failure & Observability and Trust & Control. Wave 2.5 runs the Compatibility Validator: per-tool research for version, CVE, pricing, and license data, plus first-principles compatibility analysis — the manifest provides facts and minimum requirements as a floor, the CV derives compatibility conclusions from the specific architecture. Wave 3 is The Skeptic, which challenges the full recommendation set before output ships.
 
-**Output:** Pass 1 is a decision-layer document written for two simultaneous audiences: executives deciding whether to approve funding and headcount, and engineers evaluating whether Pass 2 ADRs would add value for their specific situation. Pass 2 is a full implementation layer (ADRs, configuration, specs) generated on user request.
+**Output:** Pass 1 is a decision-layer document for executives and engineers evaluating the recommendation. Pass 2 is the implementation layer: a spec doc + plan doc per recommended target system, generated on user request. **Code-aware intake** (alternative to text intake): the user's AI assistant (Copilot, Claude Code, Cursor) reads their codebase via MCP, produces a structured digest, the user reviews and refines on our screen, the pipeline produces per-target spec+plan deliverables.
 
-**Pricing:** Free (3 runs/day, blurred CV detail), Run Pack ($9 / 5 additional runs), Pass 1 ($49/run, full output), Pass 2 ($199/run).
+**Pricing (provisional, pending production cost data):** Free (3 runs/day, blurred CV detail), Run Pack ($9 / 5 additional runs), Pass 1 ($49/run, full output), Pass 2 ($199/run). Code-aware intake adds: Code-Aware Pass 1 ($49/run, BYOK required) and Code-Aware Pass 2 ($199 per spec+plan, BYOK required, customer-selectable subset of consolidation analysis target set).
 
 ## Status
 
-**Active development.** Phases 0-3h complete. Web frontend next.
+**Active development.** Phases 0-3h implementation complete. Phase 3.5a (backend wiring closure) specced and queued for implementation after a redteam audit found integration gaps between unit-tested components. Substantial spec work for code-aware intake, Pass 2 reshape, and admin-curated config governance landed on 2026-05-06 and 2026-05-07.
 
 | Phase | Description | Status |
 |---|---|---|
@@ -38,9 +38,10 @@ The system walks users through a structured intake flow, infers architecture dec
 | 3e-3f | Maintenance workers, multi-tenancy schema | Done |
 | 3g | Streaming in agent caller — resolves TCP timeout on complex responses | Done |
 | 3h | CV API integration — GHSA, NVD, PyPI, npm; web search; cross-tool check; correction exchange | Done |
-| 4 | Web frontend — intake flow, Pass 1 output rendering, auth | Upcoming |
-| 5 | Admin dashboard — pipeline observability, agent performance, manifest health, themes, config | Upcoming |
-| 6 | Tenant dashboard and config interface | Upcoming |
+| 3.5a | Backend wiring closure pass (BYOK runtime, CV upstream, correction exchange wiring, per-entry manifest versioning) | Specced (PR #52); implementation queued |
+| 4 | Web frontend — intake flow (text + code-aware via MCP), Pass 1 output rendering, auth | Upcoming |
+| 5 | Admin dashboard — pipeline observability, agent performance, manifest health, themes, config curation, modification request inbox | Upcoming |
+| 6 | Tenant dashboard — run history, BYOK self-service, modification request submission | Upcoming |
 
 **Local dev:** requires Docker Desktop. Run `docker compose up -d` to start Postgres and Redis.
 
