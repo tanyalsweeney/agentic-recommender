@@ -1,5 +1,5 @@
 import type { Job } from "bullmq";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { manifestProposals } from "@agent12/shared";
 import { getStaleManifestTools } from "./proposals.js";
 import { submitManifestGatekeeperRun } from "./queue.js";

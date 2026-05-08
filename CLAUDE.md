@@ -163,6 +163,19 @@ be validated against the baseline before merging. Run: `pnpm --filter evals eval
 
 ---
 
+## Pre-PR redteam pass
+
+Before opening a PR, run this redteam prompt.
+
+Ignore spec.md, PLAN.md, README.md, handoff.md, and CLAUDE.md. Read only
+production code. For every function or hook touched in the diff, find its
+production call site (not tests, not evals). When the call site exists, verify
+the caller passes correct input (not `{}`, not a stale shape) and consumes any
+return value the contract requires. Scaffolding without a consumer yet is fine;
+what matters is consumer-exists-but-broken.
+
+---
+
 ## Database rules
 
 - Drizzle ORM only — no raw SQL unless there is no Drizzle equivalent

@@ -1,4 +1,4 @@
-import { eq, isNull, lt, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { manifestTools, manifestProposals, config } from "@agent12/shared";
 import type { ManifestGatekeeperOutput } from "@agent12/agents";

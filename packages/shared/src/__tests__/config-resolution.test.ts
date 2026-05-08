@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { getTestDb } from "./test-db.js";
 import { config } from "../db/schema.js";
 import { getConfig } from "../db/config-resolution.js";
-import { eq, and } from "drizzle-orm";
 
 describe("config resolution", () => {
   let db: ReturnType<typeof getTestDb>;
