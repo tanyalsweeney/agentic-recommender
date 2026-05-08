@@ -375,10 +375,37 @@ pressure.
 select round-trip, FK enforcement, defaults, unique constraints,
 status-flow-friendly column types, scoped isolation.
 
-Out of scope (separate surfaces): auth provider abstraction columns
-(`tenants.auth_provider`, `users.auth_provider*`), `runs.tenant_id`
-denormalization, `cv_result_cache` column additions (3.5a.3), per-entry
-manifest version columns (3.5a.4).
+Out of scope (separate surfaces): `cv_result_cache` column additions
+(3.5a.3), per-entry manifest version columns (3.5a.4).
+
+---
+
+## Phase 3.4.6 — Schema lock for multi-tenancy data isolation `[Upcoming]`
+
+Lock the column shape for multi-tenancy data isolation work spec'd in handoff
+queue. Schema-only this phase: no behavior wiring (Phase 4 wires login flow,
+tenant-scoped reads, and offboarding policy).
+
+**Migration 0011:**
+- `tenants.auth_provider` (text, default `'clerk'`) — provider routing per
+  tenant. `clerk` for default tenants; `workos` for enterprise SSO.
+- `users.auth_provider` (text, default `'clerk'`) — inherited from tenant at
+  signup; stored on user so global (no-tenant) users also have a value.
+- `users.auth_provider_id` (text, nullable) — provider-side user identifier
+  (e.g. Clerk's `user_xyz`). Null until provider-side signup completes.
+- `runs.tenant_id` (uuid, nullable, FK tenants) — denormalized from
+  `users.tenant_id` at run creation. Tenant-scoped reads filter on this
+  column without joining through `users`.
+
+**Tests:** per-modified-table schema files, full coverage matching the 3.4.5
+pattern: defaults, FK enforcement where applicable, value acceptance,
+nullability.
+
+Out of scope (separate behavior PRs): auth provider routing logic at login,
+account-to-tenant binding immutability constraints, cross-account access
+prohibition (read-time enforcement on `runs.tenant_id`), user offboarding
+policy, IP allowlisting as tenant config option, shareable links respecting
+tenant boundaries.
 
 ---
 

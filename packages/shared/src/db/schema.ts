@@ -22,6 +22,9 @@ export const tenants = pgTable("tenants", {
   slug: text("slug").notNull().unique(),
   // standard | premium | enterprise — controls attribution and white-label options
   plan: text("plan").notNull().default("standard"),
+  // Auth provider routing. clerk = default; workos = enterprise tenants with
+  // their own SSO. Looked up at login to decide which provider authenticates.
+  authProvider: text("auth_provider").notNull().default("clerk"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
 
@@ -37,6 +40,12 @@ export const users = pgTable("users", {
   suspended: boolean("suspended").notNull().default(false),
   dailyRunCount: integer("daily_run_count").notNull().default(0),
   dailyRunResetAt: timestamp("daily_run_reset_at", { withTimezone: true }),
+  // Auth provider for this user. Inherits from tenants.auth_provider at signup
+  // but stored on the user so global users (no tenant) also have a value.
+  authProvider: text("auth_provider").notNull().default("clerk"),
+  // Provider-side user identifier (e.g. Clerk's "user_xyz", WorkOS's
+  // "user_01H..."). Null until the user completes provider-side signup.
+  authProviderId: text("auth_provider_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
 
@@ -49,6 +58,11 @@ export const runs = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
+    // Denormalized from users.tenant_id at run creation. Null for global users.
+    // Tenant-scoped reads filter on this column to enforce data isolation
+    // without joining through users on every query. The behavior PR (Phase 4)
+    // wires the populate-at-insert and the read-time enforcement.
+    tenantId: uuid("tenant_id").references(() => tenants.id),
     status: text("status").notNull().default("queued"), // queued | running | completed | failed
     tier: text("tier").notNull(), // free | pass1 | pass2
     verifiedContext: jsonb("verified_context").notNull().default({}),
