@@ -386,26 +386,62 @@ Lock the column shape for multi-tenancy data isolation work spec'd in handoff
 queue. Schema-only this phase: no behavior wiring (Phase 4 wires login flow,
 tenant-scoped reads, and offboarding policy).
 
-**Migration 0011:**
+Validated against Clerk and WorkOS data models (2026-05 docs) so the
+abstraction reflects what each provider actually returns. Both providers use
+`user_xxx` and `org_xxx` prefixed string IDs and treat their API as source of
+truth for profile / membership / role data — we mirror only the join keys.
+
+**Migrations 0011 + 0012:**
 - `tenants.auth_provider` (text, default `'clerk'`) — provider routing per
   tenant. `clerk` for default tenants; `workos` for enterprise SSO.
+- `tenants.auth_provider_org_id` (text, nullable) — Clerk's `org_xxx` or
+  WorkOS's `org_xxx`. Null until the tenant signs up via the provider.
 - `users.auth_provider` (text, default `'clerk'`) — inherited from tenant at
   signup; stored on user so global (no-tenant) users also have a value.
-- `users.auth_provider_id` (text, nullable) — provider-side user identifier
-  (e.g. Clerk's `user_xyz`). Null until provider-side signup completes.
+- `users.auth_provider_user_id` (text, nullable) — Clerk's `user_xxx` or
+  WorkOS's `user_01H...` ULID. Null until provider-side signup completes.
 - `runs.tenant_id` (uuid, nullable, FK tenants) — denormalized from
   `users.tenant_id` at run creation. Tenant-scoped reads filter on this
   column without joining through `users`.
+- Composite unique `(auth_provider, auth_provider_org_id)` on tenants and
+  `(auth_provider, auth_provider_user_id)` on users. PostgreSQL NULL
+  semantics let pre-signup rows coexist; the constraint binds only when both
+  values are set.
+
+**What this enables (full abstraction wiring, Phase 4):**
+- At signup: webhook fills `auth_provider_user_id` (Clerk `user.created` or
+  WorkOS equivalent).
+- At session validation: look up our user by `(auth_provider,
+  auth_provider_user_id)` from the JWT's `sub` claim.
+- At tenant switch: translate provider's active org id to our tenant via
+  `(auth_provider, auth_provider_org_id)`.
+- Per-tenant routing: read `tenants.auth_provider` to dispatch the right SDK.
+
+**Explicitly NOT mirrored locally** (provider's API is source of truth):
+- User profile (firstName, lastName, profilePicture, lastSignInAt)
+- Organization metadata (domains, stripe_customer_id, name)
+- Session tokens / JWTs (verified at request time via provider SDK)
+- Multi-org membership (our model is 1:1 user→tenant via `users.tenant_id`)
+- Roles and permissions (provider-managed)
 
 **Tests:** per-modified-table schema files, full coverage matching the 3.4.5
-pattern: defaults, FK enforcement where applicable, value acceptance,
-nullability.
+pattern: defaults, value acceptance for both Clerk and WorkOS id formats,
+update flow (provider-id-fills-in-later), composite unique enforcement,
+PostgreSQL NULL collision semantics, cross-provider id collision (allowed),
+FK enforcement on `runs.tenant_id`, scoped isolation queries.
 
-Out of scope (separate behavior PRs): auth provider routing logic at login,
-account-to-tenant binding immutability constraints, cross-account access
-prohibition (read-time enforcement on `runs.tenant_id`), user offboarding
-policy, IP allowlisting as tenant config option, shareable links respecting
-tenant boundaries.
+**Behavior pieces this PR does NOT cover** (their tracking status):
+- Auth provider routing dispatcher → tracked in TODOS.md P1 (Phase 4f
+  addendum needed; without it the schema we just locked has no consumer).
+- Cross-account access prohibition (read-time enforcement) → tracked in
+  TODOS.md P1 (security blocker).
+- Account-to-tenant binding immutability → tracked in TODOS.md P1.
+- User offboarding policy → tracked in TODOS.md P3 (depends on Phase 4f).
+- IP allowlisting per tenant → tracked in TODOS.md P3.
+- Shareable links respecting tenant boundaries → tracked in TODOS.md P3
+  (depends on whether shareable links ship pre-launch).
+- Auth webhook idempotency table → tracked in TODOS.md P3 (optional at MVP
+  if we lazily look up on demand instead of consuming webhooks).
 
 ---
 

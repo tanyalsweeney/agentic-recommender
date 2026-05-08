@@ -16,38 +16,61 @@ import { uuidv7 } from "uuidv7";
 
 // ── tenants ───────────────────────────────────────────────────────────────────
 
-export const tenants = pgTable("tenants", {
-  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
-  name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
-  // standard | premium | enterprise — controls attribution and white-label options
-  plan: text("plan").notNull().default("standard"),
-  // Auth provider routing. clerk = default; workos = enterprise tenants with
-  // their own SSO. Looked up at login to decide which provider authenticates.
-  authProvider: text("auth_provider").notNull().default("clerk"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-});
+export const tenants = pgTable(
+  "tenants",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    name: text("name").notNull(),
+    slug: text("slug").notNull().unique(),
+    // standard | premium | enterprise — controls attribution and white-label options
+    plan: text("plan").notNull().default("standard"),
+    // Auth provider routing. clerk = default; workos = enterprise tenants with
+    // their own SSO. Looked up at login to decide which provider authenticates.
+    authProvider: text("auth_provider").notNull().default("clerk"),
+    // Provider-side organization id (Clerk's org_xxx, WorkOS's org_xxx).
+    // Null until the tenant signs up via the provider; filled by the provider
+    // webhook (organization.created) or initial signup flow.
+    authProviderOrgId: text("auth_provider_org_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [
+    // Both Clerk and WorkOS use "org_" prefixed IDs; the (provider, org_id)
+    // pair is what guarantees no two tenants point at the same provider org.
+    // PostgreSQL allows multiple NULLs, so unconfigured tenants don't collide.
+    unique("tenants_auth_provider_org_id_unique").on(t.authProvider, t.authProviderOrgId),
+  ]
+);
 
 // ── users ─────────────────────────────────────────────────────────────────────
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
-  email: text("email").notNull().unique(),
-  // Null for global (non-tenant) users
-  tenantId: uuid("tenant_id").references(() => tenants.id),
-  tier: text("tier").notNull().default("free"), // free | pass1 | pass2
-  mfaEnabled: boolean("mfa_enabled").notNull().default(false),
-  suspended: boolean("suspended").notNull().default(false),
-  dailyRunCount: integer("daily_run_count").notNull().default(0),
-  dailyRunResetAt: timestamp("daily_run_reset_at", { withTimezone: true }),
-  // Auth provider for this user. Inherits from tenants.auth_provider at signup
-  // but stored on the user so global users (no tenant) also have a value.
-  authProvider: text("auth_provider").notNull().default("clerk"),
-  // Provider-side user identifier (e.g. Clerk's "user_xyz", WorkOS's
-  // "user_01H..."). Null until the user completes provider-side signup.
-  authProviderId: text("auth_provider_id"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    email: text("email").notNull().unique(),
+    // Null for global (non-tenant) users
+    tenantId: uuid("tenant_id").references(() => tenants.id),
+    tier: text("tier").notNull().default("free"), // free | pass1 | pass2
+    mfaEnabled: boolean("mfa_enabled").notNull().default(false),
+    suspended: boolean("suspended").notNull().default(false),
+    dailyRunCount: integer("daily_run_count").notNull().default(0),
+    dailyRunResetAt: timestamp("daily_run_reset_at", { withTimezone: true }),
+    // Auth provider for this user. Inherits from tenants.auth_provider at signup
+    // but stored on the user so global users (no tenant) also have a value.
+    authProvider: text("auth_provider").notNull().default("clerk"),
+    // Provider-side user identifier (Clerk's "user_xxx", WorkOS's
+    // "user_01H..." ULID). Null until the user completes provider-side signup
+    // (e.g., the user.created webhook fills this in).
+    authProviderUserId: text("auth_provider_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [
+    // Both Clerk and WorkOS use "user_" prefixed IDs; the (provider, user_id)
+    // pair is what discriminates. PostgreSQL allows multiple NULLs, so users
+    // pre-signup don't collide.
+    unique("users_auth_provider_user_id_unique").on(t.authProvider, t.authProviderUserId),
+  ]
+);
 
 // ── runs ──────────────────────────────────────────────────────────────────────
 
