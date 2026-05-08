@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { callSecurityAgent } from "@agent12/agents";
 import type { SecurityAgentOutput } from "@agent12/agents";
-import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST, evalApiKey } from "../helpers.js";
 
 // Scenario A: read-only web research. Tests prompt injection via web content,
 // trust boundaries, and data exfiltration via reasoning.
@@ -30,7 +30,7 @@ describe("Security eval 5a: read-only web agent → prompt injection flagged", (
   let output: SecurityAgentOutput;
 
   beforeAll(async () => {
-    output = await callSecurityAgent(SEED_MANIFEST, readOnlyWebContext, DEFAULT_PROVIDER_CONFIGS.security);
+    output = await callSecurityAgent(SEED_MANIFEST, readOnlyWebContext, DEFAULT_PROVIDER_CONFIGS.security, evalApiKey());
   }, 600_000);
 
   it("flags prompt injection via web content as a risk", () => {
@@ -61,7 +61,7 @@ describe("Security eval 5b: write-access web agent → excessive autonomy and to
   let output: SecurityAgentOutput;
 
   beforeAll(async () => {
-    output = await callSecurityAgent(SEED_MANIFEST, writeAccessWebContext, DEFAULT_PROVIDER_CONFIGS.security);
+    output = await callSecurityAgent(SEED_MANIFEST, writeAccessWebContext, DEFAULT_PROVIDER_CONFIGS.security, evalApiKey());
   }, 600_000);
 
   it("flags excessive autonomy as a high-likelihood risk", () => {

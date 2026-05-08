@@ -13,7 +13,8 @@ const PROMPT = readFileSync(
 export async function callFailureObservabilityAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<FailureObservabilityAgentOutput> {
   return callAgent({
     agentName: "failure_observability",
@@ -22,5 +23,6 @@ export async function callFailureObservabilityAgent(
     verifiedContext,
     zodSchema: FailureObservabilityAgentOutput,
     providerConfig,
+    apiKey,
   });
 }

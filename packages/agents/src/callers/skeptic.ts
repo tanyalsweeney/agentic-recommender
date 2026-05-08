@@ -14,7 +14,8 @@ export async function callSkepticAgent(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { wave1: unknown; wave2: unknown; cv: unknown },
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<SkepticOutput> {
   return callAgent({
     agentName: "skeptic",
@@ -24,5 +25,6 @@ export async function callSkepticAgent(
     upstreamOutputs,
     zodSchema: SkepticOutput,
     providerConfig,
+    apiKey,
   });
 }

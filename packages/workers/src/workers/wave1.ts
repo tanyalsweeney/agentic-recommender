@@ -25,10 +25,10 @@ export async function processWave1Job(job: Job, db: Db): Promise<{ output: unkno
   const { runId, tenantId } = job.data as { runId: string; tenantId?: string };
 
   const agentMap: Record<string, AgentCallFn> = {
-    "wave1.orchestration":    (m, c, p: ProviderConfig) => callOrchestrationAgent(m, c, p),
-    "wave1.security":         (m, c, p: ProviderConfig) => callSecurityAgent(m, c, p),
-    "wave1.memory_state":     (m, c, p: ProviderConfig) => callMemoryStateAgent(m, c, p),
-    "wave1.tool_integration": (m, c, p: ProviderConfig) => callToolIntegrationAgent(m, c, p),
+    "wave1.orchestration":    (m, c, p: ProviderConfig, k) => callOrchestrationAgent(m, c, p, k),
+    "wave1.security":         (m, c, p: ProviderConfig, k) => callSecurityAgent(m, c, p, k),
+    "wave1.memory_state":     (m, c, p: ProviderConfig, k) => callMemoryStateAgent(m, c, p, k),
+    "wave1.tool_integration": (m, c, p: ProviderConfig, k) => callToolIntegrationAgent(m, c, p, k),
   };
 
   const agentKeyMap: Record<string, string> = {

@@ -13,7 +13,8 @@ const PROMPT = readFileSync(
 export async function callOrchestrationAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<OrchestrationAgentOutput> {
   return callAgent({
     agentName: "orchestration",
@@ -22,5 +23,6 @@ export async function callOrchestrationAgent(
     verifiedContext,
     zodSchema: OrchestrationAgentOutput,
     providerConfig,
+    apiKey,
   });
 }

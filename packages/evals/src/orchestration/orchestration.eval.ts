@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { callOrchestrationAgent } from "@agent12/agents";
 import type { OrchestrationAgentOutput } from "@agent12/agents";
-import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST, evalApiKey } from "../helpers.js";
 
 const parallelResearchContext = {
   description:
@@ -17,7 +17,7 @@ describe("Orchestration eval 4: parallel research → DAG pattern", () => {
   let output: OrchestrationAgentOutput;
 
   beforeAll(async () => {
-    output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, DEFAULT_PROVIDER_CONFIGS.orchestration);
+    output = await callOrchestrationAgent(SEED_MANIFEST, parallelResearchContext, DEFAULT_PROVIDER_CONFIGS.orchestration, evalApiKey());
   }, 240_000);
 
   it("recommends DAG pattern for parallel independent sub-agents", () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { callOrgListGatekeeperAgent } from "@agent12/agents";
 import type { OrgListGatekeeperOutput } from "@agent12/agents";
-import { DEFAULT_PROVIDER_CONFIGS } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, evalApiKey } from "../helpers.js";
 
 // Minimal current org list for context — enough for independence checks.
 const SEED_ORG_LIST = [
@@ -50,14 +50,15 @@ let staleOutput: OrgListGatekeeperOutput;
 let secondPassOutput: OrgListGatekeeperOutput;
 
 beforeAll(async () => {
-  strongOutput    = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal,    DEFAULT_PROVIDER_CONFIGS.skeptic);
-  weakOutput      = await callOrgListGatekeeperAgent(SEED_ORG_LIST, weakOrgProposal,      DEFAULT_PROVIDER_CONFIGS.skeptic);
-  affiliateOutput = await callOrgListGatekeeperAgent(SEED_ORG_LIST, affiliateOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic);
-  staleOutput     = await callOrgListGatekeeperAgent(SEED_ORG_LIST, staleOrgProposal,     DEFAULT_PROVIDER_CONFIGS.skeptic);
+  strongOutput    = await callOrgListGatekeeperAgent(SEED_ORG_LIST, strongOrgProposal,    DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
+  weakOutput      = await callOrgListGatekeeperAgent(SEED_ORG_LIST, weakOrgProposal,      DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
+  affiliateOutput = await callOrgListGatekeeperAgent(SEED_ORG_LIST, affiliateOrgProposal, DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
+  staleOutput     = await callOrgListGatekeeperAgent(SEED_ORG_LIST, staleOrgProposal,     DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
   secondPassOutput = await callOrgListGatekeeperAgent(
     SEED_ORG_LIST,
     strongOrgProposal,
     DEFAULT_PROVIDER_CONFIGS.skeptic,
+    evalApiKey(),
     { humanOverrideReasoning: "We have a direct relationship with this org and know their internal agentic engineering depth exceeds what is publicly visible." },
   );
 }, 1200_000);

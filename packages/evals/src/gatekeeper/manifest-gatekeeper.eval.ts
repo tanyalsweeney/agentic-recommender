@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { callManifestGatekeeperAgent } from "@agent12/agents";
 import type { ManifestGatekeeperOutput } from "@agent12/agents";
-import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST, evalApiKey } from "../helpers.js";
 
 // A well-evidenced, actively maintained tool with genuine independent adoption.
 const solidEntry = {
@@ -84,10 +84,10 @@ let schemaChangeOutput: ManifestGatekeeperOutput;
 let abandonedOutput: ManifestGatekeeperOutput;
 
 beforeAll(async () => {
-  solidOutput       = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry,       DEFAULT_PROVIDER_CONFIGS.skeptic);
-  inflatedOutput    = await callManifestGatekeeperAgent(SEED_MANIFEST, inflatedEntry,    DEFAULT_PROVIDER_CONFIGS.skeptic);
-  schemaChangeOutput = await callManifestGatekeeperAgent(SEED_MANIFEST, schemaChangeEntry, DEFAULT_PROVIDER_CONFIGS.skeptic);
-  abandonedOutput   = await callManifestGatekeeperAgent(SEED_MANIFEST, abandonedEntry,   DEFAULT_PROVIDER_CONFIGS.skeptic);
+  solidOutput       = await callManifestGatekeeperAgent(SEED_MANIFEST, solidEntry,       DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
+  inflatedOutput    = await callManifestGatekeeperAgent(SEED_MANIFEST, inflatedEntry,    DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
+  schemaChangeOutput = await callManifestGatekeeperAgent(SEED_MANIFEST, schemaChangeEntry, DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
+  abandonedOutput   = await callManifestGatekeeperAgent(SEED_MANIFEST, abandonedEntry,   DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
 }, 960_000);
 
 describe("Manifest Gatekeeper eval 1: solid entry with genuine independent adoption → accepted", () => {

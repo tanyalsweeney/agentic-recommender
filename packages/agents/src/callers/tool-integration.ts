@@ -13,7 +13,8 @@ const PROMPT = readFileSync(
 export async function callToolIntegrationAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<ToolIntegrationAgentOutput> {
   return callAgent({
     agentName: "tool_integration",
@@ -22,5 +23,6 @@ export async function callToolIntegrationAgent(
     verifiedContext,
     zodSchema: ToolIntegrationAgentOutput,
     providerConfig,
+    apiKey,
   });
 }

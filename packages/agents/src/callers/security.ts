@@ -13,7 +13,8 @@ const PROMPT = readFileSync(
 export async function callSecurityAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<SecurityAgentOutput> {
   return callAgent({
     agentName: "security",
@@ -22,5 +23,6 @@ export async function callSecurityAgent(
     verifiedContext,
     zodSchema: SecurityAgentOutput,
     providerConfig,
+    apiKey,
   });
 }
