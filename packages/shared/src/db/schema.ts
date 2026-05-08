@@ -312,6 +312,43 @@ export const tenantSecrets = pgTable("tenant_secrets", {
   rotatedAt: timestamp("rotated_at", { withTimezone: true }),
 });
 
+// ── user_secrets ──────────────────────────────────────────────────────────────
+// BYOK API keys at user scope. Resolution order in getApiKey:
+//   user_secrets -> tenant_secrets -> system env.
+// Same encryption format as tenant_secrets.
+
+export const userSecrets = pgTable("user_secrets", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  // anthropic | kimi | openai | etc.
+  provider: text("provider").notNull(),
+  // AES-256-GCM ciphertext: "{iv_hex}:{ciphertext_hex}:{auth_tag_hex}"
+  encryptedKey: text("encrypted_key").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+});
+
+// ── user_api_tokens ───────────────────────────────────────────────────────────
+// User-scoped tokens for MCP authentication (code-aware intake).
+// Schema only — Phase 4 wires the issuance and verification flow.
+// token_hash is unique to defend against collisions; never store plaintext.
+
+export const userApiTokens = pgTable("user_api_tokens", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  // sha256 hash of the token; raw token shown to the user once at issuance.
+  tokenHash: text("token_hash").notNull().unique(),
+  // user-supplied label, e.g. "my-laptop", "ci-runner"
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});
+
 // ── themes ────────────────────────────────────────────────────────────────────
 // System presets (owner = 'global') and tenant-specific themes.
 // Version is YYYY-MM-DD-{sha256_8(token_map + custom_css)}, computed on write.

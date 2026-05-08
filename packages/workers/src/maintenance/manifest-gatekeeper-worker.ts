@@ -10,8 +10,8 @@ export async function processManifestGatekeeperJob(job: Job, db: Db): Promise<vo
 
   const { manifest } = await fetchManifest(db);
   const providerConfig = DEFAULT_PROVIDER_CONFIGS.manifestGatekeeper!;
-  // Maintenance jobs are not tenant-scoped — system env var is the only key source.
-  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, undefined);
+  // Maintenance jobs are not user- or tenant-scoped — system env var is the only key source.
+  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, undefined, undefined);
 
   let priorFindings: unknown = undefined;
 
