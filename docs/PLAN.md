@@ -322,20 +322,20 @@ CV eval wired (3 scenarios); web-search eval added. 87/87 passing.
 
 ---
 
-## Phase 3.4 — Static analysis hardening `[Upcoming]`
+## Phase 3.4 — Static analysis hardening `[Done]`
 
 Lands ahead of 3.5a so the new checks gate that phase's acceptance.
 
-### 3.4a. ESLint scaffolding `[Upcoming]`
+### 3.4a. ESLint scaffolding `[Done]`
 - `eslint.config.mjs` flat config (typescript-eslint parser, type-aware)
 - Rules: `no-floating-promises`, `no-misused-promises`, `no-unused-vars`, `no-unused-expressions`
 - `pnpm lint` at root; fix existing violations to land green
 
-### 3.4b. TypeScript strictness `[Upcoming]`
+### 3.4b. TypeScript strictness `[Done]`
 - `noUnusedLocals: true`, `noUnusedParameters: true` in shared tsconfig base
 - Catches the assigned-but-never-used class (e.g., `runner.ts:108` from the 3h audit)
 
-### 3.4c. CI workflow `[Upcoming]`
+### 3.4c. CI workflow `[Done]`
 - `.github/workflows/ci.yml` on every PR with Postgres + Redis service containers
 - Steps: install, typecheck, lint, test. Hard-fail.
 - Required status checks on `main` enforced via repo settings
