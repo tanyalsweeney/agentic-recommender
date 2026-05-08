@@ -414,3 +414,94 @@ export const userThemePreferences = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.themeId] })]
 );
+
+// ── codebase_digest_drafts ────────────────────────────────────────────────────
+// Drafts produced by the code-aware intake MCP submission, awaiting user review.
+// Schema only — Phase 4 wires the MCP submission and review flow.
+//
+// `digest` carries: intake pre-fills, per-tool inventory, intent gaps.
+// `quality_summary` carries: flags, scores, pending clarifications.
+
+export const codebaseDigestDrafts = pgTable("codebase_digest_drafts", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  // Null when the user has no tenant (global users).
+  tenantId: uuid("tenant_id").references(() => tenants.id),
+  digest: jsonb("digest").notNull(),
+  qualitySummary: jsonb("quality_summary").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  // Drafts time out if the user does not submit within the grace window.
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  // Set when the user finalizes the draft and submits to the pipeline.
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+});
+
+// ── tenant_modification_requests ──────────────────────────────────────────────
+// Tenant-submitted requests for configuration changes; processed by admin.
+// Status flow: submitted -> quoted -> approved -> in_progress -> deployed
+//                                  \-> declined
+// `quoted_amount` stored as text so admins can write "$5,000" / "5000 USD" /
+// "TBD" without forcing a numeric type decision before pricing UX is built.
+
+export const tenantModificationRequests = pgTable("tenant_modification_requests", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id),
+  // e.g. "config_change" | "agent_prompt_tweak" | "manifest_addition"
+  requestType: text("request_type").notNull(),
+  intentDescription: text("intent_description").notNull(),
+  // submitted | quoted | approved | in_progress | deployed | declined
+  status: text("status").notNull().default("submitted"),
+  quotedAmount: text("quoted_amount"),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+// ── tenant_communication_contexts ─────────────────────────────────────────────
+// Admin-curated communication context artifacts (audience, tone, framing) per
+// tenant. Admin-only writes. Multiple drafts plus a published version coexist.
+// `version` follows the same YYYY-MM-DD-{hash8} pattern as themes.
+
+export const tenantCommunicationContexts = pgTable("tenant_communication_contexts", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id),
+  name: text("name").notNull(),
+  promptFragment: text("prompt_fragment").notNull(),
+  // YYYY-MM-DD-{sha256_8(prompt_fragment)}, recomputed on write.
+  version: text("version").notNull(),
+  // draft | published
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+// ── manifest_intent_gap_questions ─────────────────────────────────────────────
+// Curated intent gap question catalog for code-aware intake. Admin-managed,
+// evolved via Manifest Gatekeeper as free-text answers cluster into curated
+// options over time.
+//
+// `question_id` is a stable slug (e.g. "consolidation_strategy_per_category").
+// `applicable_when` describes when Copilot should surface this question.
+
+export const manifestIntentGapQuestions = pgTable("manifest_intent_gap_questions", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  questionId: text("question_id").notNull().unique(),
+  questionText: text("question_text").notNull(),
+  // single-select | multi-select | free-text-only
+  optionType: text("option_type").notNull(),
+  // Array of { value, label } objects.
+  options: jsonb("options").notNull().default(sql`'[]'::jsonb`),
+  // Conditions Copilot evaluates before surfacing this question.
+  applicableWhen: jsonb("applicable_when").notNull().default(sql`'{}'::jsonb`),
+  confidenceScore: integer("confidence_score").notNull().default(0),
+  lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+  vetted: boolean("vetted").notNull().default(false),
+  // 'global' for system defaults; tenantId for tenant-scoped overrides.
+  owner: text("owner").notNull().default("global"),
+});

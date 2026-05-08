@@ -71,6 +71,13 @@
       "when": 1778218132631,
       "tag": "0009_great_matthew_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778221155353,
+      "tag": "0010_slippery_joseph",
+      "breakpoints": true
     }
   ]
 }
