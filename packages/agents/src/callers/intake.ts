@@ -13,7 +13,8 @@ const PROMPT = readFileSync(
 export async function callIntakeAgent(
   manifest: unknown,
   verifiedContext: { description: string; constraints: string[] },
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<IntakeAgentOutput> {
   return callAgent({
     agentName: "intake",
@@ -22,5 +23,6 @@ export async function callIntakeAgent(
     verifiedContext,
     zodSchema: IntakeAgentOutput,
     providerConfig,
+    apiKey,
   });
 }

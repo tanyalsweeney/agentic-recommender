@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { callSkepticAgent } from "@agent12/agents";
 import type { SkepticOutput } from "@agent12/agents";
-import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST } from "../helpers.js";
+import { DEFAULT_PROVIDER_CONFIGS, SEED_MANIFEST, evalApiKey } from "../helpers.js";
 
 const strongArchitectureOutput = {
   wave1: {
@@ -71,8 +71,8 @@ let strongOutput: SkepticOutput;
 let dangerousOutput: SkepticOutput;
 
 beforeAll(async () => {
-  strongOutput = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
-  dangerousOutput = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic);
+  strongOutput = await callSkepticAgent(SEED_MANIFEST, { description: "Document processing pipeline" }, strongArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
+  dangerousOutput = await callSkepticAgent(SEED_MANIFEST, { description: "Autonomous agent with direct production DB access" }, dangerousArchitectureOutput, DEFAULT_PROVIDER_CONFIGS.skeptic, evalApiKey());
 }, 480_000);
 
 describe("Skeptic eval 6: strong architecture → no blocking concerns", () => {

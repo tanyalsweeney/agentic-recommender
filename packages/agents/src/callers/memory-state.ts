@@ -13,7 +13,8 @@ const PROMPT = readFileSync(
 export async function callMemoryStateAgent(
   manifest: unknown,
   verifiedContext: unknown,
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<MemoryStateAgentOutput> {
   return callAgent({
     agentName: "memory_state",
@@ -22,5 +23,6 @@ export async function callMemoryStateAgent(
     verifiedContext,
     zodSchema: MemoryStateAgentOutput,
     providerConfig,
+    apiKey,
   });
 }

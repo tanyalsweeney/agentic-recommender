@@ -13,6 +13,7 @@ export async function callManifestGatekeeperAgent(
   currentManifest: unknown,
   proposedEntry: unknown,
   providerConfig: ProviderConfig,
+  apiKey: string,
   priorCycleFindings?: unknown,
 ): Promise<ManifestGatekeeperOutput> {
   return callAgent({
@@ -23,5 +24,6 @@ export async function callManifestGatekeeperAgent(
     upstreamOutputs: priorCycleFindings,
     zodSchema: ManifestGatekeeperOutput,
     providerConfig,
+    apiKey,
   });
 }

@@ -14,7 +14,8 @@ export async function callTechnicalWriterAgent(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { wave1: unknown; wave2: unknown; cv: unknown; skeptic: unknown },
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<TechnicalWriterOutput> {
   return callAgent({
     agentName: "technical_writer",
@@ -24,5 +25,6 @@ export async function callTechnicalWriterAgent(
     upstreamOutputs,
     zodSchema: TechnicalWriterOutput,
     providerConfig,
+    apiKey,
   });
 }

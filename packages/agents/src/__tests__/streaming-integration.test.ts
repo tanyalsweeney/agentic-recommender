@@ -92,6 +92,7 @@ const ANTHROPIC_OPTS = {
   verifiedContext: {},
   zodSchema: TestSchema,
   providerConfig: { provider: "anthropic", model: "claude-sonnet-4-6" },
+  apiKey: "test-anthropic-key",
 };
 
 const OPENAI_OPTS = {
@@ -101,6 +102,7 @@ const OPENAI_OPTS = {
   verifiedContext: {},
   zodSchema: TestSchema,
   providerConfig: { provider: "kimi", model: "moonshot-v1-8k" },
+  apiKey: "test-kimi-key",
 };
 
 // ── Anthropic streaming tests ─────────────────────────────────────────────────

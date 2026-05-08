@@ -37,7 +37,7 @@ export async function processWave2Job(
     wave: "2",
     upstreamHashes: wave1CheckpointVersions,
     upstreamOutputs: wave1Outputs,
-    callAgent: (m, c, p) => callFailureObservabilityAgent(m, c, p),
+    callAgent: (m, c, p, k) => callFailureObservabilityAgent(m, c, p, k),
   });
 
   const trustControlInitialGatePlacement = await runAgent({
@@ -50,7 +50,7 @@ export async function processWave2Job(
       failureObservabilityInitialAnalysis: failureObservabilityInitialAnalysis.checkpointVersion,
     },
     upstreamOutputs: { wave1: wave1Results, failureObservability: failureObservabilityInitialAnalysis.output },
-    callAgent: (m, c, p, u) => callTrustControlAgent(m, c, u as { failureObservability: unknown }, p),
+    callAgent: (m, c, p, k, u) => callTrustControlAgent(m, c, u as { failureObservability: unknown }, p, k),
   });
 
   const failureObservabilityGateCoverageCheck = await runAgent({
@@ -63,7 +63,7 @@ export async function processWave2Job(
       trustControlInitialGatePlacement: trustControlInitialGatePlacement.checkpointVersion,
     },
     upstreamOutputs: { wave1: wave1Results, trustControl: trustControlInitialGatePlacement.output },
-    callAgent: (m, c, p) => callFailureObservabilityAgent(m, c, p),
+    callAgent: (m, c, p, k) => callFailureObservabilityAgent(m, c, p, k),
   });
 
   const coverageCheck = failureObservabilityGateCoverageCheck.output as FailureObservabilityAgentOutput;
@@ -97,7 +97,7 @@ export async function processWave2Job(
       wave1: wave1Results,
       failureObservability: failureObservabilityGateCoverageCheck.output,
     },
-    callAgent: (m, c, p, u) => callTrustControlAgent(m, c, u as { failureObservability: unknown }, p),
+    callAgent: (m, c, p, k, u) => callTrustControlAgent(m, c, u as { failureObservability: unknown }, p, k),
   });
 
   const failureObservabilityFinalConfirmation = await runAgent({
@@ -110,7 +110,7 @@ export async function processWave2Job(
       trustControlGateRefinement: trustControlGateRefinement.checkpointVersion,
     },
     upstreamOutputs: { wave1: wave1Results, trustControl: trustControlGateRefinement.output },
-    callAgent: (m, c, p) => callFailureObservabilityAgent(m, c, p),
+    callAgent: (m, c, p, k) => callFailureObservabilityAgent(m, c, p, k),
   });
 
   const finalConfirmation = failureObservabilityFinalConfirmation.output as FailureObservabilityAgentOutput;

@@ -85,12 +85,13 @@ export async function processWave2_5Job(
     wave: "2_5",
     upstreamHashes: upstreamCheckpointVersions,
     upstreamOutputs: enrichedUpstream,
-    callAgent: (m, c, p, u) =>
+    callAgent: (m, c, p, k, u) =>
       callCompatibilityValidator(
         m,
         c,
         u as { wave1: unknown; wave2: unknown },
-        p
+        p,
+        k
       ),
   });
 

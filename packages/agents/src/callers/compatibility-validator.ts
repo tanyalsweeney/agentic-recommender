@@ -16,7 +16,8 @@ export async function callCompatibilityValidator(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { wave1: unknown; wave2: unknown },
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<CompatibilityValidatorOutput> {
   return callAgent({
     agentName: "compatibility_validator",
@@ -26,6 +27,7 @@ export async function callCompatibilityValidator(
     upstreamOutputs,
     zodSchema: CompatibilityValidatorOutput,
     providerConfig,
+    apiKey,
   });
   // TODO Phase 3: add web_search_20250305 tool alongside the output tool
   // so CV can perform live research per tool before filling in the output schema.

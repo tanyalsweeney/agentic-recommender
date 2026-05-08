@@ -183,3 +183,4 @@ timestamp,agent_name,provider,model,duration_ms,input_tokens,output_tokens,cache
 2026-05-08T00:36:19.604Z,intake,anthropic,claude-sonnet-4-6,52817,21,2751,6033,95,0.043431
 2026-05-08T00:36:24.879Z,security,anthropic,claude-sonnet-4-6,158268,156,8192,3744,0,0.124003
 2026-05-08T00:36:49.573Z,technical_writer,anthropic,claude-sonnet-4-6,36340,23,1735,7894,1401,0.033647
+2026-05-08T02:11:42.085Z,orchestration,anthropic,claude-sonnet-4-6,57311,162,2566,0,4407,0.055016

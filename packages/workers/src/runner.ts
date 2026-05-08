@@ -39,7 +39,7 @@ export interface RunAgentOpts {
   wave: string;
   upstreamHashes: Record<string, string>;
   upstreamOutputs?: unknown;
-  callAgent: (manifest: unknown, verifiedContext: unknown, providerConfig: ProviderConfig, upstreamOutputs?: unknown) => Promise<unknown>;
+  callAgent: (manifest: unknown, verifiedContext: unknown, providerConfig: ProviderConfig, apiKey: string, upstreamOutputs?: unknown) => Promise<unknown>;
 }
 
 export interface AgentResult {
@@ -105,9 +105,9 @@ export async function runAgent(opts: RunAgentOpts): Promise<AgentResult> {
   const filteredManifest = filterManifest(manifest, AGENT_MANIFEST_SECTIONS[agentKey] ?? { tools: true, patterns: true, failureModes: true });
 
   // Resolve API key — tenant BYOK key first, system env var fallback
-  await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, tenantId);
+  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, tenantId);
 
-  const output = await callAgent(filteredManifest, verifiedContext, providerConfig, upstreamOutputs);
+  const output = await callAgent(filteredManifest, verifiedContext, providerConfig, apiKey, upstreamOutputs);
 
   // 7. Write checkpoint
   await writeCheckpoint(db, { ...checkpointKey, wave, output });

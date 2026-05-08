@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { callCompatibilityValidator, DEFAULT_PROVIDER_CONFIGS } from "@agent12/agents";
-import { SEED_MANIFEST } from "../helpers.js";
+import { SEED_MANIFEST, evalApiKey } from "../helpers.js";
 import type { CompatibilityValidatorOutput } from "@agent12/agents";
 
 // ── scenario 1: stale version with known CVE ──────────────────────────────────
@@ -110,13 +110,15 @@ beforeAll(async () => {
       SEED_MANIFEST,
       staleVersionContext,
       staleVersionUpstream,
-      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator
+      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator,
+      evalApiKey(),
     ),
     callCompatibilityValidator(
       SEED_MANIFEST,
       cleanVersionContext,
       cleanVersionUpstream,
-      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator
+      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator,
+      evalApiKey(),
     ),
   ]);
 }, 180_000);
@@ -276,7 +278,8 @@ describe("CV eval 14: cost aggregation — produces populated estimate from upst
       SEED_MANIFEST,
       costAggregationContext,
       costAggregationUpstream,
-      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator
+      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator,
+      evalApiKey(),
     );
   }, 120_000);
 
@@ -371,7 +374,8 @@ describe("CV eval 15: cross-tool compatibility — shared dep version conflict s
       SEED_MANIFEST,
       crossToolContext,
       crossToolUpstream,
-      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator
+      DEFAULT_PROVIDER_CONFIGS.compatibilityValidator,
+      evalApiKey(),
     );
   }, 120_000);
 

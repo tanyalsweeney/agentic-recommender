@@ -13,6 +13,7 @@ export async function callOrgListGatekeeperAgent(
   currentOrgList: unknown,
   proposedChange: unknown,
   providerConfig: ProviderConfig,
+  apiKey: string,
   secondPass?: { humanOverrideReasoning: string },
 ): Promise<OrgListGatekeeperOutput> {
   return callAgent({
@@ -26,5 +27,6 @@ export async function callOrgListGatekeeperAgent(
     },
     zodSchema: OrgListGatekeeperOutput,
     providerConfig,
+    apiKey,
   });
 }

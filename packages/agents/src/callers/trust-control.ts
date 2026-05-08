@@ -14,7 +14,8 @@ export async function callTrustControlAgent(
   manifest: unknown,
   verifiedContext: unknown,
   upstreamOutputs: { failureObservability: unknown },
-  providerConfig: ProviderConfig
+  providerConfig: ProviderConfig,
+  apiKey: string,
 ): Promise<TrustControlAgentOutput> {
   return callAgent({
     agentName: "trust_control",
@@ -24,5 +25,6 @@ export async function callTrustControlAgent(
     upstreamOutputs,
     zodSchema: TrustControlAgentOutput,
     providerConfig,
+    apiKey,
   });
 }

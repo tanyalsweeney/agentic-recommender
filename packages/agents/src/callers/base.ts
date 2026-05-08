@@ -36,6 +36,9 @@ export interface CallAgentOptions<T> {
   upstreamOutputs?: unknown;
   zodSchema: z.ZodType<T>;
   providerConfig: ProviderConfig;
+  // Resolved by runner.ts via getApiKey (tenant_secrets first, system env fallback).
+  // Never read process.env directly here — that would bypass tenant BYOK keys.
+  apiKey: string;
 }
 
 export function assembleChunks(chunks: string[]): string {
@@ -66,12 +69,10 @@ export async function callAgent<T>(opts: CallAgentOptions<T>): Promise<T> {
 
 async function callAnthropicAgent<T>(
   opts: CallAgentOptions<T>,
-  entry: typeof PROVIDER_REGISTRY[keyof typeof PROVIDER_REGISTRY] & { type: "anthropic" }
+  _entry: typeof PROVIDER_REGISTRY[keyof typeof PROVIDER_REGISTRY] & { type: "anthropic" }
 ): Promise<T> {
-  const { agentName, systemPrompt, manifest, verifiedContext, upstreamOutputs, zodSchema, providerConfig } = opts;
+  const { agentName, systemPrompt, manifest, verifiedContext, upstreamOutputs, zodSchema, providerConfig, apiKey } = opts;
 
-  const apiKey = process.env[entry.systemApiKeyEnvVar];
-  if (!apiKey) throw new Error(`${entry.systemApiKeyEnvVar} is not set`);
   const client = new Anthropic({ apiKey });
 
   const toolName = `${agentName.replace(/-/g, "_")}_output`;
@@ -152,10 +153,8 @@ async function callOpenAICompatibleAgent<T>(
   opts: CallAgentOptions<T>,
   entry: typeof PROVIDER_REGISTRY[keyof typeof PROVIDER_REGISTRY] & { type: "openai-compatible" }
 ): Promise<T> {
-  const { agentName, systemPrompt, manifest, verifiedContext, upstreamOutputs, zodSchema, providerConfig } = opts;
+  const { agentName, systemPrompt, manifest, verifiedContext, upstreamOutputs, zodSchema, providerConfig, apiKey } = opts;
 
-  const apiKey = process.env[entry.systemApiKeyEnvVar];
-  if (!apiKey) throw new Error(`${entry.systemApiKeyEnvVar} is not set`);
   const client = new OpenAI({ apiKey, baseURL: entry.baseUrl });
 
   const toolName = `${agentName.replace(/-/g, "_")}_output`;

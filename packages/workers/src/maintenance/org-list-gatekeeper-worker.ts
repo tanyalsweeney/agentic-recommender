@@ -2,6 +2,7 @@ import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import { callOrgListGatekeeperAgent, DEFAULT_PROVIDER_CONFIGS } from "@agent12/agents";
 import { orgList, orgListProposals } from "@agent12/shared";
+import { getApiKey } from "../key-resolution.js";
 import type { Db } from "../db.js";
 
 // The Org List Gatekeeper researches a proposed org change and stores its
@@ -23,6 +24,8 @@ export async function processOrgListGatekeeperJob(job: Job, db: Db): Promise<voi
   const currentOrgList = await db.select().from(orgList);
 
   const providerConfig = DEFAULT_PROVIDER_CONFIGS.orgListGatekeeper!;
+  // Maintenance jobs are not tenant-scoped — system env var is the only key source.
+  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, undefined);
 
   const result = await callOrgListGatekeeperAgent(
     currentOrgList,
@@ -33,6 +36,7 @@ export async function processOrgListGatekeeperJob(job: Job, db: Db): Promise<voi
       sources: proposal.sources,
     },
     providerConfig,
+    apiKey,
   );
 
   // Store gatekeeper findings on the proposal — human approval still required.

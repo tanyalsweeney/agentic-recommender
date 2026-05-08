@@ -1,5 +1,14 @@
 export { DEFAULT_PROVIDER_CONFIGS } from "@agent12/agents";
 
+// Eval-time API key resolution. Evals run outside the worker layer (no DB,
+// no tenant context), so they read straight from the system env var. Worker
+// production code must use getApiKey() instead, which checks tenant_secrets.
+export function evalApiKey(): string {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY is not set; required for eval runs");
+  return key;
+}
+
 // Minimal seed manifest for evals — enough for agents to reason with.
 // The real manifest will be built in Phase 6 (maintenance pipeline).
 export const SEED_MANIFEST = {
