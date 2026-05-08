@@ -1169,9 +1169,12 @@ Output is gated by tier. The Pass 1 pipeline (Waves 0, 1, 2, 2.5, and 3) runs on
 **Initial pricing is provisional.** All prices in the table above are estimates. Production cost data after launch will be used to validate and adjust pricing. The Run Pack pricing validation TODO documents this principle for one tier; the same principle applies to every tier in the table. All prices are admin-configurable thresholds and can be adjusted without a deploy.
 
 **Free tier rate limit:**
-- Users may run up to 3 free runs per day
-- The limit is disclosed before the user clicks "Analyze" for the first time — no surprises at the paywall
-- After 3 free runs, additional free-tier runs require a Run Pack purchase; full Pass 1 output requires a Pass 1 purchase
+- Users get 1 free run on system-paid LLM keys, lifetime (not per day). This is the trial run.
+- After the lifetime trial, all free-tier runs require a registered BYOK key (user pays LLM cost).
+- Free-tier runs (trial or BYOK) are capped at 3 per day total.
+- Additional runs beyond the daily cap require a per-run purchase ($49 Pass 1, $199 Pass 2). Whether to also offer a multi-pack purchase option is open.
+- The structure is disclosed before the user clicks anything — visible on the homepage alongside the engineer-targeted promo video that motivates the trial. No surprises at the paywall.
+- The BYOK registration screen surfaces free-key signup links for the providers we support, to minimize friction at the lifetime-trial-then-BYOK transition.
 
 **CV output on the free tier:**
 - Every category the Compatibility Validator found data for is shown by title (e.g. Cost estimates, End-of-life date, CVEs, Breaking changes, License) — the user can see what was found

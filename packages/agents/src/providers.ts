@@ -2,18 +2,28 @@ import { ProviderConfig } from "./schemas/index.js";
 
 // Registered providers. Adding a new provider is one entry here plus the API
 // key in the environment. Base URLs and system env var names live here, not in
-// per-agent or per-tenant config.
+// per-agent or per-tenant config. Entries alphabetized by provider key.
 //
-// Runtime key resolution (implemented in Phase 3 worker):
-//   getApiKey(provider, tenantId):
-//     1. Check config table for tenant key: tenant.api_key.{provider} | owner: tenantId
-//     2. Fall back to process.env[PROVIDER_REGISTRY[provider].systemApiKeyEnvVar]
-//   BYOK keys must be stored in tenant_secrets (not config table) with field-level
-//   encryption before shipping to production. See BYOK design note in handoff.md.
+// Runtime key resolution (Phase 3.5a.1 + 3.5a.1.b):
+//   getApiKey(db, provider, userId, tenantId):
+//     1. user_secrets row matching (userId, provider) — decrypted via crypto.ts
+//     2. tenant_secrets row matching (tenantId, provider) — same decryption
+//     3. process.env[PROVIDER_REGISTRY[provider].systemApiKeyEnvVar]
 export const PROVIDER_REGISTRY = {
   anthropic: {
     type: "anthropic" as const,
     systemApiKeyEnvVar: "ANTHROPIC_API_KEY",
+  },
+  deepseek: {
+    type: "openai-compatible" as const,
+    baseUrl: "https://api.deepseek.com/v1",
+    systemApiKeyEnvVar: "DEEPSEEK_API_KEY",
+  },
+  gemini: {
+    type: "openai-compatible" as const,
+    // Google's OpenAI-compatible endpoint; not the native Gemini API.
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    systemApiKeyEnvVar: "GEMINI_API_KEY",
   },
   kimi: {
     type: "openai-compatible" as const,
@@ -22,6 +32,21 @@ export const PROVIDER_REGISTRY = {
     // Kimi swarm: single API call, internal parallelism. No special invocation
     // parameter needed — swarm is the default behavior for compatible models.
     // Confirm current model ID at platform.moonshot.cn before wiring in.
+  },
+  mistral: {
+    type: "openai-compatible" as const,
+    baseUrl: "https://api.mistral.ai/v1",
+    systemApiKeyEnvVar: "MISTRAL_API_KEY",
+  },
+  openai: {
+    type: "openai-compatible" as const,
+    baseUrl: "https://api.openai.com/v1",
+    systemApiKeyEnvVar: "OPENAI_API_KEY",
+  },
+  together: {
+    type: "openai-compatible" as const,
+    baseUrl: "https://api.together.ai/v1",
+    systemApiKeyEnvVar: "TOGETHER_API_KEY",
   },
 } as const;
 

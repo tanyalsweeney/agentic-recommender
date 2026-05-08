@@ -711,6 +711,11 @@ free tier runs in real time). Email notifications on run completion.
 MFA, email verification, per-IP rate limiting on signup. Replaces the dev auth
 stub from 4a. Tenant-aware: every session carries tenant_id; every API route
 and getConfig call passes it through.
+
+**Run submission gates** on the free-tier policy from spec.md "Free tier rate
+limit": 1 system-paid lifetime trial, then all free-tier runs require BYOK,
+3-per-day cap, then per-run purchase. Tracked in TODOS.md P1.
+
 E2E: full signup flow, MFA enforcement, email verification gate.
 
 ---
