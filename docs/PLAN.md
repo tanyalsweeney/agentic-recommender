@@ -353,7 +353,7 @@ not flagged by knip because the test files count as consumers.
 
 ---
 
-## Phase 3.4.5 — Schema lock for spec'd tables `[Upcoming]`
+## Phase 3.4.5 — Schema lock for spec'd tables `[Done]`
 
 Lock the column shape for tables specced in PRs #53 and #54 but not yet in
 code. Schema-only this phase: no behavior wiring (Phase 4 consumes them).
@@ -380,7 +380,7 @@ Out of scope (separate surfaces): `cv_result_cache` column additions
 
 ---
 
-## Phase 3.4.6 — Schema lock for multi-tenancy data isolation `[Upcoming]`
+## Phase 3.4.6 — Schema lock for multi-tenancy data isolation `[Done]`
 
 Lock the column shape for multi-tenancy data isolation work spec'd in handoff
 queue. Schema-only this phase: no behavior wiring (Phase 4 wires login flow,
