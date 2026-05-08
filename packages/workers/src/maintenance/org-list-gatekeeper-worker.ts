@@ -24,8 +24,8 @@ export async function processOrgListGatekeeperJob(job: Job, db: Db): Promise<voi
   const currentOrgList = await db.select().from(orgList);
 
   const providerConfig = DEFAULT_PROVIDER_CONFIGS.orgListGatekeeper!;
-  // Maintenance jobs are not tenant-scoped — system env var is the only key source.
-  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, undefined);
+  // Maintenance jobs are not user- or tenant-scoped — system env var is the only key source.
+  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, undefined, undefined);
 
   const result = await callOrgListGatekeeperAgent(
     currentOrgList,

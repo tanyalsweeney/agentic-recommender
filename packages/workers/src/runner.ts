@@ -104,8 +104,8 @@ export async function runAgent(opts: RunAgentOpts): Promise<AgentResult> {
   // 6. Call agent with filtered manifest
   const filteredManifest = filterManifest(manifest, AGENT_MANIFEST_SECTIONS[agentKey] ?? { tools: true, patterns: true, failureModes: true });
 
-  // Resolve API key — tenant BYOK key first, system env var fallback
-  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, tenantId);
+  // Resolve API key — user BYOK first, tenant BYOK second, system env last
+  const apiKey = await getApiKey(db as unknown as Parameters<typeof getApiKey>[0], providerConfig.provider, run.userId, tenantId);
 
   const output = await callAgent(filteredManifest, verifiedContext, providerConfig, apiKey, upstreamOutputs);
 

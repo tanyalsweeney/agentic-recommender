@@ -365,31 +365,43 @@ availability, source URLs, correction request payload, resolution outcomes
 storage), Wave 3 Skeptic (engagement pattern, qualified recommendation
 framing), and Pipeline failure handling (per-entry manifest version reuse).
 
-### 3.5a.1. BYOK runtime wiring `[Upcoming]`
+### 3.5a.1. BYOK runtime wiring (tenant scope) `[Done]`
 
 Tenant BYOK keys are stored in `tenant_secrets` with AES-256-GCM encryption
 (Phase 3f), but `runner.ts:108` discards the resolved key and `base.ts:74`
 reads `process.env` directly. Tenant keys never reach the Anthropic SDK.
 
-**Tests first:**
-- `runner.test.ts`: with a tenantId and a tenant_secrets row for that provider,
-  the value passed to `callAgent` matches the decrypted secret (mock SDK
-  constructor, assert `apiKey` arg).
-- `runner.test.ts`: without a tenant_secrets row, system env var is used.
-- `runner.test.ts`: tenant_secrets row for a different provider does not
-  satisfy the lookup; falls back to system env.
-- `key-resolution.test.ts`: reads from `tenant_secrets` (not `config`).
-- `base.test.ts`: when given an explicit apiKey, uses it instead of process.env.
+Shipped as PR #57. `getApiKey` now reads `tenant_secrets` (not `config`),
+threads through `callAgent`, every caller wrapper takes `apiKey`, and the SDK
+constructors use it instead of `process.env`. Verified end-to-end via
+orchestration eval (1 real API call).
+
+### 3.5a.1.b. BYOK runtime wiring (user scope) `[Done]`
+
+Schema-lock for user-scoped credentials and extension of the resolution chain
+to user → tenant → system env. `user_api_tokens` added schema-only; Phase 4
+wires the MCP authentication flow.
+
+**Migration 0009:**
+- `user_secrets`: id, user_id, provider, encrypted_key, created_at, rotated_at.
+  Same encryption format as `tenant_secrets`.
+- `user_api_tokens`: id, user_id, token_hash (unique), name, created_at,
+  last_used_at, revoked_at. No callers wired this phase.
+
+**Tests:**
+- `user-scope.test.ts`: insert + select round-trips; FK enforcement; unique
+  constraint on `token_hash`; user-scoped isolation.
+- `key-resolution.test.ts`: user-only key returns user value; user wins over
+  tenant when both present; falls back to tenant when user has no key for the
+  provider; falls back to env when neither.
+- `runner.test.ts`: `run.userId` resolves user_secrets; user wins over tenant.
 
 **Implementation:**
-- Update `getApiKey` to query `tenant_secrets` and decrypt via existing
-  `crypto.ts` helpers. Remove the unsafe `config` table fallback for tenant
-  keys (per the inline NOTE in `key-resolution.ts:12`).
-- Add `apiKey: string` parameter to `callAgent`, `callAnthropicAgent`,
-  `callOpenAICompatibleAgent`. Use it instead of `process.env`.
-- In `runner.ts`, capture `getApiKey()` return value and thread through
-  `callAgent`. Update `RunAgentOpts.callAgent` signature.
-- Update every caller in `packages/agents/src/callers/` to thread the apiKey.
+- Extend `getApiKey` signature to `(db, provider, userId, tenantId)`.
+- Resolution: user → tenant → system env.
+- `runner.ts` passes `run.userId` (already on the run row, no `RunAgentOpts`
+  change needed).
+- Maintenance workers pass `undefined` for both ids (system-scoped jobs).
 
 ### 3.5a.2. CV upstream wiring `[Upcoming]`
 
