@@ -27,18 +27,22 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Status
 
-**Active development.** Phases 0-3h implementation complete. Phase 3.5a (backend wiring closure) specced and queued for implementation after a redteam audit found integration gaps between unit-tested components. Substantial spec work for code-aware intake, Pass 2 reshape, and admin-curated config governance landed on 2026-05-06 and 2026-05-07.
+**Active development.** Phases 0-3h plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation complete. Schema lock for everything reachable pre-UI is done (26 tables, 13 migrations). Remaining pre-UI work is the four backend wiring sub-phases of 3.5a (CV upstream, per-tool data availability, per-entry manifest versioning, correction exchange). 258 non-eval tests passing.
 
 | Phase | Description | Status |
 |---|---|---|
 | 0 | Monorepo scaffolding (pnpm workspaces, TypeScript, Vitest) | Done |
-| 1 | Database schema — 20 tables, config resolution | Done |
+| 1 | Database schema — config resolution + 12 initial tables | Done |
 | 2 | Agent layer — 12 agents, Zod schemas, multi-provider callers, prompt caching, eval baselines | Done |
 | 3a-3d | Pipeline workers — BullMQ wave orchestration, checkpointing, evals | Done |
 | 3e-3f | Maintenance workers, multi-tenancy schema | Done |
 | 3g | Streaming in agent caller — resolves TCP timeout on complex responses | Done |
 | 3h | CV API integration — GHSA, NVD, PyPI, npm; web search; cross-tool check; correction exchange | Done |
-| 3.5a | Backend wiring closure pass (BYOK runtime, CV upstream, correction exchange wiring, per-entry manifest versioning) | Specced (PR #52); implementation queued |
+| 3.4 | Static analysis hardening — ESLint, tsconfig strict, GitHub Actions CI | Done |
+| 3.4.5 | Schema lock for spec'd tables — code-aware drafts, tenant config, intent gaps | Done |
+| 3.4.6 | Schema lock for multi-tenancy data isolation — auth providers, runs.tenant_id (Clerk + WorkOS validated) | Done |
+| 3.5a.1 | BYOK runtime wiring — tenant + user scope; resolution chain user → tenant → env | Done |
+| 3.5a.2-5 | Backend wiring closure — CV upstream, per-tool data availability, per-entry manifest versioning, correction exchange | Upcoming |
 | 4 | Web frontend — intake flow (text + code-aware via MCP), Pass 1 output rendering, auth | Upcoming |
 | 5 | Admin dashboard — pipeline observability, agent performance, manifest health, themes, config curation, modification request inbox | Upcoming |
 | 6 | Tenant dashboard — run history, BYOK self-service, modification request submission | Upcoming |
