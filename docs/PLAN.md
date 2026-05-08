@@ -353,6 +353,35 @@ not flagged by knip because the test files count as consumers.
 
 ---
 
+## Phase 3.4.5 — Schema lock for spec'd tables `[Upcoming]`
+
+Lock the column shape for tables specced in PRs #53 and #54 but not yet in
+code. Schema-only this phase: no behavior wiring (Phase 4 consumes them).
+Doing it now so the frontend doesn't drive schema decisions later under time
+pressure.
+
+**Migration 0010:**
+- `codebase_digest_drafts` — drafts produced by code-aware intake MCP, awaiting
+  user review (digest, quality_summary, expires_at, submitted_at)
+- `tenant_modification_requests` — tenant-submitted config change requests
+  (request_type, intent_description, status flow, quoted_amount, admin_notes)
+- `tenant_communication_contexts` — admin-curated comm context per tenant
+  (name, prompt_fragment, version, draft/published status)
+- `manifest_intent_gap_questions` — curated intent gap question catalog,
+  evolved by Manifest Gatekeeper (question_id unique, option_type, options,
+  applicable_when, confidence_score, vetted, owner)
+
+**Tests:** full schema coverage matching `user-scope.test.ts` depth: insert +
+select round-trip, FK enforcement, defaults, unique constraints,
+status-flow-friendly column types, scoped isolation.
+
+Out of scope (separate surfaces): auth provider abstraction columns
+(`tenants.auth_provider`, `users.auth_provider*`), `runs.tenant_id`
+denormalization, `cv_result_cache` column additions (3.5a.3), per-entry
+manifest version columns (3.5a.4).
+
+---
+
 ## Phase 3.5a — Backend wiring closure pass `[Upcoming]`
 
 Backend completeness pass before UI work begins. Closes wiring gaps identified
