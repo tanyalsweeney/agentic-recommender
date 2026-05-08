@@ -156,7 +156,7 @@ describe("CV eval 12: stale langchain version with known CVE → flagged correct
       r.toolName.toLowerCase().includes("langchain")
     );
     // The agent should surface the HIGH CVE from the provided apiData context
-    expect(result!.cves.high.length + result!.cves.critical.length).toBeGreaterThan(0);
+    expect(result!.cves!.high.length + result!.cves!.critical.length).toBeGreaterThan(0);
   });
 });
 
@@ -181,8 +181,8 @@ describe("CV eval 13: current anthropic-sdk version, clean CVE record → confir
     const result = cleanOutput.perToolResults.find(r =>
       r.toolName.toLowerCase().includes("anthropic")
     );
-    expect(result!.cves.critical).toHaveLength(0);
-    expect(result!.cves.high).toHaveLength(0);
+    expect(result!.cves!.critical).toHaveLength(0);
+    expect(result!.cves!.high).toHaveLength(0);
   });
 
   it("includes a source URL for manual verification", () => {

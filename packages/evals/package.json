@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "eval:intake": "vitest run src/intake",
     "eval:orchestration": "vitest run src/orchestration",
     "eval:security": "vitest run src/security",

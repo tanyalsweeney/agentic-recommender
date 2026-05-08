@@ -1,8 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { config } from "./schema.js";
 
-type Db = Parameters<typeof getConfig>[0];
-
 export async function getConfig(
   db: { select: () => any },
   key: string,

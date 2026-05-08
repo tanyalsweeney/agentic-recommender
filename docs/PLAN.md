@@ -322,6 +322,37 @@ CV eval wired (3 scenarios); web-search eval added. 87/87 passing.
 
 ---
 
+## Phase 3.4 — Static analysis hardening `[Done]`
+
+Lands ahead of 3.5a so the new checks gate that phase's acceptance.
+
+### 3.4a. ESLint scaffolding `[Done]`
+- `eslint.config.mjs` flat config (typescript-eslint parser, type-aware)
+- Rules: `no-floating-promises`, `no-misused-promises`, `no-unused-vars`, `no-unused-expressions`
+- `pnpm lint` at root; fix existing violations to land green
+
+### 3.4b. TypeScript strictness `[Done]`
+- `noUnusedLocals: true`, `noUnusedParameters: true` in shared tsconfig base
+- Catches the assigned-but-never-used class (e.g., `runner.ts:108` from the 3h audit)
+
+### 3.4c. CI workflow `[Done]`
+- `.github/workflows/ci.yml` on every PR with Postgres + Redis service containers
+- Steps: install, typecheck, lint, test. Hard-fail.
+- Required status checks on `main` enforced via repo settings
+
+### 3.4 Acceptance gate
+- `pnpm lint`, `pnpm typecheck`, `pnpm test` all pass clean
+- CI green on a no-op PR
+- Pre-PR redteam cadence documented in CLAUDE.md (one paragraph)
+
+Knip (dead code detection) deferred to a post-Phase-4 follow-up; tracked in
+TODOS.md. Reason: most current "unused export" findings are entry-point
+scaffolding for the unbuilt frontend, and the audit-class bug knip was
+supposed to catch (`conflict-resolution.ts` tested-but-unwired) is actually
+not flagged by knip because the test files count as consumers.
+
+---
+
 ## Phase 3.5a — Backend wiring closure pass `[Upcoming]`
 
 Backend completeness pass before UI work begins. Closes wiring gaps identified
@@ -525,10 +556,12 @@ Phase 3.5a is done when:
   CV's output; correction exchange fires when CV detects a conflict;
   resolution outcomes appear on the wave2_5 result; Skeptic input includes
   resolution outcomes.
-- All existing tests still pass (currently 87/87).
+- All existing tests still pass.
 - All eval baselines still pass (or are re-baselined with notes if any
   prompt-touching change shifts a result).
 - New schema migrations apply cleanly to the test database.
+- Phase 3.4 checks all pass: `pnpm lint`, `pnpm typecheck`.
+- Pre-PR redteam pass completed per CLAUDE.md cadence.
 
 ---
 

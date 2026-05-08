@@ -49,6 +49,7 @@ const strongArchitectureOutput = {
       costSignals: {},
     },
   },
+  cv: undefined,
 };
 
 const dangerousArchitectureOutput = {
@@ -62,6 +63,7 @@ const dangerousArchitectureOutput = {
     failureObservability: { failureModes: [{ name: "data corruption", description: "Agents write bad data to production", likelihood: "high", mitigations: [], isHighRiskHandoff: true }], evalStrategy: { approach: "none specified", nonDeterministicHandling: "ignore", suggestedEvalFramework: undefined }, tracingApproach: { reasoningChainTracing: "none", interAgentHandoffTracing: "none", intersectionsWithStandardTracing: [] }, costSignals: {} },
     trustControl: { hitlGates: [], autonomyEnforcement: { capturedLevel: "fully_autonomous", enforcementMechanism: "none", overrideConditions: [] }, approvalWorkflow: { recommended: false }, costSignals: {} },
   },
+  cv: undefined,
 };
 
 // One call per scenario — shared across all assertions for that scenario.

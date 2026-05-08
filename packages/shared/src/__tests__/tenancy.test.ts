@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { eq, and, isNull, isNotNull, lte, gte, or, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { getTestDb } from "./test-db.js";
 import {

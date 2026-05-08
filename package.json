@@ -5,11 +5,15 @@
     "test": "vitest run --workspace vitest.workspace.ts --passWithNoTests",
     "test:watch": "vitest --workspace vitest.workspace.ts",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.3.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0",
-    "@types/node": "^22.0.0"
+    "typescript-eslint": "^8.59.2",
+    "vitest": "^2.1.0"
   }
 }

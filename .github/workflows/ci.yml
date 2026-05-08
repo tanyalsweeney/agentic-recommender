@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: agent12
+          POSTGRES_USER: agent12
+          POSTGRES_PASSWORD: agent12local
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://agent12:agent12local@localhost:5432/agent12
+      DATABASE_URL_TEST: postgresql://agent12:agent12local@localhost:5432/agent12_test
+      REDIS_URL: redis://localhost:6379
+      ANTHROPIC_API_KEY: ci-dummy-key-not-used-in-non-eval-tests
+      AUTH_SECRET: ci-dummy-auth-secret-32-bytes-padding
+      ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Create test database
+        run: |
+          PGPASSWORD=agent12local psql -h localhost -U agent12 -d agent12 \
+            -c "CREATE DATABASE agent12_test;"
+
+      - name: Run migrations on test database
+        run: pnpm --filter @agent12/shared db:migrate:test
+
+      - name: Run tests (non-eval)
+        run: pnpm --filter '!@agent12/evals' test
