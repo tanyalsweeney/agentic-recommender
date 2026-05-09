@@ -669,6 +669,122 @@ Phase 3.5a is done when:
 
 ---
 
+## Phase 3.5b — Code-aware intake backend `[Upcoming]`
+
+Backend implementation for the code-aware intake path. Bullets land
+incrementally; detailed design is settled per-bullet during the writing of
+each PR. Quality Evaluator leads since it is the most architecturally
+load-bearing piece and informs design decisions for the remaining bullets.
+Phase 4 frontend work for code-aware (review screen, MCP token UI, Pass 2
+target selection) gates on this phase.
+
+### 3.5b.1. Quality Evaluator agent `[Upcoming]`
+
+The Quality Evaluator scores each per-tool digest entry and synthesizes
+inferential fields when the user's AI assistant did not provide them.
+Lives in `packages/agents/src/quality-evaluator/`. Runs as a background
+BullMQ worker job triggered after `submit_codebase_digest` and after each
+`update_codebase_digest`. See spec.md "Quality evaluation and clarification
+loop" for the full architecture.
+
+**Tests first:**
+- Zod schema tests for evaluator output (`qualityScore`, `qualityFlags`,
+  `clarifyingQuestions`, synthesized inferential fields)
+- Server-side inference tests: missing `primaryPurpose` inferred from
+  deps + README + file tree; missing `displayName` from manifest name
+  field; missing `productCategory` derived from inferred `primaryPurpose`;
+  rule-based `observedPatterns` from dependency patterns
+- 3-layer cache structure tests: L1 stable across calls; L2 cached across
+  per-app calls within a digest; L3 changes per-call; `cache_control`
+  headers present
+- L3 enrichment chain tests: manifest hit → `cv_result_cache` hit →
+  internal cross-ref → uncatalogued marker; `isPrivate=true` skips manifest
+  and `cv_result_cache`
+- Self-iteration tests: low-scored entry triggers another pass; iteration
+  caps at 3 passes (default, configurable); plateau exit when score does
+  not improve
+- Group-context synthesis tests: `distinguishingCharacteristics` synthesized
+  from L2 inventory when agent input is missing or too generic given peers
+- Re-evaluation on `update_codebase_digest`: only changed entries re-scored
+- Eval cases under `packages/evals/src/quality-evaluator/` including
+  false-fail protection (good descriptions that look thin to naive heuristics)
+
+**Implementation:**
+- Agent caller in `packages/agents/src/quality-evaluator/` matching the
+  3-layer prompt cache pattern (CLAUDE.md non-negotiable)
+- Server-side inference helpers (deps + README + file tree) for missing
+  inferential essentials
+- Rule-based inference for `observedPatterns` and partial
+  `externalIntegrations` from parsed dependency set
+- Raw package manifest parsing server-side (npm, pypi, etc.) into
+  normalized `{name, version}` records; raw content discarded after parsing
+  for privacy
+- BullMQ worker in `packages/workers/src/workers/quality-evaluator.ts`
+  with `Promise.all()` concurrency cap (configurable via admin dashboard)
+- Self-iteration loop: max 3 passes per entry, plateau exit
+- Email-on-completion via existing notification infrastructure
+- BYOK resolution via existing `getApiKey`: user → tenant → env
+
+**Acceptance:**
+- Self-iteration converges within 3 passes on real eval digests
+- Synthesized fields surface indistinguishably from agent-provided fields
+  on the review screen (no provenance flagging)
+- Eval suite passes including false-fail protection
+- Full-flow integration test: submit → background eval → email →
+  `quality_summary` state matches expectations
+- Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+- Pre-PR redteam pass per CLAUDE.md cadence
+
+### 3.5b.2. Pattern & Cluster Analyzer agent `[Upcoming]`
+
+Dedicated agent for code-aware digests that groups tools by `productCategory`,
+analyzes capability variance and clusters within categories, produces
+consolidation opportunity assessments, generates targeted clarification
+questions and the consolidation strategy intent question per multi-tool
+category. Detailed design TBD.
+
+### 3.5b.3. MCP server + tool surface `[Upcoming]`
+
+Four MCP tools: `submit_codebase_digest`, `update_codebase_digest`,
+`get_pending_clarifications`, `estimate_digest_cost`. Token authentication
+via `user_api_tokens`. Draft lifecycle including 30-day expiry job.
+Detailed design TBD.
+
+### 3.5b.4. manifest_intent_gap_questions seeder + Manifest Gatekeeper extension `[Upcoming]`
+
+Seed the curated intent-gap question catalog. Extend Manifest Gatekeeper
+to promote frequently-occurring free-text answer patterns to curated
+options over time. Detailed design TBD.
+
+### 3.5b.5. Migration-mapping prompt fragment + Pass 2 per-target invocation `[Upcoming]`
+
+Spec Synthesizer migration-mapping specialist prompt fragment. Pass 1
+consolidation surfacing logic (full prose / brief callout / omitted by
+assessment magnitude and user intent). Pass 2 runs once per selected
+target system. Migration orchestration overview when multiple targets
+identified. Detailed design TBD.
+
+### 3.5b.6. CV isPrivate cache bypass + Skeptic consolidation reconciliation + code-aware BYOK gate + tenant communication context resolver `[Upcoming]`
+
+Pipeline behavior changes for code-aware runs: `isPrivate=true` entries
+bypass `cv_result_cache`; per-tool failures on internal tools surface
+digest source URLs as the manual verification path; Skeptic gets
+consolidation-intent reconciliation responsibility; BYOK lock at run
+submission for code-aware (separate from free-tier BYOK gate);
+Anthropic-key-for-web-search resolution rule when user's primary BYOK is
+OpenAI; tenant communication context resolver and admin curation flow.
+Detailed design TBD.
+
+### 3.5b.7. Subset re-runs from Pass 1 output `[Upcoming]`
+
+Backend endpoint to spawn a fresh code-aware run from a subset of an
+existing parent run's per-tool inventory. Two callers: per-grouping button
+(system-identified consolidation grouping) and user-chosen multi-select
+(MVP scope, easier to remove than add later). Full Pass 1 service fee +
+BYOK per fresh run, no discount. Detailed design TBD.
+
+---
+
 ## Phase 4 — Web frontend `[Upcoming]`
 
 **E2E tests written alongside implementation (Playwright).**
