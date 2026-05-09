@@ -740,11 +740,71 @@ loop" for the full architecture.
 
 ### 3.5b.2. Pattern & Cluster Analyzer agent `[Upcoming]`
 
-Dedicated agent for code-aware digests that groups tools by `productCategory`,
-analyzes capability variance and clusters within categories, produces
-consolidation opportunity assessments, generates targeted clarification
-questions and the consolidation strategy intent question per multi-tool
-category. Detailed design TBD.
+Dedicated agent for code-aware digests that runs after the Quality
+Evaluator to identify consolidation opportunities at the `productCategory`
+level. Lives in `packages/agents/src/pattern-cluster-analyzer/`. Runs as
+a background BullMQ worker job triggered after Quality Evaluator job
+completion. See spec.md "Pattern & Cluster Analyzer" subsection for the
+full architecture.
+
+**Tests first:**
+- Zod schema tests for evaluator output (`productCategory`,
+  `consolidationOpportunity`, `reasoning`, `clusters`, `capabilityVariance`,
+  `blockers` typed array, `supportingEvidence`, `clarificationQuestions`,
+  `consolidationStrategyQuestion`)
+- Single-tool category short-circuit tests: server emits
+  `consolidationOpportunity: 'none'` deterministically with no LLM call;
+  no `clarificationQuestions` or `consolidationStrategyQuestion` produced
+- Per-category call dispatch tests: multi-tool categories trigger one LLM
+  call each; `Promise.all()` concurrency cap respected
+- 3-layer cache structure tests: L1 stable across calls; L2 cached across
+  per-category calls within a digest; L3 changes per-call; `cache_control`
+  headers present
+- Sequencing test: analyzer waits for Quality Evaluator job completion
+  before starting; sees synthesized fields (e.g., `distinguishingCharacteristics`
+  synthesized from group context)
+- Re-evaluation tests: on `update_codebase_digest`, only affected categories
+  re-analyzed; categories with unchanged membership reuse prior analysis;
+  entry's `productCategory` change correctly updates both source and
+  destination categories
+- Cluster identification tests: known multi-tool categories with similar /
+  divergent capabilities produce expected clusters and variance descriptions
+- Migration test: `cluster_analysis` jsonb column on `codebase_digest_drafts`
+  accepts the expected output shape
+- Eval cases under `packages/evals/src/pattern-cluster-analyzer/`:
+  representative digests with known consolidation patterns; `substantial` /
+  `marginal` / `none` assessments; canonical scenarios (5 Launch Risk
+  Evaluators, 4 Contract Volume Predictors)
+
+**Implementation:**
+- Agent caller in `packages/agents/src/pattern-cluster-analyzer/` matching
+  the 3-layer prompt cache pattern (CLAUDE.md non-negotiable)
+- BullMQ worker in `packages/workers/src/workers/pattern-cluster-analyzer.ts`,
+  triggered after Quality Evaluator completes; iterates over multi-tool
+  categories with `Promise.all()` concurrency cap (configurable via admin
+  dashboard)
+- Single-tool category short-circuit: server-side emit of deterministic
+  output, no LLM call
+- Affected-category diff logic: compare current categorization against
+  prior state; categories with membership changes re-analyze; categories
+  that became single-tool emit deterministic output; categories that
+  became multi-tool trigger LLM
+- Migration adds `cluster_analysis` jsonb column to `codebase_digest_drafts`
+- Email-on-completion folds into the existing digest-evaluation notification
+  (single email when Quality Evaluator and Pattern & Cluster Analyzer both
+  complete; not separate emails)
+- BYOK resolution via existing `getApiKey`: user → tenant → env
+
+**Acceptance:**
+- Single-tool categories never trigger an LLM call
+- Multi-tool categories produce structured output matching the Zod schema;
+  canonical eval cases pass
+- Re-analysis on update touches only affected categories on real eval
+  updates
+- Migration applies cleanly; `cluster_analysis` column accepts the expected
+  output structure
+- Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+- Pre-PR redteam pass per CLAUDE.md cadence
 
 ### 3.5b.3. MCP server + tool surface `[Upcoming]`
 
