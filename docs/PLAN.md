@@ -671,12 +671,15 @@ Phase 3.5a is done when:
 
 ## Phase 3.5b — Code-aware intake backend `[Upcoming]`
 
-Backend implementation for the code-aware intake path. Bullets land
-incrementally; detailed design is settled per-bullet during the writing of
-each PR. Quality Evaluator leads since it is the most architecturally
-load-bearing piece and informs design decisions for the remaining bullets.
-Phase 4 frontend work for code-aware (review screen, MCP token UI, Pass 2
-target selection) gates on this phase.
+Backend implementation for the code-aware intake path. The user's AI
+assistant runs in their IDE; we control MCP tool definitions and response
+payloads, not assistant behavior (see spec.md "MCP integration model" for
+the full control boundary). Bullets land incrementally; detailed design
+is settled per-bullet during the writing of each PR. Quality Evaluator
+leads since it is the most architecturally load-bearing piece and informs
+design decisions for the remaining bullets. Phase 4 frontend work for
+code-aware (review screen, MCP token UI, Pass 2 target selection) gates
+on this phase.
 
 ### 3.5b.1. Quality Evaluator agent `[Upcoming]`
 
@@ -745,10 +748,21 @@ category. Detailed design TBD.
 
 ### 3.5b.3. MCP server + tool surface `[Upcoming]`
 
-Four MCP tools: `submit_codebase_digest`, `update_codebase_digest`,
-`get_pending_clarifications`, `estimate_digest_cost`. Token authentication
-via `user_api_tokens`. Draft lifecycle including 30-day expiry job.
-Detailed design TBD.
+MCP server exposing four tools:
+- `submit_codebase_digest`: creates draft, runs server-side normalization
+  synchronously, enqueues background Quality Evaluator job, returns draft
+  URL plus `status: "evaluating"`
+- `update_codebase_digest`: modifies draft entries, re-runs normalization
+  and evaluator on changed entries in the background
+- `get_pending_clarifications`: returns per-entry clarifying questions
+  for a draft
+- `estimate_digest_cost`: returns BYOK cost range for a digest payload or
+  draft id, no LLM call, no state change
+
+Token authentication via `user_api_tokens` (schema landed in 3.5a.1.b).
+Tool responses include the active tenant communication context. Draft
+lifecycle includes a 30-day expiry job. Email-on-completion uses the
+existing notification infrastructure. Detailed design TBD.
 
 ### 3.5b.4. manifest_intent_gap_questions seeder + Manifest Gatekeeper extension `[Upcoming]`
 
@@ -833,6 +847,17 @@ limit": 1 system-paid lifetime trial, then all free-tier runs require BYOK,
 3-per-day cap, then per-run purchase. Tracked in TODOS.md P1.
 
 E2E: full signup flow, MFA enforcement, email verification gate.
+
+### 4g. Code-aware review screen `[Upcoming]`
+
+Review screen for code-aware digests. Renders the assembled per-tool
+inventory with quality scores, per-dependency freshness badges
+(`Evaluated [date] ↻`, `Manifest entry`, `Not yet evaluated`,
+`Internal tool`) with click-to-refresh per dep, inline option to delegate
+`clarifyingQuestions` to the user's assistant, and edit affordances for
+any field. Static read of completed `quality_summary` from the draft
+record (no live progress UI; review-screen polling deferred to a future
+iteration). Detailed design TBD.
 
 ---
 
