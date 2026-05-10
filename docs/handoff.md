@@ -1,18 +1,23 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-09)
+## Current state (2026-05-10)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
 complete.** Code-aware backend (Phase 3.5b) **design landed for 3.5b.1
-(Quality Evaluator) and 3.5b.2 (Pattern & Cluster Analyzer)**; 3.5b.3
-through 3.5b.7 are placeholder bullets pending their own design PRs.
-Remaining pre-UI work is the four backend wiring sub-phases of 3.5a
-(CV upstream, per-tool data availability, per-entry manifest versioning,
-correction exchange), plus design and implementation of the 3.5b
-backend agents and MCP server, plus a handful of P1 behavior items
+(Quality Evaluator) and 3.5b.2 (Pattern & Cluster Analyzer); partial
+design landed for 3.5b.3 (MCP server hosting, authentication mechanics,
+response-driven iteration pattern)**. 3.5b.4 through 3.5b.7 are
+placeholder bullets pending their own design PRs; 3.5b.3 itself has
+remaining open design questions (tenant context propagation shape,
+idempotency for `submit_codebase_digest`, 30-day expiry job mechanics,
+tool input/output Zod schemas, error response patterns). Remaining
+pre-UI work is the four backend wiring sub-phases of 3.5a (CV upstream,
+per-tool data availability, per-entry manifest versioning, correction
+exchange), plus completion of 3.5b design and implementation of the
+3.5b backend agents and MCP server, plus a handful of P1 behavior items
 tracked in TODOS.md.
 
-**Recent merges (2026-05-07 to 2026-05-09):**
+**Recent merges (2026-05-07 to 2026-05-10):**
 - **PR #56**: Phase 3.4 — static analysis hardening (ESLint flat config,
   tsconfig `noUnusedLocals` / `noUnusedParameters`, GitHub Actions CI with
   Postgres + Redis services). Pre-PR redteam pass cadence documented in
@@ -49,12 +54,21 @@ tracked in TODOS.md.
   subsection, five settled-decision row changes (one update + four new),
   PLAN parallel updates including 4g code-aware review screen
   placeholder.
-- **PR #66 (in flight, this PR)**: Phase 3.5b.2 — Pattern & Cluster
-  Analyzer architecture in spec + full 3.5b.2 detail in plan. Sequential
-  after Quality Evaluator, per-category LLM calls in parallel,
-  single-tool short-circuit, dedicated `cluster_analysis` jsonb column
-  on `codebase_digest_drafts`, affected-only re-evaluation on update.
-  Includes this handoff/README refresh.
+- **PR #66**: Phase 3.5b.2 — Pattern & Cluster Analyzer architecture in
+  spec + full 3.5b.2 detail in plan. Sequential after Quality Evaluator,
+  per-category LLM calls in parallel, single-tool short-circuit,
+  dedicated `cluster_analysis` jsonb column on `codebase_digest_drafts`,
+  affected-only re-evaluation on update. Includes prior handoff/README
+  refresh.
+- **PR #67 (in flight, this PR)**: Phase 3.5b.3 partial design — MCP
+  server hosting (dedicated `packages/mcp/` package, Railway deployment,
+  HTTP+SSE transport, why-not-Vercel), authentication mechanics
+  (`agent12_pat_` token format, SHA-256 hashing, soft-delete revocation,
+  60 RPM rate limit default, debounced `last_used_at`), response-driven
+  iteration pattern (Pattern 1+3, split polling cadence: 90s after
+  `submit_codebase_digest` / 20s after `update_codebase_digest`).
+  3.5b.3 has remaining open design questions; subsequent design PRs
+  cover them. Includes this handoff refresh.
 
 **Spec PRs landed in earlier session blocks:**
 - PR #52: Phase 3.5a backend wiring closure pass (specced)
@@ -64,18 +78,23 @@ tracked in TODOS.md.
 - PR #55: Code-aware pricing (Pass 1 $49, Pass 2 $199 per spec+plan)
 
 **Queued PRs (not yet started):**
-- **Phase 3.5b.3 onward design PRs**: 3.5b.3 (MCP server + tool surface),
-  3.5b.4 (manifest_intent_gap_questions seeder + Manifest Gatekeeper
-  extension), 3.5b.5 (migration-mapping prompt fragment + Pass 2
-  per-target invocation), 3.5b.6 (CV isPrivate cache bypass + Skeptic
-  consolidation reconciliation + code-aware BYOK gate + tenant
-  communication context resolver), 3.5b.7 (subset re-runs from Pass 1
-  output) — all currently placeholder bullets in PLAN.md.
+- **3.5b.3 remaining design PR(s)**: tenant context propagation shape;
+  idempotency for `submit_codebase_digest`; 30-day expiry job mechanics
+  (BullMQ scheduled job in workers package); tool input/output Zod
+  schemas; error response patterns.
+- **3.5b.4 onward design PRs**: 3.5b.4 (manifest_intent_gap_questions
+  seeder + Manifest Gatekeeper extension), 3.5b.5 (migration-mapping
+  prompt fragment + Pass 2 per-target invocation), 3.5b.6 (CV
+  isPrivate cache bypass + Skeptic consolidation reconciliation +
+  code-aware BYOK gate + tenant communication context resolver),
+  3.5b.7 (subset re-runs from Pass 1 output) — all currently
+  placeholder bullets in PLAN.md.
 - **Implementation PRs for 3.5a.2-5**: backend wiring closure; tracked
   in PLAN.md.
-- **Implementation PRs for 3.5b.1 and 3.5b.2**: Quality Evaluator and
-  Pattern & Cluster Analyzer agent code; design landed (PRs #64 and
-  #66), ready to start when prioritized.
+- **Implementation PRs for 3.5b.1, 3.5b.2, and 3.5b.3 (after 3.5b.3
+  design completes)**: Quality Evaluator and Pattern & Cluster Analyzer
+  agent code; MCP server in `packages/mcp/` with Railway deployment;
+  3.5b.1 and 3.5b.2 design ready (PRs #64 and #66).
 - **Multi-tenancy data isolation behavior PR**: schema is locked (#61);
   the behavior pieces are tracked in TODOS.md as P1 (cross-account
   access prohibition, account-to-tenant binding immutability, auth
@@ -138,14 +157,20 @@ must include `ENCRYPTION_KEY` (32-byte base64) and `ANTHROPIC_API_KEY`.
 ## What's immediately next
 
 **Code-aware backend (Phase 3.5b) — design path:**
-- 3.5b.3 design (MCP server + tool surface): `submit_codebase_digest`,
-  `update_codebase_digest`, `get_pending_clarifications`,
-  `estimate_digest_cost`; token authentication via `user_api_tokens`;
-  draft lifecycle including 30-day expiry job
+- **3.5b.3 remaining decisions** (5 open after PR #67):
+  - Tenant context propagation shape (full prompt fragment, structured
+    constraints, references)
+  - Idempotency for `submit_codebase_digest` (key shape, retry semantics)
+  - 30-day expiry job mechanics (BullMQ scheduled job in workers
+    package; cadence, cleanup logic, edge cases for submitted vs
+    unsubmitted drafts)
+  - Tool input/output Zod schemas (exact shape per tool)
+  - Error response patterns (how errors surface to assistant)
 - 3.5b.4 through 3.5b.7 design (placeholder bullets in PLAN; will land
-  in their own focused PRs)
+  in their own focused PRs after 3.5b.3 design completes)
 
-**Code-aware backend (Phase 3.5b) — implementation path:**
+**Code-aware backend (Phase 3.5b) — implementation path** (gated on
+design completion):
 - 3.5b.1 implementation (Quality Evaluator agent in
   `packages/agents/src/quality-evaluator/`, BullMQ worker, 3-layer cache,
   self-iteration loop, server-side inference helpers, raw manifest
@@ -153,6 +178,8 @@ must include `ENCRYPTION_KEY` (32-byte base64) and `ANTHROPIC_API_KEY`.
 - 3.5b.2 implementation (Pattern & Cluster Analyzer agent + worker,
   per-category dispatch, single-tool short-circuit, `cluster_analysis`
   column migration, affected-only re-evaluation diff logic)
+- 3.5b.3 implementation (MCP server in `packages/mcp/`, Railway
+  deployment, HTTP+SSE transport, Bearer token auth)
 
 **Phase 3.5a behavior pieces** (in PLAN.md priority order):
 - **3.5a.2 — CV upstream wiring**: `queues.ts:46/49/56` passes `{}`
@@ -180,7 +207,7 @@ screen (4g placeholder added in plan), MCP server endpoint, Pass 2
 target-system selection UI, modification request submission UI,
 multi-provider BYOK key management UI, etc.
 
-## Spec doc state (2026-05-09)
+## Spec doc state (2026-05-10)
 
 `docs/spec.md` is at ~1,520 lines / ~26k words. This session block added
 significant new content for code-aware intake: MCP integration model
@@ -203,7 +230,62 @@ where product-level was standardized in PR #54).
 - **`GITHUB_TOKEN`** and **`NVD_API_KEY`** (both free): required before
   3h production traffic for CV API integration
 
-## Architecture decisions made this session block (2026-05-07 to 2026-05-09)
+## Architecture decisions made this session block (2026-05-07 to 2026-05-10)
+
+**MCP server hosting (2026-05-10):** Dedicated service in
+`packages/mcp/` deployed to Railway, NOT Vercel. Recommendation
+flipped from "start in Next.js, extract later" to "dedicated from day
+one" once the user clarified that the first user will use MCP. With no
+pre-launch window where extraction is customer-free, the deferral cost
+calculation reverses: 5-10 days of extraction work plus customer URL
+migration outweighs 2-3 days of upfront infrastructure setup. Vercel
+ruled out because serverless function model fits poorly with HTTP+SSE
+patterns and longer-lived response shapes.
+
+**MCP authentication mechanics (2026-05-10):** Bearer token in HTTP
+header (`Authorization: Bearer agent12_pat_<32 bytes base64url>`).
+SHA-256 hash storage in `user_api_tokens.token_hash`; raw tokens never
+persisted. Soft-delete revocation via `revoked_at`. Per-token rate
+limit defaults to 60 RPM (configurable, Redis-backed). Debounced
+`last_used_at` updates (once per ~60s per token). On miss: 401 with
+generic error. Token format follows GitHub PAT pattern; SHA-256
+sufficient for high-entropy tokens (slow-hash overkill applies to
+low-entropy passwords).
+
+**MCP response-driven iteration pattern (2026-05-10):** Tool responses
+include forward-looking guidance directing the assistant's next steps
+(Pattern 1). MCP server cannot push to clients (standard MCP
+semantics), so iteration relies on capable agentic assistants reading
+response payloads and continuing autonomously. Polling cadence
+configurable via admin dashboard, split by context: 90s default after
+`submit_codebase_digest` (long initial wait of 10-40 min); 20s default
+after `update_codebase_digest` (short re-eval wait of 30s-2min).
+Long-polling pattern explicitly rejected (40-min waits exceed Vercel
+function timeouts and HTTP connection lifetimes; would require chained
+calls anyway). Pattern 3 (user wrap-up authorization in initial prompt)
+complements Pattern 1 as a docs/education concern.
+
+**MCP-as-only-channel for code-aware (2026-05-10):** Considered five
+alternatives (IDE assistant, our CLI, self-hosted analyzer, repo
+connector, customer uploads). Settled on IDE-assistant model for MVP
+(lowest build cost; meets enterprise security bar where assistant runs
+in customer environment). Self-hosted analyzer (Docker/Helm) flagged
+as Enterprise-tier follow-on for customers who need full data
+sovereignty and CI/CD integration. Repo connector (we pull source) and
+customer uploads (we receive source) explicitly rejected on enterprise
+security grounds; they don't move the needle for buyers who reject
+IDE-assistant on security.
+
+**Cheap-now-expensive-later, applied to step-function costs (2026-05-10):**
+The principle assumes monotonic cost growth over time. For decisions
+where cost is step-functioned (cheap before customer X, expensive
+after), the principle's relevance depends on the timeline to customer
+X. If pre-launch window is wide, deferral wins. If first user arrives
+with launch (as MCP customers will here), preemptive design wins.
+Caught when re-analyzing the MCP server hosting decision; useful
+calibration for similar future calls.
+
+
 
 **Cheap-now-expensive-later principle (2026-05-09):** Repeatedly applied
 this session. Examples: include structured `blockers` /

@@ -808,21 +808,82 @@ full architecture.
 
 ### 3.5b.3. MCP server + tool surface `[Upcoming]`
 
-MCP server exposing four tools:
-- `submit_codebase_digest`: creates draft, runs server-side normalization
-  synchronously, enqueues background Quality Evaluator job, returns draft
-  URL plus `status: "evaluating"`
-- `update_codebase_digest`: modifies draft entries, re-runs normalization
-  and evaluator on changed entries in the background
-- `get_pending_clarifications`: returns per-entry clarifying questions
-  for a draft
-- `estimate_digest_cost`: returns BYOK cost range for a digest payload or
-  draft id, no LLM call, no state change
+Dedicated MCP service at `packages/mcp/`, deployed to Railway, exposing
+four tools: `submit_codebase_digest`, `update_codebase_digest`,
+`get_pending_clarifications`, `estimate_digest_cost`. HTTP+SSE transport.
+See spec.md "MCP server hosting", "Authentication and BYOK", and "MCP
+tool surface" subsections for the full architecture.
 
-Token authentication via `user_api_tokens` (schema landed in 3.5a.1.b).
-Tool responses include the active tenant communication context. Draft
-lifecycle includes a 30-day expiry job. Email-on-completion uses the
-existing notification infrastructure. Detailed design TBD.
+**Settled architecture:**
+- Hosting: dedicated package, Railway deployment (not Vercel due to
+  HTTP+SSE incompatibility with serverless function model). Shared
+  dependencies on `packages/shared/` and `packages/agents/`; same Redis
+  as `packages/workers/` for BullMQ enqueue.
+- Authentication: Bearer token in `Authorization` header with format
+  `agent12_pat_<32 bytes base64url>`. SHA-256 hash storage in
+  `user_api_tokens.token_hash`. Soft-delete revocation via `revoked_at`.
+  Debounced `last_used_at` (once per ~60s per token). Per-token rate
+  limiting (60 RPM default, configurable via admin dashboard,
+  Redis-backed).
+- Response-driven iteration: tool responses include forward-looking
+  guidance for the assistant. Recommended polling cadences: 90s after
+  `submit_codebase_digest` (long initial wait); 20s after
+  `update_codebase_digest` (short re-eval wait). Both configurable.
+
+**Open design questions** (settled in subsequent design PRs before
+implementation):
+- Tenant context propagation shape (full prompt fragment, structured
+  constraints, references)
+- Idempotency for `submit_codebase_digest` (key shape, retry semantics)
+- 30-day expiry job (BullMQ scheduled job in workers package; cadence,
+  cleanup logic, edge cases)
+- Tool input/output Zod schemas (exact shape per tool)
+- Error response patterns (how errors surface to assistant)
+
+**Tests first** (will expand as remaining design questions settle):
+- Token format generation and `agent12_pat_` prefix validation
+- SHA-256 hashing of generated tokens; storage in
+  `user_api_tokens.token_hash`
+- Token validation flow: `Authorization` header parse, hash, lookup,
+  `user_id` association; missing/invalid token returns 401 with generic
+  error message
+- Revoked token rejected (soft-delete `revoked_at` filter applied)
+- Debounced `last_used_at` update (only updated if last update > 60s ago)
+- Per-token rate limit enforcement via Redis (60 RPM default,
+  configurable)
+- Tool responses include forward-looking guidance text matching
+  admin-configurable templates
+- Polling cadence guidance differs by tool (90s after submit, 20s after
+  update_codebase_digest)
+- Integration test: end-to-end submit → poll → update flow with mocked
+  Quality Evaluator output
+
+**Implementation:**
+- New `packages/mcp/` package: HTTP framework (Hono or Fastify), MCP
+  SDK if available (or hand-rolled JSON-RPC + SSE), Zod schemas for
+  tool I/O
+- `packages/mcp/src/auth.ts`: token validation middleware
+- `packages/mcp/src/tools/`: handler per MCP tool
+- Token issuance API in `packages/web/` (Phase 4 frontend has the UI;
+  this PR ships the API surface for token create/list/revoke)
+- Redis-backed rate limiting (reuses existing Redis instance)
+- Response payload guidance text (configurable via admin dashboard)
+- Deployment: Railway service (matches existing workers + Postgres +
+  Redis); CI/CD pipeline extension for the new service
+- Local dev: `pnpm --filter mcp dev` added to existing dev story
+  alongside Postgres + Redis + Next.js + Workers
+
+**Acceptance:**
+- All four MCP tools accept valid input and return Zod-validated
+  responses
+- Bearer token auth works end-to-end: generate token → use in MCP
+  client config → tool call associates with correct `user_id`
+- Rate limiting kicks in at configured threshold; response includes
+  appropriate retry guidance
+- Integration test for full submit → poll → update flow passes with
+  mocked Quality Evaluator
+- Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+- Pre-PR redteam pass per CLAUDE.md cadence
 
 ### 3.5b.4. manifest_intent_gap_questions seeder + Manifest Gatekeeper extension `[Upcoming]`
 
