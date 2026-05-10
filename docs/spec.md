@@ -449,7 +449,7 @@ Click to refresh fires the API and web-search calls for that single dependency, 
 
 **Pattern & Cluster Analyzer:**
 
-A dedicated agent runs after digest production and examines the per-tool inventory at the `productCategory` level to identify consolidation opportunities. Cluster analysis is always performed for code-aware digests; whether the analysis surfaces prominently in Pass 1 depends on the user's stated consolidation intent and the assessed opportunity magnitude.
+A dedicated agent runs after digest production and examines the per-tool inventory at the `productCategory` level to identify consolidation opportunities.
 
 The analyzer runs as a background BullMQ worker job, sequentially after the Quality Evaluator completes (so it sees any synthesized fields from the Quality Evaluator's group-context pass). For each multi-tool category, the analyzer makes one LLM call; calls run in parallel with a configurable concurrency cap. Single-tool categories skip the LLM call entirely; the server emits `consolidationOpportunity: 'none'` deterministically. Each per-category call uses a 3-layer prompt cache: L1 carries the system prompt, analyzer instructions, scoring rubric, and output schema (cached); L2 carries the full per-app inventory of all N apps in the digest plus tenant communication context if applicable (cached); L3 carries the specific category being analyzed and the subset of per-app entries within it (no cache).
 
