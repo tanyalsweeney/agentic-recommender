@@ -27,7 +27,7 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Status
 
-**Active development.** Phases 0-3h plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation complete. Schema lock for everything reachable pre-UI is done (26 tables, 13 migrations). Remaining pre-UI work is the four backend wiring sub-phases of 3.5a (CV upstream, per-tool data availability, per-entry manifest versioning, correction exchange). 258 non-eval tests passing.
+**Active development.** Phases 0-3h plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation complete (26 tables, 13 migrations). Code-aware backend (3.5b) design landed for Quality Evaluator (3.5b.1) and Pattern & Cluster Analyzer (3.5b.2); 3.5b.3 through 3.5b.7 are placeholder pending their own design PRs. Remaining pre-UI work is the four backend wiring sub-phases of 3.5a (CV upstream, per-tool data availability, per-entry manifest versioning, correction exchange) plus 3.5b design and implementation. 258 non-eval tests passing.
 
 | Phase | Description | Status |
 |---|---|---|
@@ -43,6 +43,7 @@ The system walks users through a structured intake flow, infers architecture dec
 | 3.4.6 | Schema lock for multi-tenancy data isolation — auth providers, runs.tenant_id (Clerk + WorkOS validated) | Done |
 | 3.5a.1 | BYOK runtime wiring — tenant + user scope; resolution chain user → tenant → env | Done |
 | 3.5a.2-5 | Backend wiring closure — CV upstream, per-tool data availability, per-entry manifest versioning, correction exchange | Upcoming |
+| 3.5b | Code-aware intake backend — Quality Evaluator, Pattern & Cluster Analyzer, MCP server, related pipeline behavior changes | Upcoming, design in progress |
 | 4 | Web frontend — intake flow (text + code-aware via MCP), Pass 1 output rendering, auth | Upcoming |
 | 5 | Admin dashboard — pipeline observability, agent performance, manifest health, themes, config curation, modification request inbox | Upcoming |
 | 6 | Tenant dashboard — run history, BYOK self-service, modification request submission | Upcoming |

@@ -1,15 +1,18 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-08)
+## Current state (2026-05-09)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
-complete.** Schema lock for everything reachable pre-UI is now done. The
-remaining pre-UI work is the four backend wiring sub-phases of 3.5a (CV
-upstream, per-tool data availability, per-entry manifest versioning,
-correction exchange) plus a handful of P1 behavior items tracked in
-TODOS.md.
+complete.** Code-aware backend (Phase 3.5b) **design landed for 3.5b.1
+(Quality Evaluator) and 3.5b.2 (Pattern & Cluster Analyzer)**; 3.5b.3
+through 3.5b.7 are placeholder bullets pending their own design PRs.
+Remaining pre-UI work is the four backend wiring sub-phases of 3.5a
+(CV upstream, per-tool data availability, per-entry manifest versioning,
+correction exchange), plus design and implementation of the 3.5b
+backend agents and MCP server, plus a handful of P1 behavior items
+tracked in TODOS.md.
 
-**Recent merges (2026-05-07 / 2026-05-08):**
+**Recent merges (2026-05-07 to 2026-05-09):**
 - **PR #56**: Phase 3.4 — static analysis hardening (ESLint flat config,
   tsconfig `noUnusedLocals` / `noUnusedParameters`, GitHub Actions CI with
   Postgres + Redis services). Pre-PR redteam pass cadence documented in
@@ -30,8 +33,30 @@ TODOS.md.
   `users.auth_provider` + `users.auth_provider_user_id`, `runs.tenant_id`,
   composite uniques scoped to `(provider, id)`. Validated against Clerk's
   and WorkOS's actual data models before locking.
+- **PR #62**: Docs refresh post schema-lock work block (handoff, PLAN, README).
+- **PR #63**: Free-tier BYOK gate spec (1 system-paid lifetime trial then
+  BYOK-required, 3-per-day cap, then per-run purchase) plus
+  OpenAI-compatible provider registry expansion.
+- **PR #64**: Phase 3.5b.1 — Quality Evaluator architecture in spec; new
+  Phase 3.5b in plan with full 3.5b.1 detail and placeholder bullets
+  3.5b.2 through 3.5b.7. Two-stage architecture: server-side
+  normalization (mechanical extraction, rule-based inference, LLM
+  fallback for inferential essentials) + background LLM evaluator with
+  3-layer prompt cache and self-iteration capped at 3 passes.
+- **PR #65**: Code-aware intake spec/plan follow-ups: MCP integration
+  model subsection, MCP tool surface update with `estimate_digest_cost`,
+  Cost transparency subsection, Per-dependency freshness badges
+  subsection, five settled-decision row changes (one update + four new),
+  PLAN parallel updates including 4g code-aware review screen
+  placeholder.
+- **PR #66 (in flight, this PR)**: Phase 3.5b.2 — Pattern & Cluster
+  Analyzer architecture in spec + full 3.5b.2 detail in plan. Sequential
+  after Quality Evaluator, per-category LLM calls in parallel,
+  single-tool short-circuit, dedicated `cluster_analysis` jsonb column
+  on `codebase_digest_drafts`, affected-only re-evaluation on update.
+  Includes this handoff/README refresh.
 
-**Spec PRs landed in this session block (2026-05-06 to 2026-05-07):**
+**Spec PRs landed in earlier session blocks:**
 - PR #52: Phase 3.5a backend wiring closure pass (specced)
 - PR #53: Code-aware intake architecture; multi-provider BYOK at user scope;
   data model additions
@@ -39,13 +64,25 @@ TODOS.md.
 - PR #55: Code-aware pricing (Pass 1 $49, Pass 2 $199 per spec+plan)
 
 **Queued PRs (not yet started):**
-- **Multi-tenancy data isolation behavior PR**: schema is locked (#61); the
-  behavior pieces are tracked in TODOS.md as P1 (cross-account access
-  prohibition, account-to-tenant binding immutability, auth provider
-  routing dispatcher) and P3 (offboarding, IP allowlisting, shareable
-  link tenant boundaries, webhook idempotency).
-- **Free-tier-requires-BYOK-after-first-run policy**: spec PR
-  user-flagged 2026-05-08, not yet drafted.
+- **Phase 3.5b.3 onward design PRs**: 3.5b.3 (MCP server + tool surface),
+  3.5b.4 (manifest_intent_gap_questions seeder + Manifest Gatekeeper
+  extension), 3.5b.5 (migration-mapping prompt fragment + Pass 2
+  per-target invocation), 3.5b.6 (CV isPrivate cache bypass + Skeptic
+  consolidation reconciliation + code-aware BYOK gate + tenant
+  communication context resolver), 3.5b.7 (subset re-runs from Pass 1
+  output) — all currently placeholder bullets in PLAN.md.
+- **Implementation PRs for 3.5a.2-5**: backend wiring closure; tracked
+  in PLAN.md.
+- **Implementation PRs for 3.5b.1 and 3.5b.2**: Quality Evaluator and
+  Pattern & Cluster Analyzer agent code; design landed (PRs #64 and
+  #66), ready to start when prioritized.
+- **Multi-tenancy data isolation behavior PR**: schema is locked (#61);
+  the behavior pieces are tracked in TODOS.md as P1 (cross-account
+  access prohibition, account-to-tenant binding immutability, auth
+  provider routing dispatcher) and P3 (offboarding, IP allowlisting,
+  shareable link tenant boundaries, webhook idempotency).
+- **Terminology cleanup PR**: rename digest "tool" to "app" pending
+  nomenclature decision; user thinking through it.
 
 **What's built (cumulative):**
 - Monorepo scaffolded: pnpm workspaces, TypeScript, Vitest workspace
@@ -100,11 +137,27 @@ must include `ENCRYPTION_KEY` (32-byte base64) and `ANTHROPIC_API_KEY`.
 
 ## What's immediately next
 
+**Code-aware backend (Phase 3.5b) — design path:**
+- 3.5b.3 design (MCP server + tool surface): `submit_codebase_digest`,
+  `update_codebase_digest`, `get_pending_clarifications`,
+  `estimate_digest_cost`; token authentication via `user_api_tokens`;
+  draft lifecycle including 30-day expiry job
+- 3.5b.4 through 3.5b.7 design (placeholder bullets in PLAN; will land
+  in their own focused PRs)
+
+**Code-aware backend (Phase 3.5b) — implementation path:**
+- 3.5b.1 implementation (Quality Evaluator agent in
+  `packages/agents/src/quality-evaluator/`, BullMQ worker, 3-layer cache,
+  self-iteration loop, server-side inference helpers, raw manifest
+  parsing)
+- 3.5b.2 implementation (Pattern & Cluster Analyzer agent + worker,
+  per-category dispatch, single-tool short-circuit, `cluster_analysis`
+  column migration, affected-only re-evaluation diff logic)
+
 **Phase 3.5a behavior pieces** (in PLAN.md priority order):
-- **3.5a.2 — CV upstream wiring**: `queues.ts:46/49/56` passes `{}` instead
-  of `wave1Results` to wave2_5/wave3/pass1. CV runs with zero tools to
-  validate. Audit-class bug. No schema change. Tighten `unknown` typing
-  to surface this class at compile time.
+- **3.5a.2 — CV upstream wiring**: `queues.ts:46/49/56` passes `{}`
+  instead of `wave1Results` to wave2_5/wave3/pass1. Audit-class bug. No
+  schema change.
 - **3.5a.3 — Per-tool data availability + source URLs**: migration adds
   `cv_result_cache.source_urls` and `cv_result_cache.data_availability`
   columns; behavior fix in npm/pypi catch handlers.
@@ -112,25 +165,32 @@ must include `ENCRYPTION_KEY` (32-byte base64) and `ANTHROPIC_API_KEY`.
   `version` column to manifest tables; agent schema adds
   `referencedManifestEntries`; checkpoint reuse logic switches from
   global manifest hash to per-entry hashes; eval re-baseline.
-- **3.5a.5 — Correction exchange wiring**: six per-agent correction-
-  response callers; Skeptic CV re-verification capability; two new eval
-  scenarios.
+- **3.5a.5 — Correction exchange wiring**: six per-agent
+  correction-response callers; Skeptic CV re-verification capability;
+  two new eval scenarios.
 
 **P1 behavior items in TODOS.md** (referenced from 3.4.6):
 - Cross-account access prohibition (read-time enforcement on `runs.tenant_id`)
 - Account-to-tenant binding immutability
 - Auth provider routing dispatcher (Phase 4f addendum)
 
-**Phase 4 (frontend) gated** on 3.5a behavior closure. Per the substantial
-spec growth, frontend scope now includes: code-aware intake review screen,
-MCP server endpoint, Pass 2 target-system selection UI, modification
-request submission UI, multi-provider BYOK key management UI, etc.
+**Phase 4 (frontend) gated** on 3.5a behavior closure and 3.5b
+implementation. Frontend scope now includes: code-aware intake review
+screen (4g placeholder added in plan), MCP server endpoint, Pass 2
+target-system selection UI, modification request submission UI,
+multi-provider BYOK key management UI, etc.
 
-## Spec doc state (2026-05-08)
+## Spec doc state (2026-05-09)
 
-`docs/spec.md` is at ~1,400 lines / ~24k words. No drift checks done in
-this session block. Worth a re-read pass before any major spec change to
-catch references to retired patterns (e.g., sub-component-level examples
+`docs/spec.md` is at ~1,520 lines / ~26k words. This session block added
+significant new content for code-aware intake: MCP integration model
+subsection, expanded Quality evaluation and clarification loop, Pattern
+& Cluster Analyzer architecture details with structured output table,
+Cost transparency subsection, Per-dependency freshness badges
+subsection, plus five settled-decision row updates/additions covering
+the new architecture. Worth a re-read pass before any major spec change
+to catch references to retired patterns (e.g., the heuristic
+word-count layer that no longer exists; sub-component-level examples
 where product-level was standardized in PR #54).
 
 ## Deployment requirements
@@ -143,7 +203,100 @@ where product-level was standardized in PR #54).
 - **`GITHUB_TOKEN`** and **`NVD_API_KEY`** (both free): required before
   3h production traffic for CV API integration
 
-## Architecture decisions made this session block (2026-05-07 / 2026-05-08)
+## Architecture decisions made this session block (2026-05-07 to 2026-05-09)
+
+**Cheap-now-expensive-later principle (2026-05-09):** Repeatedly applied
+this session. Examples: include structured `blockers` /
+`capabilityVariance` / `supportingEvidence` in Pattern & Cluster
+Analyzer output now (small cost, harder to retrofit later when
+downstream agents need them); ship user-chosen multi-select for subset
+re-runs in MVP (cost is mostly UX work, removable later); add
+`estimate_digest_cost` MCP tool now even though MVP UI uses static rate
+table (assistants get the option); dedicated `cluster_analysis` column
+on `codebase_digest_drafts` rather than nesting in `quality_summary`
+(cheap migration now, schema rework later). Tends to win when the
+marginal cost of inclusion is genuinely small.
+
+**Facts → agent, intent → user principle (2026-05-09):** The user's AI
+assistant has full code access; we do not. So code-derivable facts go
+to the agent (via the rework loop or server-side inference);
+intent/judgment questions go to the user (via existing intent gap
+mechanism). Caused multiple corrections this session: my initial design
+asked the user about things the agent should have answered (max-retries
+escalation to user; structured field gates); each was corrected back to
+agent-handled. The principle generalizes: any time we are tempted to
+ask the user something, check whether the assistant could have answered
+it from code first.
+
+**MCP integration model / control boundary (2026-05-09):** The user's
+AI assistant is their existing IDE tool (Copilot, Claude Code, Cursor,
+Continue.dev, etc.). We control MCP tool definitions and response
+payloads, not assistant behavior or model. Standard MCP semantics:
+server responds when called, cannot push to clients. Architecting
+around this boundary keeps the design honest. Quality of digest is
+bounded by quality of assistant. Captured as a settled-decision row in
+spec.md and explained in the Code-aware intake subsection.
+
+**Async + email digest evaluation completion (2026-05-09):** MCP
+`submit_codebase_digest` returns within 1-2 seconds with draft URL plus
+status. Quality Evaluator and Pattern & Cluster Analyzer run as
+background BullMQ worker jobs sequentially. Single email when both
+complete (not separate emails). Real per-call latency on existing
+pipeline agents averages 30-160s; large digests put evaluation above 5
+minutes wall clock. Synchronous MCP response would block the user's
+IDE for too long.
+
+**Quality Evaluator architecture (2026-05-09):** Two-stage. Server-side
+normalization runs synchronously: mechanical extraction from raw
+package manifests (dependencies, language, framework), rule-based
+inference for pattern fields (`observedPatterns`, partial
+`externalIntegrations`), LLM-inference fallback for inferential
+essentials (`displayName`, `primaryPurpose`, `productCategory`) when
+the agent did not provide them. Background LLM evaluator with 3-layer
+prompt cache (system + rubric, full per-app inventory + tenant context,
+per-app entry with dependency enrichment chain). Self-iterates up to
+3 passes (configurable) on low-scored entries by re-prompting itself
+with clarifying questions over existing data. Replaces an earlier
+heuristic + LLM-evaluator design with word-count and generic-vocabulary
+penalties (rejected as misleading specificity signal).
+
+**Pattern & Cluster Analyzer architecture (2026-05-09):** Sequential
+after Quality Evaluator (so it sees synthesized fields). Per-category
+LLM calls in parallel with configurable concurrency cap. Single-tool
+categories skip the LLM call; server emits
+`consolidationOpportunity: 'none'` deterministically. Output includes
+structured `clusters`, `blockers` (typed array with type, description,
+affectedToolIds), `capabilityVariance`, `supportingEvidence`, plus
+`clarificationQuestions` and the `consolidationStrategyQuestion` per
+multi-tool category. Stored in dedicated `cluster_analysis` jsonb
+column on `codebase_digest_drafts` (migration lands with 3.5b.2
+implementation PR). Re-evaluation on update only touches affected
+categories.
+
+**Cost transparency static rate table approach (2026-05-09):** Public
+pre-auth reference page with typical per-app token usage ranges and
+per-provider rates (effective-as-of date stamp, admin-curated). Plus
+`estimate_digest_cost` MCP tool for assistants that want richer
+pre-submit estimates. No cost confirmation gate at submit. MVP UI uses
+the static reference; the endpoint is built but UI dynamic estimates
+deferred.
+
+**Per-dependency freshness badges, neutral framing (2026-05-09):** Each
+dependency on the review screen carries a date-only badge: "Evaluated
+[date] ↻", "Manifest entry, version data at pipeline run", "Not yet
+evaluated, research at pipeline run", "Internal tool". No
+value-judgment language about staleness. Click to refresh fires CV API
++ web-search calls for that single dep, charges BYOK, updates
+timestamp. Refresh does not re-trigger Quality Evaluator (description
+quality is independent of CV data freshness).
+
+**Terminology friction noted (2026-05-09):** "tool" is overloaded:
+digest tool (user's app in code-aware intake) vs manifest tool
+(third-party service we recommend) vs Wave 1 T&I "tool" (architectural
+concept and recommended manifest entry) vs MCP "tool" (SDK function
+sense). Causing real cognitive friction during design discussions.
+User leaning toward renaming digest "tool" → "app" with a future PR;
+not landed yet pending nomenclature decision. Tracked as queued PR.
 
 **Static analysis scope (2026-05-07):** Adopted ESLint flat config with
 `typescript-eslint`, four explicit rules (`no-floating-promises`,
