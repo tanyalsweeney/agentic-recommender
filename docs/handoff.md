@@ -1,6 +1,6 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-10)
+## Current state (2026-05-11)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
 complete.** Code-aware backend (Phase 3.5b) **design landed for 3.5b.1
@@ -69,7 +69,7 @@ tracked in TODOS.md.
   `submit_codebase_digest` / 20s after `update_codebase_digest`).
   3.5b.3 has remaining open design questions; subsequent design PRs
   cover them.
-- **PR #68 (in flight, this PR)**: Terminology disambiguation — internal
+- **PR #68**: Terminology disambiguation — internal
   rename of digest "tool" → "app" across spec.md, PLAN.md, and
   handoff.md. Adds the user-facing word-selection rule: agents render
   via `displayName` / `productCategory.displayName`; when an umbrella is
@@ -82,6 +82,20 @@ tracked in TODOS.md.
   re-run context preservation. CV's per-tool sub-task terminology
   unchanged in this PR; broader CV-terminology rename queued as a future
   follow-up.
+- **PR #69 (in flight, this PR)**: Doc style rule in CLAUDE.md ("tight
+  wins" — one paragraph per decision, why-clauses not why-paragraphs,
+  Settled-decision Reason cells one sentence each, every PR may trim
+  its section) plus initial terseness pass on ~19 of the heaviest-bloat
+  rows in the spec.md Settled decisions table. Renames "Consolidation
+  analysis Pass 1 surfacing" → "Consolidation analysis Pass 1 report"
+  (row + body subsection). Updates stale "Internal tool" badge text
+  to "Internal" in the Per-dependency freshness badges row. Adds one
+  P3 TODO surfaced during the trim ("Code-aware cost transparency:
+  drop static pricing page?" — pre-auth audience is effectively zero
+  because code-aware is gated by signup + BYOK + MCP setup; defer to
+  separate design PR). Remaining settled-decision rows + Code-aware
+  intake body + handoff.md trim + README.md trim deferred — will
+  land incrementally via the new CLAUDE.md rule.
 
 **Spec PRs landed in earlier session blocks:**
 - PR #52: Phase 3.5a backend wiring closure pass (specced)
