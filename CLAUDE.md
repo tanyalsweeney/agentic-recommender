@@ -176,6 +176,20 @@ what matters is consumer-exists-but-broken.
 
 ---
 
+## Doc style
+
+Tight wins. Capture intent in the minimum that survives the 6-month test ("could a senior engineer recover the why from this alone?").
+
+- One paragraph per design decision, not three.
+- Why-clauses, not why-paragraphs. If the rationale won't fit in one sentence, the decision has hidden complexity that deserves its own record.
+- No restating context. No "this means," no "in other words," no "as described above." Trust the prior sentence.
+- Settled-decision Reason cells: one sentence each.
+- Cross-link, don't repeat.
+- Every PR that touches a section may trim it. Trimming is a feature, not scope creep.
+- No qualifiers ("deliberately," "intentionally," "typically") unless load-bearing.
+
+---
+
 ## Database rules
 
 - Drizzle ORM only — no raw SQL unless there is no Drizzle equivalent
