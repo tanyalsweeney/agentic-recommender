@@ -56,11 +56,11 @@ tracked in TODOS.md.
   placeholder.
 - **PR #66**: Phase 3.5b.2 — Pattern & Cluster Analyzer architecture in
   spec + full 3.5b.2 detail in plan. Sequential after Quality Evaluator,
-  per-category LLM calls in parallel, single-tool short-circuit,
+  per-category LLM calls in parallel, single-app short-circuit,
   dedicated `cluster_analysis` jsonb column on `codebase_digest_drafts`,
   affected-only re-evaluation on update. Includes prior handoff/README
   refresh.
-- **PR #67 (in flight, this PR)**: Phase 3.5b.3 partial design — MCP
+- **PR #67**: Phase 3.5b.3 partial design — MCP
   server hosting (dedicated `packages/mcp/` package, Railway deployment,
   HTTP+SSE transport, why-not-Vercel), authentication mechanics
   (`agent12_pat_` token format, SHA-256 hashing, soft-delete revocation,
@@ -68,7 +68,20 @@ tracked in TODOS.md.
   iteration pattern (Pattern 1+3, split polling cadence: 90s after
   `submit_codebase_digest` / 20s after `update_codebase_digest`).
   3.5b.3 has remaining open design questions; subsequent design PRs
-  cover them. Includes this handoff refresh.
+  cover them.
+- **PR #68 (in flight, this PR)**: Terminology disambiguation — internal
+  rename of digest "tool" → "app" across spec.md, PLAN.md, and
+  handoff.md. Adds the user-facing word-selection rule: agents render
+  via `displayName` / `productCategory.displayName`; when an umbrella is
+  needed, agents pick the most semantically accurate word per entry from
+  per-entry signals; "tool" reserved for manifest tools, T&I architectural
+  tools, and MCP tools (never used for a digest entry). New settled-
+  decision row captures the rule. Spec fix folded in: Pass 2 Consolidation
+  Strategy section omits for single-app digests (was incorrectly "always
+  included"). PLAN.md 3.5b.7 gains an open design question about subset
+  re-run context preservation. CV's per-tool sub-task terminology
+  unchanged in this PR; broader CV-terminology rename queued as a future
+  follow-up.
 
 **Spec PRs landed in earlier session blocks:**
 - PR #52: Phase 3.5a backend wiring closure pass (specced)
@@ -100,8 +113,12 @@ tracked in TODOS.md.
   access prohibition, account-to-tenant binding immutability, auth
   provider routing dispatcher) and P3 (offboarding, IP allowlisting,
   shareable link tenant boundaries, webhook idempotency).
-- **Terminology cleanup PR**: rename digest "tool" to "app" pending
-  nomenclature decision; user thinking through it.
+- **CV per-tool terminology rename (follow-up)**: broader rename of CV's
+  "per-tool sub-task" work-unit terminology to a generic name (e.g.,
+  "per-target sub-task" or "per-entry sub-task") so it reads cleanly in
+  code-aware contexts where the lookup unit can be a digest app entry.
+  Out of scope for PR #68 because it touches the whole CV section and
+  adjacent code/test names.
 
 **What's built (cumulative):**
 - Monorepo scaffolded: pnpm workspaces, TypeScript, Vitest workspace
@@ -176,7 +193,7 @@ design completion):
   self-iteration loop, server-side inference helpers, raw manifest
   parsing)
 - 3.5b.2 implementation (Pattern & Cluster Analyzer agent + worker,
-  per-category dispatch, single-tool short-circuit, `cluster_analysis`
+  per-category dispatch, single-app short-circuit, `cluster_analysis`
   column migration, affected-only re-evaluation diff logic)
 - 3.5b.3 implementation (MCP server in `packages/mcp/`, Railway
   deployment, HTTP+SSE transport, Bearer token auth)
@@ -344,13 +361,13 @@ penalties (rejected as misleading specificity signal).
 
 **Pattern & Cluster Analyzer architecture (2026-05-09):** Sequential
 after Quality Evaluator (so it sees synthesized fields). Per-category
-LLM calls in parallel with configurable concurrency cap. Single-tool
+LLM calls in parallel with configurable concurrency cap. Single-app
 categories skip the LLM call; server emits
 `consolidationOpportunity: 'none'` deterministically. Output includes
 structured `clusters`, `blockers` (typed array with type, description,
-affectedToolIds), `capabilityVariance`, `supportingEvidence`, plus
+affectedAppIds), `capabilityVariance`, `supportingEvidence`, plus
 `clarificationQuestions` and the `consolidationStrategyQuestion` per
-multi-tool category. Stored in dedicated `cluster_analysis` jsonb
+multi-app category. Stored in dedicated `cluster_analysis` jsonb
 column on `codebase_digest_drafts` (migration lands with 3.5b.2
 implementation PR). Re-evaluation on update only touches affected
 categories.
@@ -366,19 +383,30 @@ deferred.
 **Per-dependency freshness badges, neutral framing (2026-05-09):** Each
 dependency on the review screen carries a date-only badge: "Evaluated
 [date] ↻", "Manifest entry, version data at pipeline run", "Not yet
-evaluated, research at pipeline run", "Internal tool". No
+evaluated, research at pipeline run", "Internal". No
 value-judgment language about staleness. Click to refresh fires CV API
 + web-search calls for that single dep, charges BYOK, updates
 timestamp. Refresh does not re-trigger Quality Evaluator (description
 quality is independent of CV data freshness).
 
-**Terminology friction noted (2026-05-09):** "tool" is overloaded:
-digest tool (user's app in code-aware intake) vs manifest tool
+**Terminology disambiguation — internal app vs user-facing word
+selection (resolved 2026-05-10):** "Tool" was overloaded across four
+senses: digest tool (user's app in code-aware intake) vs manifest tool
 (third-party service we recommend) vs Wave 1 T&I "tool" (architectural
 concept and recommended manifest entry) vs MCP "tool" (SDK function
-sense). Causing real cognitive friction during design discussions.
-User leaning toward renaming digest "tool" → "app" with a future PR;
-not landed yet pending nomenclature decision. Tracked as queued PR.
+sense). PR #68 resolves by renaming sense #1 to `app` internally
+(code, schemas, prompts, design docs) and adding a user-facing
+word-selection rule: agents render via `displayName` /
+`productCategory.displayName`; when an umbrella is needed, agents pick
+the most semantically accurate word per entry from per-entry signals
+(`observedPatterns`, `inputs`/`outputs`, `isPrivate`) — "service" /
+"worker" / "library" / "utility" / "app" per case. The word "tool" is
+reserved for senses 2/3/4 and never used for a digest entry. The
+narrower-than-bucket cost of a single umbrella was the original blocker
+on this rename; per-entry word selection removes it because agents have
+the signal needed to pick the right word per surface. CV's "per-tool
+sub-task" work-unit terminology unchanged in PR #68; broader CV-
+terminology rename queued as a separate follow-up.
 
 **Static analysis scope (2026-05-07):** Adopted ESLint flat config with
 `typescript-eslint`, four explicit rules (`no-floating-promises`,

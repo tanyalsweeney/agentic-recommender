@@ -683,7 +683,7 @@ on this phase.
 
 ### 3.5b.1. Quality Evaluator agent `[Upcoming]`
 
-The Quality Evaluator scores each per-tool digest entry and synthesizes
+The Quality Evaluator scores each per-app digest entry and synthesizes
 inferential fields when the user's AI assistant did not provide them.
 Lives in `packages/agents/src/quality-evaluator/`. Runs as a background
 BullMQ worker job triggered after `submit_codebase_digest` and after each
@@ -752,10 +752,10 @@ full architecture.
   `consolidationOpportunity`, `reasoning`, `clusters`, `capabilityVariance`,
   `blockers` typed array, `supportingEvidence`, `clarificationQuestions`,
   `consolidationStrategyQuestion`)
-- Single-tool category short-circuit tests: server emits
+- Single-app category short-circuit tests: server emits
   `consolidationOpportunity: 'none'` deterministically with no LLM call;
   no `clarificationQuestions` or `consolidationStrategyQuestion` produced
-- Per-category call dispatch tests: multi-tool categories trigger one LLM
+- Per-category call dispatch tests: multi-app categories trigger one LLM
   call each; `Promise.all()` concurrency cap respected
 - 3-layer cache structure tests: L1 stable across calls; L2 cached across
   per-category calls within a digest; L3 changes per-call; `cache_control`
@@ -767,7 +767,7 @@ full architecture.
   re-analyzed; categories with unchanged membership reuse prior analysis;
   entry's `productCategory` change correctly updates both source and
   destination categories
-- Cluster identification tests: known multi-tool categories with similar /
+- Cluster identification tests: known multi-app categories with similar /
   divergent capabilities produce expected clusters and variance descriptions
 - Migration test: `cluster_analysis` jsonb column on `codebase_digest_drafts`
   accepts the expected output shape
@@ -780,15 +780,15 @@ full architecture.
 - Agent caller in `packages/agents/src/pattern-cluster-analyzer/` matching
   the 3-layer prompt cache pattern (CLAUDE.md non-negotiable)
 - BullMQ worker in `packages/workers/src/workers/pattern-cluster-analyzer.ts`,
-  triggered after Quality Evaluator completes; iterates over multi-tool
+  triggered after Quality Evaluator completes; iterates over multi-app
   categories with `Promise.all()` concurrency cap (configurable via admin
   dashboard)
-- Single-tool category short-circuit: server-side emit of deterministic
+- Single-app category short-circuit: server-side emit of deterministic
   output, no LLM call
 - Affected-category diff logic: compare current categorization against
   prior state; categories with membership changes re-analyze; categories
-  that became single-tool emit deterministic output; categories that
-  became multi-tool trigger LLM
+  that became single-app emit deterministic output; categories that
+  became multi-app trigger LLM
 - Migration adds `cluster_analysis` jsonb column to `codebase_digest_drafts`
 - Email-on-completion folds into the existing digest-evaluation notification
   (single email when Quality Evaluator and Pattern & Cluster Analyzer both
@@ -796,8 +796,8 @@ full architecture.
 - BYOK resolution via existing `getApiKey`: user → tenant → env
 
 **Acceptance:**
-- Single-tool categories never trigger an LLM call
-- Multi-tool categories produce structured output matching the Zod schema;
+- Single-app categories never trigger an LLM call
+- Multi-app categories produce structured output matching the Zod schema;
   canonical eval cases pass
 - Re-analysis on update touches only affected categories on real eval
   updates
@@ -902,7 +902,7 @@ identified. Detailed design TBD.
 ### 3.5b.6. CV isPrivate cache bypass + Skeptic consolidation reconciliation + code-aware BYOK gate + tenant communication context resolver `[Upcoming]`
 
 Pipeline behavior changes for code-aware runs: `isPrivate=true` entries
-bypass `cv_result_cache`; per-tool failures on internal tools surface
+bypass `cv_result_cache`; per-tool failures on internal apps surface
 digest source URLs as the manual verification path; Skeptic gets
 consolidation-intent reconciliation responsibility; BYOK lock at run
 submission for code-aware (separate from free-tier BYOK gate);
@@ -913,10 +913,21 @@ Detailed design TBD.
 ### 3.5b.7. Subset re-runs from Pass 1 output `[Upcoming]`
 
 Backend endpoint to spawn a fresh code-aware run from a subset of an
-existing parent run's per-tool inventory. Two callers: per-grouping button
+existing parent run's per-app inventory. Two callers: per-grouping button
 (system-identified consolidation grouping) and user-chosen multi-select
 (MVP scope, easier to remove than add later). Full Pass 1 service fee +
 BYOK per fresh run, no discount. Detailed design TBD.
+
+**Open question for design:** A subset of N apps from a parent of M (N < M)
+is a different analytical context from a standalone N-app digest. Parent
+context shapes cross-target shared-service identification, cluster
+analysis, and Skeptic caveats — recommendations may shift meaningfully if
+the user actually rescopes to just the subset vs. continuing to plan for
+the full M. Decide: (a) do subset re-runs preserve parent context, run
+fresh with subset-only context, or offer a toggle; (b) does the system
+surface a confidence/risk signal to the user when cross-target
+dependencies in the parent were load-bearing for those apps and a
+standalone analysis would likely diverge.
 
 ---
 
@@ -971,10 +982,10 @@ E2E: full signup flow, MFA enforcement, email verification gate.
 
 ### 4g. Code-aware review screen `[Upcoming]`
 
-Review screen for code-aware digests. Renders the assembled per-tool
+Review screen for code-aware digests. Renders the assembled per-app
 inventory with quality scores, per-dependency freshness badges
 (`Evaluated [date] ↻`, `Manifest entry`, `Not yet evaluated`,
-`Internal tool`) with click-to-refresh per dep, inline option to delegate
+`Internal`) with click-to-refresh per dep, inline option to delegate
 `clarifyingQuestions` to the user's assistant, and edit affordances for
 any field. Static read of completed `quality_summary` from the draft
 record (no live progress UI; review-screen polling deferred to a future

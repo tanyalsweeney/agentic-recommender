@@ -37,18 +37,25 @@ describe("codebase_digest_drafts schema", () => {
       .returning();
     createdUserIds.push(user!.id);
 
+    // Round-trip placeholder values — this test asserts the jsonb columns accept
+    // and return arbitrary input. Application-level shape validation for the
+    // digest and qualitySummary payloads lives in the agent packages that own
+    // those schemas (Quality Evaluator and MCP tool I/O), not here.
+    const digestPayload = { roundTripCheck: "arbitrary-jsonb-value" };
+    const qualitySummaryPayload = { roundTripCheck: 42 };
+
     const [row] = await db.insert(codebaseDigestDrafts).values({
       userId: user!.id,
-      digest: { tools: [{ name: "redis" }] },
-      qualitySummary: { score: 4 },
+      digest: digestPayload,
+      qualitySummary: qualitySummaryPayload,
       expiresAt: futureDate(7),
     }).returning();
 
     expect(row!.id).toBeTruthy();
     expect(row!.userId).toBe(user!.id);
     expect(row!.tenantId).toBeNull();
-    expect(row!.digest).toEqual({ tools: [{ name: "redis" }] });
-    expect(row!.qualitySummary).toEqual({ score: 4 });
+    expect(row!.digest).toEqual(digestPayload);
+    expect(row!.qualitySummary).toEqual(qualitySummaryPayload);
     expect(row!.createdAt).toBeInstanceOf(Date);
     expect(row!.expiresAt).toBeInstanceOf(Date);
     expect(row!.submittedAt).toBeNull();
