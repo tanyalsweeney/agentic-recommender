@@ -456,7 +456,7 @@ export const userThemePreferences = pgTable(
 // Drafts produced by the code-aware intake MCP submission, awaiting user review.
 // Schema only — Phase 4 wires the MCP submission and review flow.
 //
-// `digest` carries: intake pre-fills, per-tool inventory, intent gaps.
+// `digest` carries: intake pre-fills, per-app inventory, intent gaps.
 // `quality_summary` carries: flags, scores, pending clarifications.
 
 export const codebaseDigestDrafts = pgTable("codebase_digest_drafts", {
