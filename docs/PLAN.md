@@ -809,10 +809,13 @@ full architecture.
 ### 3.5b.3. MCP server + tool surface `[Upcoming]`
 
 Dedicated MCP service at `packages/mcp/`, deployed to Railway, exposing
-four tools: `submit_codebase_digest`, `update_codebase_digest`,
-`get_pending_clarifications`, `estimate_digest_cost`. HTTP+SSE transport.
-See spec.md "MCP server hosting", "Authentication and BYOK", and "MCP
-tool surface" subsections for the full architecture.
+six tools: `submit_codebase_digest` (entry), `get_pending_clarifications`
++ `update_codebase_digest` (server-driven clarification loop),
+`revise_codebase_digest` (assistant-driven changes),
+`get_codebase_draft` (read state), `estimate_digest_cost` (read-only cost
+estimate). HTTP+SSE transport. See spec.md "MCP tool surface", "MCP
+server hosting", and "Authentication and BYOK" subsections for the full
+architecture.
 
 **Settled architecture:**
 - Hosting: dedicated package, Railway deployment (not Vercel due to
@@ -828,7 +831,15 @@ tool surface" subsections for the full architecture.
 - Response-driven iteration: tool responses include forward-looking
   guidance for the assistant. Recommended polling cadences: 90s after
   `submit_codebase_digest` (long initial wait); 20s after
-  `update_codebase_digest` (short re-eval wait). Both configurable.
+  `update_codebase_digest` or `revise_codebase_digest` (short re-eval
+  wait). Both configurable.
+- Tool surface split (server-driven vs assistant-driven), referential
+  integrity (strict), background eval concurrency (queue with
+  coalescing), tool error reporting (MCP `isError` convention), empty
+  update behavior (strict), raw artifact location and dependency
+  reconciliation, delete of nonexistent app id (silent success). See
+  spec.md "Code-aware intake" settled decisions for the full rationale
+  on each.
 
 **Open design questions** (settled in subsequent design PRs before
 implementation):
@@ -837,10 +848,16 @@ implementation):
 - Idempotency for `submit_codebase_digest` (key shape, retry semantics)
 - 30-day expiry job (BullMQ scheduled job in workers package; cadence,
   cleanup logic, edge cases)
-- Tool input/output Zod schemas (exact shape per tool)
-- Error response patterns (how errors surface to assistant)
+- Tool input/output Zod schemas (exact field shape per tool;
+  `partialFailures` shape; validation policy including `didYouMean`
+  hints and pre-Zod normalization). Next PR.
+- Error response patterns: top-level error shape and content-block
+  language (high-level pattern settled via MCP `isError` convention;
+  field-level detail folded into Tool I/O schemas next PR).
 
 **Tests first** (will expand as remaining design questions settle):
+
+*Auth and transport:*
 - Token format generation and `agent12_pat_` prefix validation
 - SHA-256 hashing of generated tokens; storage in
   `user_api_tokens.token_hash`
@@ -851,37 +868,103 @@ implementation):
 - Debounced `last_used_at` update (only updated if last update > 60s ago)
 - Per-token rate limit enforcement via Redis (60 RPM default,
   configurable)
-- Tool responses include forward-looking guidance text matching
-  admin-configurable templates
-- Polling cadence guidance differs by tool (90s after submit, 20s after
-  update_codebase_digest)
-- Integration test: end-to-end submit → poll → update flow with mocked
-  Quality Evaluator output
+
+*Tool surface and behavior:*
+- Each of the six tools accepts valid input and returns Zod-validated
+  responses
+- `get_pending_clarifications` returns per-app templates carrying
+  `currentEntry`, `requestedUpdates`, and free-form `clarifyingQuestions`;
+  optional `appId` filter narrows
+- `update_codebase_digest` (clarification response) rejects fields
+  outside the prior `requestedUpdates` template in `partialFailures`
+- `revise_codebase_digest` (assistant-driven) handles
+  `apps.{upsert, delete}`, `intentGaps.{upsert, delete}`,
+  `intakePrefills`; returns `affectedEntries` and `affectedCategories`
+- Referential integrity: `apps.delete` of an id still referenced in
+  another entry's `dependencies.internal` returns `partialFailures` with
+  `blockingReferences` (id, displayName, referenceField)
+- Atomic same-call cleanup: delete + upsert removing the reference in
+  one call succeeds via post-update state validation
+- Delete of nonexistent app id returns silent success; `affectedEntries`
+  unchanged
+- Dependency reconciliation: union by tool name when `dependencies` and
+  `packageManifests` both present; `dependencies` wins on version conflict
+- Empty update returns HTTP 200 with `isError: true` and content text
+  directing to MCP `ping` method
+- Tool error reporting: HTTP 200 for all valid JSON-RPC tool calls;
+  `isError` true when zero entries landed, false otherwise;
+  `partialFailures` populated in both cases
+- Polling cadence guidance: 90s after `submit_codebase_digest`, 20s
+  after `update_codebase_digest` or `revise_codebase_digest`
+
+*Concurrency:*
+- In-flight Quality Evaluator and Pattern & Cluster Analyzer jobs
+  complete normally; not canceled on new MCP calls
+- New MCP calls during an in-flight eval register pending follow-up
+  scope; multiple calls UNION into one follow-up
+- Coalesced follow-up enqueues after in-flight eval completes; single
+  email when all pending evals done
+
+*Integration:*
+- End-to-end submit → poll → clarification-response → re-eval flow with
+  mocked Quality Evaluator output
+- Multi-call coalescing scenario: submit + 3 rapid revises produce 1
+  follow-up eval, not 3
 
 **Implementation:**
 - New `packages/mcp/` package: HTTP framework (Hono or Fastify), MCP
   SDK if available (or hand-rolled JSON-RPC + SSE), Zod schemas for
   tool I/O
 - `packages/mcp/src/auth.ts`: token validation middleware
-- `packages/mcp/src/tools/`: handler per MCP tool
+- `packages/mcp/src/tools/`: handler per MCP tool (six handlers:
+  submit, get_pending_clarifications, update, revise, get_draft,
+  estimate)
+- `packages/mcp/src/validators/ref-integrity.ts`: post-update
+  reference graph check; blocks deletes that would leave dangling
+  `dependencies.internal` references; returns structured
+  `blockingReferences` for `partialFailures`
+- `AppEntry` parser: handles the three-field split (`dependencies`,
+  `packageManifests`, `inferenceContext`); union-by-name on
+  dependency reconciliation; `dependencies` wins on version conflict;
+  raw `packageManifests` and `inferenceContext` content discarded
+  after parsing
+- Coalescing mechanism: pending follow-up eval scope stored per draft
+  (column on `codebase_digest_drafts` or Redis key); new MCP calls
+  during an in-flight eval merge into the pending scope; pickup logic
+  enqueues coalesced follow-up when in-flight eval completes
+- Tool result shaping: `isError` flag set per MCP convention;
+  `partialFailures` shape with per-entry errors (including
+  `blockingReferences` on delete failures); empty calls return
+  `isError: true` with ping-redirect content
 - Token issuance API in `packages/web/` (Phase 4 frontend has the UI;
   this PR ships the API surface for token create/list/revoke)
 - Redis-backed rate limiting (reuses existing Redis instance)
-- Response payload guidance text (configurable via admin dashboard)
+- Response payload guidance text (configurable via admin dashboard);
+  per-tool polling cadence guidance (90s after submit; 20s after
+  update or revise)
 - Deployment: Railway service (matches existing workers + Postgres +
   Redis); CI/CD pipeline extension for the new service
 - Local dev: `pnpm --filter mcp dev` added to existing dev story
   alongside Postgres + Redis + Next.js + Workers
 
 **Acceptance:**
-- All four MCP tools accept valid input and return Zod-validated
+- All six MCP tools accept valid input and return Zod-validated
   responses
 - Bearer token auth works end-to-end: generate token → use in MCP
   client config → tool call associates with correct `user_id`
 - Rate limiting kicks in at configured threshold; response includes
   appropriate retry guidance
-- Integration test for full submit → poll → update flow passes with
-  mocked Quality Evaluator
+- Referential integrity: delete-with-dangling-ref returns structured
+  `partialFailures` with `blockingReferences`; atomic same-call cleanup
+  (delete + upsert removing the ref) succeeds
+- Coalescing: in-flight Quality Evaluator runs to completion; new MCP
+  calls during the run produce a single coalesced follow-up after the
+  in-flight job completes (not N follow-ups for N calls)
+- Tool error reporting: HTTP 200 for valid JSON-RPC calls; `isError`
+  flag matches "zero entries landed" semantics; `partialFailures` shape
+  consistent across all per-entry validation failures
+- Integration test for full submit → poll → clarification-response flow
+  passes with mocked Quality Evaluator
 - Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
 - Pre-PR redteam pass per CLAUDE.md cadence
 
