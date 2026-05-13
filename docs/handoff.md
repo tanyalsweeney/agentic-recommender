@@ -1,23 +1,25 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-11)
+## Current state (2026-05-12)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
 complete.** Code-aware backend (Phase 3.5b) **design landed for 3.5b.1
-(Quality Evaluator) and 3.5b.2 (Pattern & Cluster Analyzer); partial
-design landed for 3.5b.3 (MCP server hosting, authentication mechanics,
-response-driven iteration pattern)**. 3.5b.4 through 3.5b.7 are
-placeholder bullets pending their own design PRs; 3.5b.3 itself has
-remaining open design questions (tenant context propagation shape,
-idempotency for `submit_codebase_digest`, 30-day expiry job mechanics,
-tool input/output Zod schemas, error response patterns). Remaining
-pre-UI work is the four backend wiring sub-phases of 3.5a (CV upstream,
-per-tool data availability, per-entry manifest versioning, correction
-exchange), plus completion of 3.5b design and implementation of the
-3.5b backend agents and MCP server, plus a handful of P1 behavior items
-tracked in TODOS.md.
+(Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer), and most of
+3.5b.3 (MCP hosting + auth + iteration + 6-tool surface with
+server-driven vs assistant-driven control patterns + 7 behavioral
+decisions on update semantics)**. 3.5b.3 remaining open: tenant
+context propagation shape, idempotency for `submit_codebase_digest`,
+30-day expiry job mechanics, Tool I/O Zod schemas with validation
+policy, field-level error response shapes (top-level pattern settled
+via MCP `isError` convention). 3.5b.4 through 3.5b.7 are placeholder
+bullets pending their own design PRs. Remaining pre-UI work is the
+four backend wiring sub-phases of 3.5a (CV upstream, per-tool data
+availability, per-entry manifest versioning, correction exchange),
+plus completion of 3.5b design and implementation of the 3.5b backend
+agents and MCP server, plus a handful of P1 behavior items tracked in
+TODOS.md.
 
-**Recent merges (2026-05-07 to 2026-05-10):**
+**Recent merges (2026-05-07 to 2026-05-12):**
 - **PR #56**: Phase 3.4 — static analysis hardening (ESLint flat config,
   tsconfig `noUnusedLocals` / `noUnusedParameters`, GitHub Actions CI with
   Postgres + Redis services). Pre-PR redteam pass cadence documented in
@@ -82,7 +84,7 @@ tracked in TODOS.md.
   re-run context preservation. CV's per-tool sub-task terminology
   unchanged in this PR; broader CV-terminology rename queued as a future
   follow-up.
-- **PR #69 (in flight, this PR)**: Doc style rule in CLAUDE.md ("tight
+- **PR #69**: Doc style rule in CLAUDE.md ("tight
   wins" — one paragraph per decision, why-clauses not why-paragraphs,
   Settled-decision Reason cells one sentence each, every PR may trim
   its section) plus initial terseness pass on ~19 of the heaviest-bloat
@@ -96,6 +98,30 @@ tracked in TODOS.md.
   separate design PR). Remaining settled-decision rows + Code-aware
   intake body + handoff.md trim + README.md trim deferred — will
   land incrementally via the new CLAUDE.md rule.
+- **PR #70**: Phase 3.5b.3 design continuation: 4-tool MCP surface
+  split into 6 tools along a server-driven vs assistant-driven control
+  pattern. Adds `revise_codebase_digest` (assistant-initiated changes:
+  upsert and delete on apps, intent gaps, intake prefills) and
+  `get_codebase_draft` (read state); `update_codebase_digest`
+  repurposed as the clarification-response-only path. 7 behavioral
+  decisions land as settled-decision rows: tool surface split,
+  internal dependency referential integrity (loose with non-blocking
+  advisory; revised mid-PR from initial strict design after pushback
+  on real-world scenarios like deprecated lines of business),
+  background eval concurrency (queue with coalescing), tool error
+  reporting (MCP `isError` convention per modelcontextprotocol.io
+  Tool Execution Errors section), empty update (strict; redirects to
+  MCP `ping` method), raw artifact location (three-field `AppEntry`
+  split: `dependencies` / `packageManifests` / `inferenceContext`;
+  union by tool name; `dependencies` wins on version conflict),
+  delete of nonexistent app id (silent success). PLAN.md 3.5b.3
+  expanded to match: sectioned tests (auth/transport, tool surface
+  and behavior, concurrency, integration), expanded implementation
+  (six handlers, dangle-reporter, `AppEntry` parser, coalescing
+  mechanism), expanded acceptance criteria. Held for follow-up PRs:
+  freshness-badges removal, Tool I/O Zod schemas + validation policy
+  (next major design PR), remaining 3.5b.3 design (tenant context
+  propagation, idempotency, 30-day expiry job).
 
 **Spec PRs landed in earlier session blocks:**
 - PR #52: Phase 3.5a backend wiring closure pass (specced)
@@ -105,10 +131,20 @@ tracked in TODOS.md.
 - PR #55: Code-aware pricing (Pass 1 $49, Pass 2 $199 per spec+plan)
 
 **Queued PRs (not yet started):**
-- **3.5b.3 remaining design PR(s)**: tenant context propagation shape;
-  idempotency for `submit_codebase_digest`; 30-day expiry job mechanics
-  (BullMQ scheduled job in workers package); tool input/output Zod
-  schemas; error response patterns.
+- **Tool I/O Zod schemas + validation policy (next major design PR)**:
+  field-level shapes per tool, `partialFailures` shape, `didYouMean`
+  enhancement on rejections, pre-Zod normalization rules (whitespace
+  trim, Zod `.coerce.*` for safe type coercions). Covers the
+  field-level detail behind 3.5b.3's tool surface.
+- **3.5b.3 remaining design PR(s)** (after Tool I/O): tenant context
+  propagation shape; idempotency for `submit_codebase_digest`;
+  30-day expiry job mechanics (BullMQ scheduled job in workers
+  package).
+- **Doc cleanup PRs**: freshness-badges removal (spec body subsection
+  + corresponding settled-decision row + Phase 4g implications; drops
+  per-dep refresh UI as theater per the recommendation-quality lens);
+  `cluster_analysis` data model row drift fix (PR #66 body added the
+  column but the data model row in spec.md never listed it).
 - **3.5b.4 onward design PRs**: 3.5b.4 (manifest_intent_gap_questions
   seeder + Manifest Gatekeeper extension), 3.5b.5 (migration-mapping
   prompt fragment + Pass 2 per-target invocation), 3.5b.6 (CV
