@@ -880,11 +880,13 @@ implementation):
 - `revise_codebase_digest` (assistant-driven) handles
   `apps.{upsert, delete}`, `intentGaps.{upsert, delete}`,
   `intakePrefills`; returns `affectedEntries` and `affectedCategories`
-- Referential integrity: `apps.delete` of an id still referenced in
-  another entry's `dependencies.internal` returns `partialFailures` with
-  `blockingReferences` (id, displayName, referenceField)
-- Atomic same-call cleanup: delete + upsert removing the reference in
-  one call succeeds via post-update state validation
+- `apps.delete` of an id still referenced in another entry's
+  `dependencies.internal` succeeds in one call; response includes a
+  non-blocking advisory listing dangling refs (id + displayName +
+  referenceField) and prompting re-add via `apps.upsert` if
+  unintentional
+- Same-call cleanup (delete + upsert removing the reference) produces
+  no advisory; post-update graph is clean
 - Delete of nonexistent app id returns silent success; `affectedEntries`
   unchanged
 - Dependency reconciliation: union by tool name when `dependencies` and
@@ -919,10 +921,10 @@ implementation):
 - `packages/mcp/src/tools/`: handler per MCP tool (six handlers:
   submit, get_pending_clarifications, update, revise, get_draft,
   estimate)
-- `packages/mcp/src/validators/ref-integrity.ts`: post-update
-  reference graph check; blocks deletes that would leave dangling
-  `dependencies.internal` references; returns structured
-  `blockingReferences` for `partialFailures`
+- `packages/mcp/src/dangle-reporter.ts`: post-update reference graph
+  scan; non-blocking; populates response advisory (id + displayName +
+  referenceField) and persists on the draft for review screen
+  rendering
 - `AppEntry` parser: handles the three-field split (`dependencies`,
   `packageManifests`, `inferenceContext`); union-by-name on
   dependency reconciliation; `dependencies` wins on version conflict;
@@ -933,9 +935,9 @@ implementation):
   during an in-flight eval merge into the pending scope; pickup logic
   enqueues coalesced follow-up when in-flight eval completes
 - Tool result shaping: `isError` flag set per MCP convention;
-  `partialFailures` shape with per-entry errors (including
-  `blockingReferences` on delete failures); empty calls return
-  `isError: true` with ping-redirect content
+  `partialFailures` shape with per-entry errors; dangling-reference
+  advisories on `apps.delete` results when applicable; empty calls
+  return `isError: true` with ping-redirect content
 - Token issuance API in `packages/web/` (Phase 4 frontend has the UI;
   this PR ships the API surface for token create/list/revoke)
 - Redis-backed rate limiting (reuses existing Redis instance)
@@ -954,9 +956,10 @@ implementation):
   client config → tool call associates with correct `user_id`
 - Rate limiting kicks in at configured threshold; response includes
   appropriate retry guidance
-- Referential integrity: delete-with-dangling-ref returns structured
-  `partialFailures` with `blockingReferences`; atomic same-call cleanup
-  (delete + upsert removing the ref) succeeds
+- Dangling references: delete-with-dangling-ref succeeds in one MCP
+  call; response advisory lists dangling refs and prompts re-add via
+  `apps.upsert` if unintentional; review screen renders dangles with
+  neutral framing
 - Coalescing: in-flight Quality Evaluator runs to completion; new MCP
   calls during the run produce a single coalesced follow-up after the
   in-flight job completes (not N follow-ups for N calls)
