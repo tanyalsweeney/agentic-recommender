@@ -1069,9 +1069,7 @@ E2E: full signup flow, MFA enforcement, email verification gate.
 ### 4g. Code-aware review screen `[Upcoming]`
 
 Review screen for code-aware digests. Renders the assembled per-app
-inventory with quality scores, per-dependency freshness badges
-(`Evaluated [date] ↻`, `Manifest entry`, `Not yet evaluated`,
-`Internal`) with click-to-refresh per dep, inline option to delegate
+inventory with quality scores, inline option to delegate
 `clarifyingQuestions` to the user's assistant, and edit affordances for
 any field. Static read of completed `quality_summary` from the draft
 record (no live progress UI; review-screen polling deferred to a future
