@@ -841,21 +841,7 @@ architecture.
   spec.md "Code-aware intake" settled decisions for the full rationale
   on each.
 
-**Open design questions** (settled in subsequent design PRs before
-implementation):
-- Tenant context propagation shape (full prompt fragment, structured
-  constraints, references)
-- Idempotency for `submit_codebase_digest` (key shape, retry semantics)
-- 30-day expiry job (BullMQ scheduled job in workers package; cadence,
-  cleanup logic, edge cases)
-- Tool input/output Zod schemas (exact field shape per tool;
-  `partialFailures` shape; validation policy including `didYouMean`
-  hints and pre-Zod normalization). Next PR.
-- Error response patterns: top-level error shape and content-block
-  language (high-level pattern settled via MCP `isError` convention;
-  field-level detail folded into Tool I/O schemas next PR).
-
-**Tests first** (will expand as remaining design questions settle):
+**Tests first:**
 
 *Auth and transport:*
 - Token format generation and `agent12_pat_` prefix validation
@@ -918,6 +904,54 @@ implementation):
 - Polling cadence guidance: 90s after `submit_codebase_digest`, 20s
   after `update_codebase_digest` or `revise_codebase_digest`
 
+*Idempotency Tier 1 (explicit, assistant supplies `idempotencyKey`):*
+- Same key + identical payload returns the cached response with
+  `dedupedFromRecentSubmit: true` and `dedupePath: "explicit"`; no new
+  draft, no new eval, no additional BYOK billing
+- Same key + different payload returns `partialFailures` entry with
+  `code: idempotency_collision` and `isError: true`; no draft created
+- Fresh key (no prior entry) processes as a new submit and creates a
+  new draft; Tier 2 implicit cache is NOT consulted on keyed submits
+- Redis-backed key store with 24-hour TTL; keys scoped to
+  `{user_id, idempotencyKey}`
+
+*Idempotency Tier 2 (implicit, no `idempotencyKey` supplied):*
+- No key + payload hash matching a recent same-user submit within the
+  implicit dedup window returns the cached response with
+  `dedupedFromRecentSubmit: true` and `dedupePath: "implicit"`; no new
+  draft, no new eval, no additional BYOK billing
+- No key + non-matching payload creates a new draft and stores a new
+  implicit cache entry
+- No key + matching payload after the implicit window has expired
+  processes as a new submit (window TTL drives the freshness boundary)
+- Implicit cache is `{user_id, request_hash} → response` in Redis with
+  TTL `codebase_digest_drafts.implicit_dedup_window_minutes` (default
+  5, per-tenant configurable)
+- Per-tenant override of `implicit_dedup_window_minutes` is honored at
+  both cache read and cache write times
+
+*Precedence and override:*
+- Fresh `idempotencyKey` + payload matching a recent un-keyed submit:
+  Tier 1 wins, server processes as a new submit, implicit cache is
+  bypassed (explicit always beats implicit)
+- Keyed submit writes to Tier 1 cache only (not Tier 2); un-keyed
+  submit writes to Tier 2 cache only (not Tier 1)
+
+*Draft expiry:*
+- Every read or write access (any MCP tool + web-UI review screen load)
+  bumps `expires_at` to `now() + sliding_ttl_days` (per-tenant config,
+  default 30)
+- `expires_at` capped at `created_at + max_lifetime_days` (per-tenant
+  config, default 90)
+- Daily cleanup job at 3am UTC selects drafts with `expires_at < now()`
+  and hard-deletes them (both submitted and unsubmitted)
+- Cleanup cancels any in-flight Quality Evaluator and Pattern & Cluster
+  Analyzer BullMQ jobs for the draft before deletion
+- Concurrent MCP call landing on a just-deleted draft returns
+  `id_not_found` partialFailure
+- Per-tenant config override (`owner = tenant_id` on the config rows)
+  is honored at both initial submit and every touch operation
+
 *Concurrency:*
 - In-flight Quality Evaluator and Pattern & Cluster Analyzer jobs
   complete normally; not canceled on new MCP calls
@@ -947,6 +981,25 @@ implementation):
 - `packages/mcp/src/partial-failure.ts`: `PartialFailure` builder plus
   `didYouMean` helper (Levenshtein distance up to 2 against the valid
   set for field names and enum values; never against ids)
+- `packages/mcp/src/idempotency.ts`: two-tier Redis-backed dedup.
+  Tier 1 explicit: `{user_id, idempotencyKey} → {request_hash,
+  response}` with 24h TTL, collision detection on hash mismatch emits
+  `idempotency_collision` partialFailure. Tier 2 implicit: `{user_id,
+  request_hash} → response` with TTL from
+  `codebase_digest_drafts.implicit_dedup_window_minutes` (default 5,
+  per-tenant configurable). Mode selection: keyed submits use Tier 1
+  only (read and write); un-keyed submits use Tier 2 only. Helper
+  emits `dedupedFromRecentSubmit` and `dedupePath` fields on the
+  response.
+- `packages/mcp/src/draft-expiry.ts`: helper computing new
+  `expires_at` on every draft access (`min(now() + sliding_ttl_days,
+  created_at + max_lifetime_days)`); reads per-tenant config via
+  existing `getConfig(key, tenantId)` helper
+- `packages/workers/src/workers/cleanup-codebase-digest-drafts.ts`:
+  daily BullMQ scheduled job at 3am UTC (cadence configurable);
+  selects expired drafts, cancels in-flight Quality Evaluator and
+  Pattern & Cluster Analyzer jobs (`job.remove()` for queued,
+  abort-signal pattern for in-progress), hard-deletes draft rows
 - `packages/mcp/src/auth.ts`: token validation middleware
 - `packages/mcp/src/tools/`: handler per MCP tool (six handlers:
   submit, get_pending_clarifications, update, revise, get_draft,
@@ -1001,6 +1054,26 @@ implementation):
   consistent across all per-entry validation failures
 - Integration test for full submit → poll → clarification-response flow
   passes with mocked Quality Evaluator
+- Idempotency Tier 1: same-key + same-payload returns cached response
+  with `dedupedFromRecentSubmit: true` and `dedupePath: "explicit"`;
+  same-key + different-payload returns `idempotency_collision`; fresh
+  key creates a new draft and bypasses Tier 2
+- Idempotency Tier 2: no key + payload hash matching recent same-user
+  submit within the implicit dedup window returns cached response with
+  `dedupePath: "implicit"`; no key + non-matching payload creates a
+  new draft; window expiry causes implicit cache miss; per-tenant
+  override of `implicit_dedup_window_minutes` honored
+- Explicit beats implicit: fresh `idempotencyKey` + payload matching a
+  recent un-keyed submit creates a new draft (Tier 1 wins, Tier 2 not
+  consulted)
+- Draft expiry: every access bumps `expires_at` within the per-tenant
+  sliding TTL; hard cap honored; daily cleanup deletes expired drafts
+  and cancels in-flight evaluator and analyzer jobs; concurrent MCP
+  calls landing on a deleted draft return `id_not_found`
+- Per-tenant config: tenant overrides of
+  `codebase_digest_drafts.sliding_ttl_days` and
+  `codebase_digest_drafts.max_lifetime_days` are honored at submit
+  and every subsequent touch
 - Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
 - Pre-PR redteam pass per CLAUDE.md cadence
 
