@@ -904,16 +904,38 @@ architecture.
 - Polling cadence guidance: 90s after `submit_codebase_digest`, 20s
   after `update_codebase_digest` or `revise_codebase_digest`
 
-*Idempotency:*
-- `submit_codebase_digest` with same `idempotencyKey` and identical
-  payload returns the cached response without re-running work; no new
+*Idempotency Tier 1 (explicit, assistant supplies `idempotencyKey`):*
+- Same key + identical payload returns the cached response with
+  `dedupedFromRecentSubmit: true` and `dedupePath: "explicit"`; no new
   draft, no new eval, no additional BYOK billing
 - Same key + different payload returns `partialFailures` entry with
   `code: idempotency_collision` and `isError: true`; no draft created
-- No `idempotencyKey` supplied processes as a new submit and creates a
-  new draft
+- Fresh key (no prior entry) processes as a new submit and creates a
+  new draft; Tier 2 implicit cache is NOT consulted on keyed submits
 - Redis-backed key store with 24-hour TTL; keys scoped to
   `{user_id, idempotencyKey}`
+
+*Idempotency Tier 2 (implicit, no `idempotencyKey` supplied):*
+- No key + payload hash matching a recent same-user submit within the
+  implicit dedup window returns the cached response with
+  `dedupedFromRecentSubmit: true` and `dedupePath: "implicit"`; no new
+  draft, no new eval, no additional BYOK billing
+- No key + non-matching payload creates a new draft and stores a new
+  implicit cache entry
+- No key + matching payload after the implicit window has expired
+  processes as a new submit (window TTL drives the freshness boundary)
+- Implicit cache is `{user_id, request_hash} → response` in Redis with
+  TTL `codebase_digest_drafts.implicit_dedup_window_minutes` (default
+  5, per-tenant configurable)
+- Per-tenant override of `implicit_dedup_window_minutes` is honored at
+  both cache read and cache write times
+
+*Precedence and override:*
+- Fresh `idempotencyKey` + payload matching a recent un-keyed submit:
+  Tier 1 wins, server processes as a new submit, implicit cache is
+  bypassed (explicit always beats implicit)
+- Keyed submit writes to Tier 1 cache only (not Tier 2); un-keyed
+  submit writes to Tier 2 cache only (not Tier 1)
 
 *Draft expiry:*
 - Every read or write access (any MCP tool + web-UI review screen load)
@@ -959,10 +981,16 @@ architecture.
 - `packages/mcp/src/partial-failure.ts`: `PartialFailure` builder plus
   `didYouMean` helper (Levenshtein distance up to 2 against the valid
   set for field names and enum values; never against ids)
-- `packages/mcp/src/idempotency.ts`: Redis-backed key→response store
-  scoped to `{user_id, idempotencyKey}` with 24h TTL; collision
-  detection (request payload hash comparison) emits
-  `idempotency_collision` partialFailure
+- `packages/mcp/src/idempotency.ts`: two-tier Redis-backed dedup.
+  Tier 1 explicit: `{user_id, idempotencyKey} → {request_hash,
+  response}` with 24h TTL, collision detection on hash mismatch emits
+  `idempotency_collision` partialFailure. Tier 2 implicit: `{user_id,
+  request_hash} → response` with TTL from
+  `codebase_digest_drafts.implicit_dedup_window_minutes` (default 5,
+  per-tenant configurable). Mode selection: keyed submits use Tier 1
+  only (read and write); un-keyed submits use Tier 2 only. Helper
+  emits `dedupedFromRecentSubmit` and `dedupePath` fields on the
+  response.
 - `packages/mcp/src/draft-expiry.ts`: helper computing new
   `expires_at` on every draft access (`min(now() + sliding_ttl_days,
   created_at + max_lifetime_days)`); reads per-tenant config via
@@ -1026,9 +1054,18 @@ architecture.
   consistent across all per-entry validation failures
 - Integration test for full submit → poll → clarification-response flow
   passes with mocked Quality Evaluator
-- Idempotency: same-key + same-payload returns cached response with no
-  new draft; same-key + different-payload returns
-  `idempotency_collision`; no key supplied creates a new draft
+- Idempotency Tier 1: same-key + same-payload returns cached response
+  with `dedupedFromRecentSubmit: true` and `dedupePath: "explicit"`;
+  same-key + different-payload returns `idempotency_collision`; fresh
+  key creates a new draft and bypasses Tier 2
+- Idempotency Tier 2: no key + payload hash matching recent same-user
+  submit within the implicit dedup window returns cached response with
+  `dedupePath: "implicit"`; no key + non-matching payload creates a
+  new draft; window expiry causes implicit cache miss; per-tenant
+  override of `implicit_dedup_window_minutes` honored
+- Explicit beats implicit: fresh `idempotencyKey` + payload matching a
+  recent un-keyed submit creates a new draft (Tier 1 wins, Tier 2 not
+  consulted)
 - Draft expiry: every access bumps `expires_at` within the per-tenant
   sliding TTL; hard cap honored; daily cleanup deletes expired drafts
   and cancels in-flight evaluator and analyzer jobs; concurrent MCP
