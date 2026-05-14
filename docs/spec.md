@@ -71,6 +71,8 @@ Owner/admin can view and update system configuration without a code deploy. All 
 | User hold aggregate threshold | 3 users | Number of user-level holds on the same org that triggers an admin nudge to consider an admin-level review |
 | CV result cache TTL | 24 hours (default) | How long a cached per-tool CV result is considered fresh before re-research is required |
 | Manifest max staleness threshold | 2x the normal refresh threshold per entry type | If refresh fails and retries are exhausted, runs proceed on stale data up to this age; beyond it, runs are blocked until refresh recovers |
+| Code-aware digest sliding TTL | 30 days | Each access to a code-aware digest draft bumps `expires_at` to `now() + this`. Per-tenant configurable. |
+| Code-aware digest max lifetime | 90 days | Hard cap from `created_at`; `expires_at` is never bumped past this regardless of activity. Per-tenant configurable. |
 
 Per-tenant overrides of these defaults are supported in the multi-tenant configuration (see Multi-tenancy note under Settled decisions).
 
@@ -525,7 +527,7 @@ Per-tool Zod schemas live in `packages/mcp/src/schemas/`. Shared shapes and vali
 
 *Per-tool envelopes:*
 
-- `submit_codebase_digest`. **Input:** `digest` (containing `appsToCreate` as array of `AppEntryCreate`, optional `intentGapsToCreate` as array of `IntentGapCreate`, optional `intakePrefills` as `IntakePrefills`) plus optional `idempotencyKey` (shape settled in separate design PR). **Output:** `draftId`, `draftUrl`, `status` set to `evaluating`, `assignedAppIds`, `assignedIntentGapIds`, `expiresAt` (iso8601, +30 days), `pollGuidance`, `isError`, `partialFailures`.
+- `submit_codebase_digest`. **Input:** `digest` (containing `appsToCreate` as array of `AppEntryCreate`, optional `intentGapsToCreate` as array of `IntentGapCreate`, optional `intakePrefills` as `IntakePrefills`) plus optional `idempotencyKey` (see Idempotency subsection below). **Output:** `draftId`, `draftUrl`, `status` set to `evaluating`, `assignedAppIds`, `assignedIntentGapIds`, `expiresAt` (iso8601), `pollGuidance`, `isError`, `partialFailures`.
 - `get_pending_clarifications`. **Input:** `draftId`, optional `appIds` filter. **Output:** `clarifications` (each carrying `appId`, `currentEntry` as `AppEntry`, `requestedUpdates` as array of field paths the assistant must fill, `clarifyingQuestions` as array of freeform supporting questions), `pollGuidance`, `isError`, `partialFailures`.
 - `update_codebase_digest`. **Input:** `draftId`, `responses` (each carrying `appId` and `fields` as partial `AppEntry`; `fields` must match the prior `requestedUpdates` template, others land as `outside_template`). **Output:** `affectedEntries`, `pollGuidance`, `isError` (true if `responses` is empty, per existing settled decision), `partialFailures`.
 - `revise_codebase_digest`. **Input:** `draftId`, optional `apps.{create, update, delete}`, optional `intentGaps.{create, update, delete}`, optional `intakePrefills` (partial-merge). **Output:** `assignedAppIds`, `assignedIntentGapIds`, `affectedEntries`, `affectedCategories`, `danglingReferences` (array of `{id, displayName, referencePath}`, advisory per existing referential integrity decision), `pollGuidance`, `isError` (true if no operation landed), `partialFailures`.
@@ -579,7 +581,7 @@ Per-tool Zod schemas live in `packages/mcp/src/schemas/`. Shared shapes and vali
 | Field | Type | Notes |
 |---|---|---|
 | `path` | string | Dot-path with bracket indexes, e.g. `apps.update[2].dependencies.external[5].version` |
-| `code` | enum | One of `unknown_field`, `type_mismatch`, `missing_required`, `outside_template` (`update_codebase_digest` only), `invalid_value`, `duplicate_id`, `id_not_found` |
+| `code` | enum | One of `unknown_field`, `type_mismatch`, `missing_required`, `outside_template` (`update_codebase_digest` only), `invalid_value`, `duplicate_id`, `id_not_found`, `idempotency_collision` (`submit_codebase_digest` only) |
 | `message` | string | Human-readable |
 | `didYouMean` | array of string, or null | Populated for `unknown_field` and enum-mismatch `invalid_value` only; never for `id_not_found` |
 
@@ -603,6 +605,18 @@ A server-side helper (`coerce.ts`) runs before Zod validation:
 
 Custom helper rather than Zod's `.coerce.*`: Zod's `.coerce.boolean()` truthifies any non-empty string and would silently accept `"false"` as `true`.
 
+*Idempotency (`submit_codebase_digest` only):*
+
+The assistant supplies an optional `idempotencyKey` (any unique string, uuidv7 recommended) to dedupe retries. Server stores `{user_id, idempotencyKey} → {request_hash, response}` in Redis with a 24-hour TTL.
+
+- Same key + identical request payload: server returns the cached response without re-running the work. No new draft created, no new background evaluation enqueued, no additional BYOK billing.
+- Same key + different request payload: server returns a `partialFailures` entry with `code: "idempotency_collision"` and `isError: true`. The error message instructs the assistant to generate a fresh key for a new intentional submit. Indicates an assistant key-management bug, not user intent.
+- No key supplied: server processes the call as a new submit. Naive retries create duplicate drafts and double-bill the user's BYOK. The existing 60 RPM per-token rate limit caps the worst case.
+
+Implemented as a Redis-backed helper in `packages/mcp/src/idempotency.ts`. Tool description language recommends assistants generate a fresh uuidv7 per user-initiated submit, cache it locally during the call, and reuse the cached key only on retries of the same call (not on subsequent user-initiated submits).
+
+Each successful submit triggers a fresh background evaluation billed against the user's BYOK. Retries with the same idempotency key return the cached response and are not re-billed. New user-initiated submits, whether for an updated codebase or a fresh look at the same one, are billed as separate evaluations. Credit card service fees ($49 Pass 1, $199 per Pass 2 target) are not triggered by MCP submit; they hit only when the user clicks Analyze on the review screen.
+
 Tool responses include forward-looking guidance directing the assistant's next steps. The `submit_codebase_digest` response advises polling `get_pending_clarifications` at a recommended cadence and responding via `update_codebase_digest` until clarifications are addressed. Recommended polling cadences (configurable via admin dashboard): 90 seconds after `submit_codebase_digest` (long initial wait of 10 to 40 minutes); 20 seconds after `update_codebase_digest` or `revise_codebase_digest` (short re-evaluation wait of 30 seconds to 2 minutes). Capable agentic assistants follow the guidance autonomously; less capable ones surface the text for the user to act on.
 
 All tools require authentication via a user API token (see Authentication below). Tool responses include the active tenant communication context (admin-curated, see below) so the assistant can frame the digest appropriately for tenant-specific constraints (regulatory domain, prohibited tools, certifications).
@@ -618,7 +632,15 @@ All tools require authentication via a user API token (see Authentication below)
 7. If quality flags are present, user either edits manually OR invokes assistant to address pending clarifications via the MCP loop.
 8. User clicks Analyze. Pipeline runs.
 
-Drafts persist for 30 days, after which they expire and are deleted. Drafts belong to the user (or tenant, if the user has tenant context) that created them; access requires authenticated session as that user.
+Drafts persist with a sliding TTL on access (see Draft expiry mechanics below). Drafts belong to the user (or tenant, if the user has tenant context) that created them; access requires authenticated session as that user.
+
+**Draft expiry mechanics:**
+
+Every access to a draft (read or write via any MCP tool, plus web-UI loads of the review screen) bumps `expires_at` to `now() + codebase_digest_drafts.sliding_ttl_days` (default 30, per-tenant configurable). `expires_at` is capped at `created_at + codebase_digest_drafts.max_lifetime_days` (default 90, per-tenant configurable). Past the hard cap, the draft expires regardless of activity; the user can re-submit a fresh digest if continued work is needed.
+
+A daily BullMQ scheduled job (`cleanup.codebase_digest_drafts`, runs at 3am UTC, cadence configurable) selects drafts with `expires_at < now()` and hard-deletes them. Both submitted (`submitted_at IS NOT NULL`) and unsubmitted drafts are deleted; the run record (`runs` table) is the canonical store for submitted ones. Any in-flight Quality Evaluator or Pattern & Cluster Analyzer BullMQ jobs associated with the draft are cancelled (`job.remove()` for queued, abort-signal pattern for in-progress) before the row is deleted. Concurrent MCP calls landing on a just-deleted draft return the standard `id_not_found` partialFailure; no locking required.
+
+No pre-expiry warning email at MVP; tracked as a P3 follow-up in TODOS.md. Active-user-at-hard-cap is a known edge case until the warning ships.
 
 **Authentication and BYOK:**
 
@@ -641,10 +663,6 @@ Local dev adds `pnpm --filter mcp dev` to the existing dev story (Postgres + Red
 **Cost transparency:**
 
 BYOK costs vary with digest size and provider rates. We publish a public reference page (accessible pre-auth, linked from MCP setup docs and the BYOK key registration UI) showing typical per-app token usage ranges and current per-provider rates. The page carries an "effective as of [date]" stamp; admin updates the rates table when providers change pricing. For assistants that want richer pre-submit guidance, the `estimate_digest_cost` MCP tool returns a cost range based on the digest payload and current rates without committing the digest. The user is not gated on cost confirmation; we surface info and let the user decide.
-
-**Tenant context propagation:**
-
-When a user belongs to a tenant, their tenant communication context (admin-curated, includes regulatory constraints, prohibited tools, mandatory certifications) is included in the response to `submit_codebase_digest`. This lets the user's AI assistant frame the digest with awareness of those constraints: apps that violate constraints are flagged in the digest (rather than deeply analyzed and only later rejected), saving tokens on the user's side and giving the pipeline cleaner upstream input.
 
 **Cache and privacy:**
 
@@ -1498,6 +1516,8 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | Per-section update operations | Apps and intent gaps use separate `create` / `update` / `delete` operations on `revise_codebase_digest`. `create` has no id (server generates); `update` requires id and is partial-merge (absent = no change, value = set, explicit null = clear nullable fields); `delete` is idempotent. `intakePrefills` follows the same partial-merge rule. | Separate ops prevent silent create-with-wild-id; partial-merge keeps clarification-response payloads small. | 2026-05-13 |
 | Pre-Zod normalization rules | Server normalizes input before Zod validation: trim strings, coerce case-insensitive `"true"`/`"false"` to booleans, coerce numeric strings where `Number.isFinite(parseFloat(v))` to numbers, leave nulls and missing keys untouched. Custom `coerce.ts` helper, not Zod's built-in `.coerce.*`. | Zod's `.coerce.boolean()` truthifies any non-empty string and silently accepts `"false"` as `true`; custom helper coerces unambiguous cases without that footgun. | 2026-05-13 |
 | `didYouMean` scope and `partialFailures` contract | `didYouMean` populated only for `unknown_field` and enum-mismatch `invalid_value` via Levenshtein up to 2. Never for `id_not_found`. Suggestions only; server never auto-applies. `partialFailures` with `isError: false` is informational; assistants must not retry entries with no `didYouMean`. | Suggesting close-but-wrong ids invites silent dependency graph corruption from autoloop assistants; recovery upside is small (one missed internal dep) and downside is invisible. | 2026-05-13 |
+| Idempotency for `submit_codebase_digest` | Optional `idempotencyKey` (uuidv7 recommended). Server stores `{user_id, key} → {request_hash, response}` in Redis with 24h TTL. Same key + same payload returns cached response (no re-billing). Same key + different payload returns `idempotency_collision` partialFailure (assistant must use a fresh key). No key supplied processes as a new submit; naive retries create duplicates capped by the 60 RPM rate limit. | Stripe pattern; server cannot pre-issue keys because MCP servers can't push to clients, so client-supplied is the only working option for retry dedup. | 2026-05-14 |
+| Draft expiry mechanics | Sliding TTL on any access (read or write, MCP or web UI) bumps `expires_at` to `now() + sliding_ttl_days` (default 30). Hard cap from `created_at` at `max_lifetime_days` (default 90). Both per-tenant configurable. Daily BullMQ cleanup at 3am UTC hard-deletes expired drafts (both submitted and unsubmitted) and cancels any in-flight Quality Evaluator and Pattern & Cluster Analyzer jobs for the row. Concurrent MCP calls landing on a just-deleted draft return `id_not_found`. No pre-expiry warning at MVP. | Active drafts shouldn't expire while in use; hard cap prevents indefinite retention for privacy and storage; per-tenant config supports varying corporate workflow timelines. | 2026-05-14 |
 
 ### Compatibility Validator
 

@@ -841,21 +841,7 @@ architecture.
   spec.md "Code-aware intake" settled decisions for the full rationale
   on each.
 
-**Open design questions** (settled in subsequent design PRs before
-implementation):
-- Tenant context propagation shape (full prompt fragment, structured
-  constraints, references)
-- Idempotency for `submit_codebase_digest` (key shape, retry semantics)
-- 30-day expiry job (BullMQ scheduled job in workers package; cadence,
-  cleanup logic, edge cases)
-- Tool input/output Zod schemas (exact field shape per tool;
-  `partialFailures` shape; validation policy including `didYouMean`
-  hints and pre-Zod normalization). Next PR.
-- Error response patterns: top-level error shape and content-block
-  language (high-level pattern settled via MCP `isError` convention;
-  field-level detail folded into Tool I/O schemas next PR).
-
-**Tests first** (will expand as remaining design questions settle):
+**Tests first:**
 
 *Auth and transport:*
 - Token format generation and `agent12_pat_` prefix validation
@@ -918,6 +904,32 @@ implementation):
 - Polling cadence guidance: 90s after `submit_codebase_digest`, 20s
   after `update_codebase_digest` or `revise_codebase_digest`
 
+*Idempotency:*
+- `submit_codebase_digest` with same `idempotencyKey` and identical
+  payload returns the cached response without re-running work; no new
+  draft, no new eval, no additional BYOK billing
+- Same key + different payload returns `partialFailures` entry with
+  `code: idempotency_collision` and `isError: true`; no draft created
+- No `idempotencyKey` supplied processes as a new submit and creates a
+  new draft
+- Redis-backed key store with 24-hour TTL; keys scoped to
+  `{user_id, idempotencyKey}`
+
+*Draft expiry:*
+- Every read or write access (any MCP tool + web-UI review screen load)
+  bumps `expires_at` to `now() + sliding_ttl_days` (per-tenant config,
+  default 30)
+- `expires_at` capped at `created_at + max_lifetime_days` (per-tenant
+  config, default 90)
+- Daily cleanup job at 3am UTC selects drafts with `expires_at < now()`
+  and hard-deletes them (both submitted and unsubmitted)
+- Cleanup cancels any in-flight Quality Evaluator and Pattern & Cluster
+  Analyzer BullMQ jobs for the draft before deletion
+- Concurrent MCP call landing on a just-deleted draft returns
+  `id_not_found` partialFailure
+- Per-tenant config override (`owner = tenant_id` on the config rows)
+  is honored at both initial submit and every touch operation
+
 *Concurrency:*
 - In-flight Quality Evaluator and Pattern & Cluster Analyzer jobs
   complete normally; not canceled on new MCP calls
@@ -947,6 +959,19 @@ implementation):
 - `packages/mcp/src/partial-failure.ts`: `PartialFailure` builder plus
   `didYouMean` helper (Levenshtein distance up to 2 against the valid
   set for field names and enum values; never against ids)
+- `packages/mcp/src/idempotency.ts`: Redis-backed key→response store
+  scoped to `{user_id, idempotencyKey}` with 24h TTL; collision
+  detection (request payload hash comparison) emits
+  `idempotency_collision` partialFailure
+- `packages/mcp/src/draft-expiry.ts`: helper computing new
+  `expires_at` on every draft access (`min(now() + sliding_ttl_days,
+  created_at + max_lifetime_days)`); reads per-tenant config via
+  existing `getConfig(key, tenantId)` helper
+- `packages/workers/src/workers/cleanup-codebase-digest-drafts.ts`:
+  daily BullMQ scheduled job at 3am UTC (cadence configurable);
+  selects expired drafts, cancels in-flight Quality Evaluator and
+  Pattern & Cluster Analyzer jobs (`job.remove()` for queued,
+  abort-signal pattern for in-progress), hard-deletes draft rows
 - `packages/mcp/src/auth.ts`: token validation middleware
 - `packages/mcp/src/tools/`: handler per MCP tool (six handlers:
   submit, get_pending_clarifications, update, revise, get_draft,
@@ -1001,6 +1026,17 @@ implementation):
   consistent across all per-entry validation failures
 - Integration test for full submit → poll → clarification-response flow
   passes with mocked Quality Evaluator
+- Idempotency: same-key + same-payload returns cached response with no
+  new draft; same-key + different-payload returns
+  `idempotency_collision`; no key supplied creates a new draft
+- Draft expiry: every access bumps `expires_at` within the per-tenant
+  sliding TTL; hard cap honored; daily cleanup deletes expired drafts
+  and cancels in-flight evaluator and analyzer jobs; concurrent MCP
+  calls landing on a deleted draft return `id_not_found`
+- Per-tenant config: tenant overrides of
+  `codebase_digest_drafts.sliding_ttl_days` and
+  `codebase_digest_drafts.max_lifetime_days` are honored at submit
+  and every subsequent touch
 - Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
 - Pre-PR redteam pass per CLAUDE.md cadence
 
