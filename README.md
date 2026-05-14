@@ -17,17 +17,34 @@ The system walks users through a structured intake flow, infers architecture dec
 
 ## Architecture
 
-**Tech stack:** TypeScript monorepo: Next.js (frontend), BullMQ + Redis (pipeline job queue), PostgreSQL (all persistent data), multi-provider LLM layer (Anthropic by default; OpenAI-compatible providers supported via registry for per-agent routing).
+**Tech stack:** TypeScript monorepo with Next.js (frontend), BullMQ + Redis (pipeline job queue), and PostgreSQL (all persistent data). A multi-provider LLM layer defaults to Anthropic, with OpenAI-compatible providers supported via a registry for per-agent routing.
 
-**Pipeline:** Multi-wave agent system. Wave 1 runs four specialist agents in parallel (Orchestration, Security, Memory & State, Tool & Integration). Wave 2 is a cooperative exchange between Failure & Observability and Trust & Control. Wave 2.5 runs the Compatibility Validator: per-tool research for version, CVE, pricing, and license data, plus first-principles compatibility analysis — the manifest provides facts and minimum requirements as a floor, the CV derives compatibility conclusions from the specific architecture. Wave 3 is The Skeptic, which challenges the full recommendation set before output ships.
+**Pipeline:** A multi-wave agent system.
 
-**Output:** Pass 1 is a decision-layer document for executives and engineers evaluating the recommendation. Pass 2 is the implementation layer: a spec doc + plan doc per recommended target system, generated on user request. **Code-aware intake** (alternative to text intake): the user's AI assistant (Copilot, Claude Code, Cursor) reads their codebase via MCP, produces a structured digest, the user reviews and refines on our screen, the pipeline produces per-target spec+plan deliverables.
+- **Wave 1** runs four specialist agents in parallel: Orchestration, Security, Memory & State, and Tool & Integration.
+- **Wave 2** is a cooperative exchange between Failure & Observability and Trust & Control.
+- **Wave 2.5** runs the Compatibility Validator, which performs per-tool research on version, CVE, pricing, and license data alongside first-principles compatibility analysis. The manifest provides facts and minimum requirements as a floor; the CV derives compatibility conclusions from the specific architecture.
+- **Wave 3** is The Skeptic, which challenges the full recommendation set before output ships.
 
-**Pricing (provisional, pending production cost data):** Free (3 runs/day, blurred CV detail), Run Pack ($9 / 5 additional runs), Pass 1 ($49/run, full output), Pass 2 ($199/run). Code-aware intake adds: Code-Aware Pass 1 ($49/run, BYOK required) and Code-Aware Pass 2 ($199 per spec+plan, BYOK required, customer-selectable subset of consolidation analysis target set).
+**Output:** Two passes.
+
+- **Pass 1** is a decision-layer document for executives and engineers evaluating the recommendation.
+- **Pass 2** is the implementation layer: a spec doc and plan doc per recommended target system, generated on user request.
+
+**Code-aware intake** (an alternative to text intake): the user's AI assistant (Copilot, Claude Code, Cursor) reads their codebase via MCP and produces a structured digest. The user reviews and refines it on our screen, then the pipeline produces per-target spec+plan deliverables.
+
+**Pricing (provisional, pending production cost data):**
+
+- **Free:** 1 system-paid lifetime trial, then BYOK-required, capped at 3 runs/day, with blurred CV detail
+- **Run Pack:** $9 for 5 additional runs
+- **Pass 1:** $49/run, full output
+- **Pass 2:** $199/run
+- **Code-Aware Pass 1:** $49/run (BYOK required)
+- **Code-Aware Pass 2:** $199 per spec+plan (BYOK required; customer-selectable subset of the consolidation analysis target set)
 
 ## Status
 
-**Active development.** Phases 0-3h plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation complete (26 tables, 13 migrations). Code-aware backend (3.5b) design landed for Quality Evaluator (3.5b.1) and Pattern & Cluster Analyzer (3.5b.2); 3.5b.3 through 3.5b.7 are placeholder pending their own design PRs. Remaining pre-UI work is the four backend wiring sub-phases of 3.5a (CV upstream, per-tool data availability, per-entry manifest versioning, correction exchange) plus 3.5b design and implementation. 258 non-eval tests passing.
+**Active development.** Phases 0-3h plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation complete (26 tables, 13 migrations). Code-aware backend (3.5b) design complete for Quality Evaluator (3.5b.1), Pattern & Cluster Analyzer (3.5b.2), and MCP server (3.5b.3, including six-tool surface, Zod tool I/O contract, two-tier idempotency, sliding-TTL draft expiry, authentication mechanics, response-driven iteration); 3.5b.4 through 3.5b.7 are placeholder pending their own design PRs. Remaining pre-UI work is the four backend wiring sub-phases of 3.5a (CV upstream, per-tool data availability, per-entry manifest versioning, correction exchange) plus 3.5b.4-7 design and 3.5b implementation. 258 non-eval tests passing.
 
 | Phase | Description | Status |
 |---|---|---|
