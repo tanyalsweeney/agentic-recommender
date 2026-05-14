@@ -878,15 +878,25 @@ implementation):
 - `update_codebase_digest` (clarification response) rejects fields
   outside the prior `requestedUpdates` template in `partialFailures`
 - `revise_codebase_digest` (assistant-driven) handles
-  `apps.{upsert, delete}`, `intentGaps.{upsert, delete}`,
-  `intakePrefills`; returns `affectedEntries` and `affectedCategories`
+  `apps.{create, update, delete}`, `intentGaps.{create, update, delete}`,
+  `intakePrefills` (partial-merge); returns `assignedAppIds`,
+  `assignedIntentGapIds`, `affectedEntries`, `affectedCategories`
+- `apps.update` partial-merge: absent fields preserved, present-value
+  fields updated, explicit null clears nullable fields, required fields
+  cannot be unset
+- `apps.update` with unknown id returns `id_not_found` in
+  `partialFailures` with no `didYouMean`; same for `intentGaps.update`
+  and `appIds` filter on read tools
+- `apps.create` and `intentGaps.create` omit id from input; server
+  assigns uuidv7 returned in `assignedAppIds` / `assignedIntentGapIds`
+  in input order
 - `apps.delete` of an id still referenced in another entry's
   `dependencies.internal` succeeds in one call; response includes a
   non-blocking advisory listing dangling refs (id + displayName +
-  referenceField) and prompting re-add via `apps.upsert` if
+  referencePath) and prompting re-add via `apps.create` if
   unintentional
-- Same-call cleanup (delete + upsert removing the reference) produces
-  no advisory; post-update graph is clean
+- Same-call cleanup (delete + create or update removing the reference)
+  produces no advisory; post-update graph is clean
 - Delete of nonexistent app id returns silent success; `affectedEntries`
   unchanged
 - Dependency reconciliation: union by tool name when `dependencies` and
@@ -896,6 +906,15 @@ implementation):
 - Tool error reporting: HTTP 200 for all valid JSON-RPC tool calls;
   `isError` true when zero entries landed, false otherwise;
   `partialFailures` populated in both cases
+- Strict unknown keys at every nesting level: extra keys produce
+  `unknown_field` in `partialFailures` with `didYouMean` when a close
+  match exists; valid keys still land normally
+- Pre-Zod normalization: leading and trailing whitespace stripped from
+  string fields; `"true"` / `"false"` (case-insensitive) coerced to
+  booleans; numeric strings (`Number.isFinite(parseFloat(v))`) coerced
+  to numbers; `"5px"`, `"NaN"`, `""` produce `type_mismatch`
+- `PartialFailure` path notation: dot-path with bracket indexes (e.g.
+  `apps.update[2].dependencies.external[5].version`)
 - Polling cadence guidance: 90s after `submit_codebase_digest`, 20s
   after `update_codebase_digest` or `revise_codebase_digest`
 
@@ -915,15 +934,26 @@ implementation):
 
 **Implementation:**
 - New `packages/mcp/` package: HTTP framework (Hono or Fastify), MCP
-  SDK if available (or hand-rolled JSON-RPC + SSE), Zod schemas for
-  tool I/O
+  SDK if available (or hand-rolled JSON-RPC + SSE)
+- `packages/mcp/src/schemas/`: per-tool Zod schemas plus shared shapes
+  (`AppEntry`, `AppEntryCreate`, `AppEntryUpdate`, `IntentGap`,
+  `IntentGapCreate`, `IntentGapUpdate`, `IntakePrefills`,
+  `PartialFailure`, `PollGuidance`) matching the Tool I/O contract in
+  spec.md
+- `packages/mcp/src/coerce.ts`: pre-Zod normalization helper (trim
+  strings; case-insensitive `"true"` / `"false"` to boolean; numeric
+  strings to number via `Number.isFinite(parseFloat(v))`; nulls and
+  missing keys untouched). Not Zod's `.coerce.*`.
+- `packages/mcp/src/partial-failure.ts`: `PartialFailure` builder plus
+  `didYouMean` helper (Levenshtein distance up to 2 against the valid
+  set for field names and enum values; never against ids)
 - `packages/mcp/src/auth.ts`: token validation middleware
 - `packages/mcp/src/tools/`: handler per MCP tool (six handlers:
   submit, get_pending_clarifications, update, revise, get_draft,
   estimate)
 - `packages/mcp/src/dangle-reporter.ts`: post-update reference graph
   scan; non-blocking; populates response advisory (id + displayName +
-  referenceField) and persists on the draft for review screen
+  referencePath) and persists on the draft for review screen
   rendering
 - `AppEntry` parser: handles the three-field split (`dependencies`,
   `packageManifests`, `inferenceContext`); union-by-name on
@@ -951,14 +981,17 @@ implementation):
 
 **Acceptance:**
 - All six MCP tools accept valid input and return Zod-validated
-  responses
+  responses matching the Tool I/O contract in spec.md
+- Pre-Zod normalization (`coerce.ts`) and validation policy
+  (`didYouMean` scope, strict unknown keys, `partialFailures` path
+  notation) match spec.md exactly
 - Bearer token auth works end-to-end: generate token → use in MCP
   client config → tool call associates with correct `user_id`
 - Rate limiting kicks in at configured threshold; response includes
   appropriate retry guidance
 - Dangling references: delete-with-dangling-ref succeeds in one MCP
   call; response advisory lists dangling refs and prompts re-add via
-  `apps.upsert` if unintentional; review screen renders dangles with
+  `apps.create` if unintentional; review screen renders dangles with
   neutral framing
 - Coalescing: in-flight Quality Evaluator runs to completion; new MCP
   calls during the run produce a single coalesced follow-up after the
