@@ -607,7 +607,7 @@ Custom helper rather than Zod's `.coerce.*`: Zod's `.coerce.boolean()` truthifie
 
 *Idempotency (`submit_codebase_digest` only):*
 
-The assistant supplies an optional `idempotencyKey` (any unique string, uuidv7 recommended) to dedupe retries. Server stores `{user_id, idempotencyKey} → {request_hash, response}` in Redis with a 24-hour TTL.
+The assistant supplies an optional `idempotencyKey` (any unique string, uuidv7 recommended) to dedupe retries. Server stores `{user_id, idempotencyKey} → {request_hash, response}` in Redis with a 24-hour TTL. The `request_hash` is computed by deterministic JSON canonicalization of the input payload followed by SHA-256; on retry, the new payload is hashed the same way and compared against the stored hash to distinguish a true retry (match) from a collision (mismatch). Hash compute and storage are both rounding error at expected scales.
 
 - Same key + identical request payload: server returns the cached response without re-running the work. No new draft created, no new background evaluation enqueued, no additional BYOK billing.
 - Same key + different request payload: server returns a `partialFailures` entry with `code: "idempotency_collision"` and `isError: true`. The error message instructs the assistant to generate a fresh key for a new intentional submit. Indicates an assistant key-management bug, not user intent.
