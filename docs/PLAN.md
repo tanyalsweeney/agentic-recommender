@@ -906,9 +906,9 @@ implementation):
 - Tool error reporting: HTTP 200 for all valid JSON-RPC tool calls;
   `isError` true when zero entries landed, false otherwise;
   `partialFailures` populated in both cases
-- Strict unknown top-level keys: extra keys produce `unknown_field`
-  in `partialFailures` with `didYouMean` when a close match exists;
-  valid keys still land normally
+- Strict unknown keys at every nesting level: extra keys produce
+  `unknown_field` in `partialFailures` with `didYouMean` when a close
+  match exists; valid keys still land normally
 - Pre-Zod normalization: leading and trailing whitespace stripped from
   string fields; `"true"` / `"false"` (case-insensitive) coerced to
   booleans; numeric strings (`Number.isFinite(parseFloat(v))`) coerced

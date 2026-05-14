@@ -589,7 +589,7 @@ Per-tool Zod schemas live in `packages/mcp/src/schemas/`. Shared shapes and vali
 
 - `partialFailures[].path` is dot-path with bracket indexes.
 - `didYouMean` populated for `unknown_field` and enum-mismatch `invalid_value` via Levenshtein distance up to 2 against the valid set. Never for `id_not_found`. Suggestions only; never auto-applied.
-- Unknown top-level keys: strict. Land in `partialFailures` as `unknown_field`; valid keys land normally.
+- Unknown keys: strict at every nesting level. Land in `partialFailures` as `unknown_field` with the path showing where they appeared; valid keys land normally.
 - `isError`: true if zero entries landed (write tools) or zero meaningful output produced (read tools); false otherwise. `partialFailures` with `isError: false` is informational; assistants must not retry entries with no `didYouMean`.
 
 *Pre-Zod normalization:*
