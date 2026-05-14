@@ -515,9 +515,93 @@ Six MCP tools exposed by our server. Tools split into two control patterns. **Se
 | `submit_codebase_digest` | Creates a new draft. Accepts the full digest payload (intake pre-fills, per-app inventory, intent gaps) plus optional raw package manifests. Server normalizes synchronously and returns draft URL plus `status: "evaluating"`. Quality Evaluator runs as a background job; email on completion. |
 | `get_pending_clarifications` | Returns Quality Evaluator clarification requests per app: current entry state, server-templated request for specific fields, plus free-form clarifying questions. Drives the server-driven clarification loop. |
 | `update_codebase_digest` | Server-driven path. Assistant responds to clarification requests with filled-in field values matching the server's template from `get_pending_clarifications`. Server merges into the affected app entries and re-runs Quality Evaluator on those entries in the background. |
-| `revise_codebase_digest` | Assistant-driven path. Assistant-initiated changes to apps, intent gaps, or intake prefills (new app discovery, displayName fixes, recategorization, freeform edits). Per-section upsert and delete with full-entry shapes. Server re-runs Quality Evaluator on changed entries and Pattern & Cluster Analyzer on affected categories. |
+| `revise_codebase_digest` | Assistant-driven path. Assistant-initiated changes to apps, intent gaps, or intake prefills (new app discovery, displayName fixes, recategorization, freeform edits). Per-section `create` / `update` (partial-merge) / `delete` on apps and intent gaps; partial-merge on intake prefills. Server re-runs Quality Evaluator on changed entries and Pattern & Cluster Analyzer on affected categories. |
 | `get_codebase_draft` | Returns the current state of a draft (digest, quality_summary, cluster_analysis, expiresAt). Lets the assistant inspect server-held state without holding local copies. Optional `appIds` filter narrows the response to specific entries. |
 | `estimate_digest_cost` | Returns an estimated BYOK cost range for a digest payload or draft ID. No LLM call, no state change. |
+
+**Tool input/output contract:**
+
+Per-tool Zod schemas live in `packages/mcp/src/schemas/`. Shared shapes and validation policy below; per-tool envelopes summarized first.
+
+*Per-tool envelopes:*
+
+- `submit_codebase_digest`. **Input:** `digest` (containing `appsToCreate` as array of `AppEntryCreate`, optional `intentGapsToCreate` as array of `IntentGapCreate`, optional `intakePrefills` as `IntakePrefills`) plus optional `idempotencyKey` (shape settled in separate design PR). **Output:** `draftId`, `draftUrl`, `status` set to `evaluating`, `assignedAppIds`, `assignedIntentGapIds`, `expiresAt` (iso8601, +30 days), `pollGuidance`, `isError`, `partialFailures`.
+- `get_pending_clarifications`. **Input:** `draftId`, optional `appIds` filter. **Output:** `clarifications` (each carrying `appId`, `currentEntry` as `AppEntry`, `requestedUpdates` as array of field paths the assistant must fill, `clarifyingQuestions` as array of freeform supporting questions), `pollGuidance`, `isError`, `partialFailures`.
+- `update_codebase_digest`. **Input:** `draftId`, `responses` (each carrying `appId` and `fields` as partial `AppEntry`; `fields` must match the prior `requestedUpdates` template, others land as `outside_template`). **Output:** `affectedEntries`, `pollGuidance`, `isError` (true if `responses` is empty, per existing settled decision), `partialFailures`.
+- `revise_codebase_digest`. **Input:** `draftId`, optional `apps.{create, update, delete}`, optional `intentGaps.{create, update, delete}`, optional `intakePrefills` (partial-merge). **Output:** `assignedAppIds`, `assignedIntentGapIds`, `affectedEntries`, `affectedCategories`, `danglingReferences` (array of `{id, displayName, referencePath}`, advisory per existing referential integrity decision), `pollGuidance`, `isError` (true if no operation landed), `partialFailures`.
+- `get_codebase_draft`. **Input:** `draftId`, optional `appIds` filter (per-id `id_not_found` partialFailure with no `didYouMean` for unknown ids). **Output:** `digest` (filtered if `appIds` provided), `qualitySummary`, `clusterAnalysis` (null until Pattern & Cluster Analyzer completes), `expiresAt`, `isError`, `partialFailures`.
+- `estimate_digest_cost`. **Input:** one of `draftId` or `digest` (neither provided returns `missing_required`). **Output:** `estimatedTokens` (object: input + output + cached counts), `estimatedCostUsd` (object: low + high range), `provider`, `effectiveAsOf` (iso8601 date, provider rate timestamp), `isError`, `partialFailures`.
+
+*Shared shapes:*
+
+`AppEntry`
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Server-generated uuidv7 |
+| `displayName` | string |  |
+| `primaryPurpose` | string |  |
+| `productCategory` | object: name + displayName | `name` is kebab-case machine-readable |
+| `isPrivate` | boolean |  |
+| `path` | string or null |  |
+| `language` | string or null |  |
+| `framework` | string or null |  |
+| `distinguishingCharacteristics` | string or null |  |
+| `dependencies` | object: external + internal | `external` is array of `{name, version: string or null}`; `internal` is array of app ids |
+| `inputs` | array of string, or null | HTTP endpoints, queue topics, file watches |
+| `outputs` | array of string, or null |  |
+| `externalIntegrations` | array of string, or null |  |
+| `observedPatterns` | array of string, or null |  |
+| `packageManifests` | string or null | Raw; parsed server-side then discarded |
+| `inferenceContext` | object: readmeExcerpts + fileTree, or null | Consumed by Quality Evaluator then discarded |
+| `qualityScore` | integer 1-5, or null | Populated by Quality Evaluator |
+| `qualityFlags` | array of string, or null | Populated by Quality Evaluator |
+| `pendingClarifications` | array of string, or null | Populated by Quality Evaluator |
+
+`AppEntryCreate` is `AppEntry` minus `id`, `qualityScore`, `qualityFlags`, `pendingClarifications`. `AppEntryUpdate` is `AppEntry` partial with `id` required, partial-merge semantics (absent = no change, value = set, explicit null = clear nullable fields only).
+
+`IntentGap`
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Server-generated uuidv7 if freeform; matched catalog id otherwise |
+| `questionId` | string or null | Present if matched from `manifest_intent_gap_questions` |
+| `questionText` | string |  |
+| `selectedOptions` | array of string, or null |  |
+| `freeTextAnswer` | string or null |  |
+
+`IntentGapCreate` and `IntentGapUpdate` parallel the `AppEntryCreate` / `AppEntryUpdate` pattern.
+
+`IntakePrefills`: one slot per intake step (see Intake flow > Intake steps): `orchestrationPattern`, `platformDeployment`, `externalIntegrations`, `dataFileHandling`, `memoryState`, `autonomyHumanInLoop`, `scale`, `greenfieldBrownfield`, `failureTolerance`, `modelPreferences`, `tools`. Each slot is string or array of string (per step), nullable. Update is partial `IntakePrefills`: absent = no change, value = set, null = clear.
+
+`PartialFailure`
+
+| Field | Type | Notes |
+|---|---|---|
+| `path` | string | Dot-path with bracket indexes, e.g. `apps.update[2].dependencies.external[5].version` |
+| `code` | enum | One of `unknown_field`, `type_mismatch`, `missing_required`, `outside_template` (`update_codebase_digest` only), `invalid_value`, `duplicate_id`, `id_not_found` |
+| `message` | string | Human-readable |
+| `didYouMean` | array of string, or null | Populated for `unknown_field` and enum-mismatch `invalid_value` only; never for `id_not_found` |
+
+`PollGuidance`: object with `cadenceSeconds` (integer) and `nextTool` (string, tool name to call next). Admin dashboard configurable.
+
+*Validation policy:*
+
+- `partialFailures[].path` is dot-path with bracket indexes.
+- `didYouMean` populated for `unknown_field` and enum-mismatch `invalid_value` via Levenshtein distance up to 2 against the valid set. Never for `id_not_found`. Suggestions only; never auto-applied.
+- Unknown top-level keys: strict. Land in `partialFailures` as `unknown_field`; valid keys land normally.
+- `isError`: true if zero entries landed (write tools) or zero meaningful output produced (read tools); false otherwise. `partialFailures` with `isError: false` is informational; assistants must not retry entries with no `didYouMean`.
+
+*Pre-Zod normalization:*
+
+A server-side helper (`coerce.ts`) runs before Zod validation:
+
+- Strings: whitespace-trimmed.
+- Booleans: `"true"`, `"True"`, `"false"`, `"False"` coerced; other strings produce `type_mismatch`. Native booleans pass through.
+- Numbers: strings where `Number.isFinite(parseFloat(v))` returns true are coerced; `""`, `"NaN"`, `"5px"` produce `type_mismatch`. Native numbers pass through.
+- Nulls and missing keys: untouched.
+
+Custom helper rather than Zod's `.coerce.*`: Zod's `.coerce.boolean()` truthifies any non-empty string and would silently accept `"false"` as `true`.
 
 Tool responses include forward-looking guidance directing the assistant's next steps. The `submit_codebase_digest` response advises polling `get_pending_clarifications` at a recommended cadence and responding via `update_codebase_digest` until clarifications are addressed. Recommended polling cadences (configurable via admin dashboard): 90 seconds after `submit_codebase_digest` (long initial wait of 10 to 40 minutes); 20 seconds after `update_codebase_digest` or `revise_codebase_digest` (short re-evaluation wait of 30 seconds to 2 minutes). Capable agentic assistants follow the guidance autonomously; less capable ones surface the text for the user to act on.
 
@@ -1403,13 +1487,17 @@ Core tables. All use PostgreSQL. Drizzle ORM for migrations and type-safe querie
 | MCP server hosting | Dedicated `packages/mcp/` service on Railway (not Vercel), HTTP+SSE transport. Shares `packages/shared/`, `packages/agents/`, and the workers' Redis. | First user will hit the MCP endpoint, so extracting later would force a customer-visible URL migration. Vercel ruled out because serverless function timeouts fit poorly with HTTP+SSE and long-running responses. | 2026-05-10 |
 | MCP authentication mechanics | Bearer token in HTTP header (`agent12_pat_<32 bytes base64url>`). SHA-256 hash stored in `user_api_tokens.token_hash`; raw tokens never persisted. Soft-delete via `revoked_at`. Per-token rate limit (60 RPM default, Redis-backed). Debounced `last_used_at`. 401 with generic message on miss. | Token format follows GitHub PAT pattern for secret-scanner recognition and namespace reservation. SHA-256 is sufficient for high-entropy tokens; slow hashes are overkill. Rate-limit defaults are loose (steady-state polling stays under 4 RPM) but bound runaway integrations. Generic 401 avoids leaking validation details. | 2026-05-10 |
 | MCP response-driven iteration pattern | Tool responses include forward-looking guidance directing the assistant's next steps. Polling cadence is split by context: 90s after `submit_codebase_digest` (10-40min initial wait), 20s after `update_codebase_digest` or `revise_codebase_digest` (30s-2min re-eval wait). Long-polling explicitly rejected. | MCP servers can't push to clients, so iteration relies on capable agentic assistants reading our response payloads. Split cadence avoids burning ~100 polls during the long initial wait when nothing changes for tens of minutes. Long-polling rejected because the wait exceeds typical connection lifetimes and would require chained calls anyway. | 2026-05-10, updated 2026-05-12 |
-| MCP tool surface split (server-driven vs assistant-driven) | Six tools: `submit_codebase_digest`, `get_pending_clarifications`, `update_codebase_digest`, `revise_codebase_digest`, `get_codebase_draft`, `estimate_digest_cost`. Server-driven path (`get_pending_clarifications` + `update_codebase_digest`) is templated: server identifies gaps, ships request shapes, assistant fills in. Assistant-driven path (`revise_codebase_digest`) takes full-entry upserts and deletes for changes the server cannot anticipate (new app discovery, freeform revisions). | Separating the two paths gives each tool clean unambiguous semantics. Server-driven covers the dominant Quality Evaluator clarification loop and removes merge ambiguity (assistant fills in exactly what server asked for). Assistant-driven escape hatch covers cases server cannot template ahead of time. Many simple tools matches MCP convention. | 2026-05-12 |
-| Internal dependency referential integrity | Loosely enforced. `apps.delete` always succeeds in one MCP call; the response advises the assistant of any resulting dangling `dependencies.internal` references (id + displayName) and prompts re-adding via `apps.upsert` if unintentional. Dangles also render on the review screen as "References an app outside this assessment scope." | Accommodates, for example, a deprecated line of business whose references haven't been refactored. | 2026-05-12 |
-| Background eval concurrency | Queue with coalescing. In-flight Quality Evaluator and Pattern & Cluster Analyzer jobs run to completion; they are not canceled when new MCP calls arrive. The server applies the new call's upsert/delete to draft state immediately (incremental, not blocked) and registers a pending follow-up eval scope. If multiple MCP calls land while an eval is still running, their changes UNION into one pending follow-up. When the in-flight eval completes, the server enqueues the coalesced follow-up against the latest state. One email when all pending evals complete. | Cancellation wastes user BYOK on partially-completed work; queue lets started work finish cheaply. Coalescing prevents the unbounded-queue failure mode (5 rapid updates produce 1 follow-up, not 5). Existing re-eval scope policy (changed entries only) means in-flight work against pre-update L2 group context produces results consistent with the follow-up. | 2026-05-12 |
+| MCP tool surface split (server-driven vs assistant-driven) | Six tools: `submit_codebase_digest`, `get_pending_clarifications`, `update_codebase_digest`, `revise_codebase_digest`, `get_codebase_draft`, `estimate_digest_cost`. Server-driven path (`get_pending_clarifications` + `update_codebase_digest`) is templated: server identifies gaps, ships request shapes, assistant fills in. Assistant-driven path (`revise_codebase_digest`) takes create / update (partial-merge) / delete on apps and intent gaps, plus partial-merge on intake prefills, for changes the server cannot anticipate (new app discovery, freeform revisions). | Separating the two paths gives each tool clean unambiguous semantics. Server-driven covers the dominant Quality Evaluator clarification loop and removes merge ambiguity (assistant fills in exactly what server asked for). Assistant-driven escape hatch covers cases server cannot template ahead of time. Many simple tools matches MCP convention. | 2026-05-12 |
+| Internal dependency referential integrity | Loosely enforced. `apps.delete` always succeeds in one MCP call; the response advises the assistant of any resulting dangling `dependencies.internal` references (id + displayName) and prompts re-adding via `apps.create` if unintentional. Dangles also render on the review screen as "References an app outside this assessment scope." | Accommodates, for example, a deprecated line of business whose references haven't been refactored. | 2026-05-12 |
+| Background eval concurrency | Queue with coalescing. In-flight Quality Evaluator and Pattern & Cluster Analyzer jobs run to completion; they are not canceled when new MCP calls arrive. The server applies the new call's create / update / delete to draft state immediately (incremental, not blocked) and registers a pending follow-up eval scope. If multiple MCP calls land while an eval is still running, their changes UNION into one pending follow-up. When the in-flight eval completes, the server enqueues the coalesced follow-up against the latest state. One email when all pending evals complete. | Cancellation wastes user BYOK on partially-completed work; queue lets started work finish cheaply. Coalescing prevents the unbounded-queue failure mode (5 rapid updates produce 1 follow-up, not 5). Existing re-eval scope policy (changed entries only) means in-flight work against pre-update L2 group context produces results consistent with the follow-up. | 2026-05-12 |
 | Tool error reporting (per-entry validation failures) | Follow MCP Tool Execution Errors convention (modelcontextprotocol.io/specification/2025-11-25/server/tools, Error Handling section). HTTP 200 for all valid JSON-RPC tool calls. The JSON-RPC `result` field's `isError` flag distinguishes "everything failed" (`true`, zero entries landed) from "anything landed" (`false`, including partial success). `partialFailures` carries per-entry detail in both cases. Protocol-level errors (invalid `draftId`, auth fail, malformed top-level JSON, unknown tool) use HTTP 4xx + JSON-RPC `error` per the same spec section. | Per MCP spec, input validation errors are Tool Execution Errors, not protocol errors. HTTP-status-code branching is a misframing for MCP; `isError` is the protocol's mechanism for application-level outcome signaling. Uniform response shape across success / partial / total-failure simplifies assistant retry logic. | 2026-05-12 |
 | Empty update call behavior | Strict. `update_codebase_digest` or `revise_codebase_digest` with all sections empty or absent returns HTTP 200 with `isError: true` and content text directing the assistant to use the MCP `ping` method for connectivity checks or include at least one operation. No background jobs enqueued. | MCP has a dedicated `ping` method at the protocol level (modelcontextprotocol.io/specification/2025-11-25/basic/utilities/ping) for connectivity verification, so empty updates are not legitimate ping traffic. Treating them as bugs surfaces assistant logic errors at the call site with actionable feedback. | 2026-05-12 |
 | Raw artifact location and dependency reconciliation | Three-field split on `AppEntry`: `dependencies` (structured, persistent), `packageManifests` (raw input parsed server-side into `dependencies`, then discarded), `inferenceContext` (raw README excerpts and file tree slices consumed by the Quality Evaluator, then discarded). When both `dependencies` and `packageManifests` are present, the server unions by tool name (wider net for downstream enrichment) and trusts `dependencies` on version conflict (assistant's considered output wins, no rejection). | Three fields capture three distinct lifecycles. Union by name widens the tool set for Quality Evaluator's L3 enrichment chain. Version precision does not drive recommendation quality (Wave 1-3 reasons about target architecture from app shape, not exact current-version forensics), so version-conflict reconciliation does not earn its complexity. Trust `dependencies` on conflict so assistant intent wins; manifest is the fallback parse path. | 2026-05-12 |
 | Delete of nonexistent app id | Silent success. `revise_codebase_digest`'s `apps.delete` of an id that does not exist in the draft completes without error. The end state ("id does not exist") is satisfied either way. Counts toward `affectedEntries` only when an actual entry was removed. | Idempotent by construction; network retries of the same delete succeed without error. Strict here would not protect downstream consumers (no dangling state results from missing-id deletes) and would not improve recommendation quality. Matches SQL `DELETE WHERE id = X` semantics. | 2026-05-12 |
+| Tool I/O contract | Per-tool Zod schemas in `packages/mcp/src/schemas/`. Shared shapes (`AppEntry`, `IntentGap`, `IntakePrefills`, `PartialFailure`, `PollGuidance`) and validation policy specified inline in the Code-aware intake section. `partialFailures[].path` uses dot-path with bracket indexes. | Spec carries authoritative shapes and policy without per-tool field duplication; runtime validation lives in code. | 2026-05-13 |
+| Per-section update operations | Apps and intent gaps use separate `create` / `update` / `delete` operations on `revise_codebase_digest`. `create` has no id (server generates); `update` requires id and is partial-merge (absent = no change, value = set, explicit null = clear nullable fields); `delete` is idempotent. `intakePrefills` follows the same partial-merge rule. | Separate ops prevent silent create-with-wild-id; partial-merge keeps clarification-response payloads small. | 2026-05-13 |
+| Pre-Zod normalization rules | Server normalizes input before Zod validation: trim strings, coerce case-insensitive `"true"`/`"false"` to booleans, coerce numeric strings where `Number.isFinite(parseFloat(v))` to numbers, leave nulls and missing keys untouched. Custom `coerce.ts` helper, not Zod's built-in `.coerce.*`. | Zod's `.coerce.boolean()` truthifies any non-empty string and silently accepts `"false"` as `true`; custom helper coerces unambiguous cases without that footgun. | 2026-05-13 |
+| `didYouMean` scope and `partialFailures` contract | `didYouMean` populated only for `unknown_field` and enum-mismatch `invalid_value` via Levenshtein up to 2. Never for `id_not_found`. Suggestions only; server never auto-applies. `partialFailures` with `isError: false` is informational; assistants must not retry entries with no `didYouMean`. | Suggesting close-but-wrong ids invites silent dependency graph corruption from autoloop assistants; recovery upside is small (one missed internal dep) and downside is invisible. | 2026-05-13 |
 
 ### Compatibility Validator
 
