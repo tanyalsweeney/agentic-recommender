@@ -1,25 +1,22 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-12)
+## Current state (2026-05-14)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
-complete.** Code-aware backend (Phase 3.5b) **design landed for 3.5b.1
-(Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer), and most of
-3.5b.3 (MCP hosting + auth + iteration + 6-tool surface with
-server-driven vs assistant-driven control patterns + 7 behavioral
-decisions on update semantics)**. 3.5b.3 remaining open: tenant
-context propagation shape, idempotency for `submit_codebase_digest`,
-30-day expiry job mechanics, Tool I/O Zod schemas with validation
-policy, field-level error response shapes (top-level pattern settled
-via MCP `isError` convention). 3.5b.4 through 3.5b.7 are placeholder
-bullets pending their own design PRs. Remaining pre-UI work is the
-four backend wiring sub-phases of 3.5a (CV upstream, per-tool data
-availability, per-entry manifest versioning, correction exchange),
-plus completion of 3.5b design and implementation of the 3.5b backend
-agents and MCP server, plus a handful of P1 behavior items tracked in
-TODOS.md.
+complete.** Code-aware backend (Phase 3.5b) **design complete for
+3.5b.1 (Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer), and
+3.5b.3 (MCP server: six-tool surface, full Tool I/O Zod contract with
+validation policy and pre-Zod normalization, two-tier idempotency
+dedup, sliding-TTL draft expiry with hard cap, authentication
+mechanics, response-driven iteration).** 3.5b.4 through 3.5b.7 are
+placeholder bullets pending their own design PRs. Remaining pre-UI
+work is the four backend wiring sub-phases of 3.5a (CV upstream,
+per-tool data availability, per-entry manifest versioning, correction
+exchange), plus 3.5b.4-7 design, plus implementation of the 3.5b
+backend agents and MCP server, plus a handful of P1 behavior items
+tracked in TODOS.md.
 
-**Recent merges (2026-05-07 to 2026-05-12):**
+**Recent merges (2026-05-07 to 2026-05-14):**
 - **PR #56**: Phase 3.4 — static analysis hardening (ESLint flat config,
   tsconfig `noUnusedLocals` / `noUnusedParameters`, GitHub Actions CI with
   Postgres + Redis services). Pre-PR redteam pass cadence documented in
@@ -122,6 +119,34 @@ TODOS.md.
   freshness-badges removal, Tool I/O Zod schemas + validation policy
   (next major design PR), remaining 3.5b.3 design (tenant context
   propagation, idempotency, 30-day expiry job).
+- **PR #72**: Doc cleanup. Drops the per-dependency freshness badges
+  subsection (per-dep refresh UI was theater; recommendation quality
+  is set at pipeline-time CV, not by in-review per-dep refresh) and
+  fixes the `cluster_analysis` data model row drift (PR #66 added the
+  column in body but never updated the data model row).
+- **PR #73**: Phase 3.5b.3 design (MCP Tool input/output contract).
+  Adds per-tool envelopes, shared shapes (`AppEntry`, `IntentGap`,
+  `IntakePrefills`, `PartialFailure`, `PollGuidance`), validation
+  policy (dot-path notation, `didYouMean` scope limited to field
+  names and enum values, strict unknown keys at every nesting level,
+  informational `partialFailures` contract), pre-Zod normalization
+  rules (custom trim + bool/number coercion, not Zod `.coerce.*`
+  because `.coerce.boolean()` truthifies `"false"` to `true`). Apps
+  and intent gaps moved from upsert/delete to separate
+  create/update/delete operations with partial-merge on update.
+- **PR #74**: Phase 3.5b.3 design (remaining decisions). Two-tier
+  idempotency (Tier 1 explicit `idempotencyKey`, 24h TTL, Stripe
+  collision pattern; Tier 2 implicit `{user_id, request_hash}` with
+  5-min default TTL per-tenant configurable, catches naive retries
+  for free; explicit beats implicit). Sliding-TTL draft expiry (every
+  access bumps `expires_at` to `now() + sliding_ttl_days`, capped at
+  `created_at + max_lifetime_days`, both per-tenant configurable
+  defaults 30/90). Daily BullMQ cleanup at 3am UTC with in-flight job
+  cancellation. Deletes the stale "Tenant context propagation"
+  subsection (described an upstream context-to-MCP flow that
+  conflicts with digest-as-pure-inventory; tenant context flows via
+  Wave 0 only). Two new admin config rows, one P3 TODO for
+  pre-expiry warning email at hard cap.
 
 **Spec PRs landed in earlier session blocks:**
 - PR #52: Phase 3.5a backend wiring closure pass (specced)
@@ -131,20 +156,6 @@ TODOS.md.
 - PR #55: Code-aware pricing (Pass 1 $49, Pass 2 $199 per spec+plan)
 
 **Queued PRs (not yet started):**
-- **Tool I/O Zod schemas + validation policy (next major design PR)**:
-  field-level shapes per tool, `partialFailures` shape, `didYouMean`
-  enhancement on rejections, pre-Zod normalization rules (whitespace
-  trim, Zod `.coerce.*` for safe type coercions). Covers the
-  field-level detail behind 3.5b.3's tool surface.
-- **3.5b.3 remaining design PR(s)** (after Tool I/O): tenant context
-  propagation shape; idempotency for `submit_codebase_digest`;
-  30-day expiry job mechanics (BullMQ scheduled job in workers
-  package).
-- **Doc cleanup PRs**: freshness-badges removal (spec body subsection
-  + corresponding settled-decision row + Phase 4g implications; drops
-  per-dep refresh UI as theater per the recommendation-quality lens);
-  `cluster_analysis` data model row drift fix (PR #66 body added the
-  column but the data model row in spec.md never listed it).
 - **3.5b.4 onward design PRs**: 3.5b.4 (manifest_intent_gap_questions
   seeder + Manifest Gatekeeper extension), 3.5b.5 (migration-mapping
   prompt fragment + Pass 2 per-target invocation), 3.5b.6 (CV
@@ -224,17 +235,10 @@ must include `ENCRYPTION_KEY` (32-byte base64) and `ANTHROPIC_API_KEY`.
 ## What's immediately next
 
 **Code-aware backend (Phase 3.5b) — design path:**
-- **3.5b.3 remaining decisions** (5 open after PR #67):
-  - Tenant context propagation shape (full prompt fragment, structured
-    constraints, references)
-  - Idempotency for `submit_codebase_digest` (key shape, retry semantics)
-  - 30-day expiry job mechanics (BullMQ scheduled job in workers
-    package; cadence, cleanup logic, edge cases for submitted vs
-    unsubmitted drafts)
-  - Tool input/output Zod schemas (exact shape per tool)
-  - Error response patterns (how errors surface to assistant)
+- 3.5b.3 design fully landed (PR #73 Tool I/O contract + PR #74 the
+  remaining decisions). Implementation gating now removed.
 - 3.5b.4 through 3.5b.7 design (placeholder bullets in PLAN; will land
-  in their own focused PRs after 3.5b.3 design completes)
+  in their own focused PRs)
 
 **Code-aware backend (Phase 3.5b) — implementation path** (gated on
 design completion):
@@ -297,7 +301,99 @@ where product-level was standardized in PR #54).
 - **`GITHUB_TOKEN`** and **`NVD_API_KEY`** (both free): required before
   3h production traffic for CV API integration
 
-## Architecture decisions made this session block (2026-05-07 to 2026-05-10)
+## Architecture decisions made this session block (2026-05-12 to 2026-05-14)
+
+**MCP Tool I/O contract format (2026-05-13):** Per-tool envelopes
+described in prose-and-tables; shared shapes (`AppEntry`, `IntentGap`,
+`IntakePrefills`, `PartialFailure`, `PollGuidance`) as markdown
+tables. Initial draft used TypeScript code blocks; rejected because
+the rest of the spec uses prose and tables exclusively for structured
+shapes. Runtime Zod validation still lives in
+`packages/mcp/src/schemas/`; the spec describes the contract in
+human-readable form like the rest.
+
+**Strict unknown keys at every nesting level (2026-05-13):** The
+outcome-lens reasoning that justified strict-with-didYouMean
+validation (scenario B: assistant typos a useful field name, strict
+recovers it via suggestion, loose silently degrades the digest)
+applies equally to nested keys. Initial wording "top-level keys" was
+narrower than the actual rule. Corrected to apply at every nesting
+level; the dot-path notation in `partialFailures.path` was already
+designed assuming nested keys can be flagged.
+
+**didYouMean excludes id matching (2026-05-13):** Field-name and
+enum-value typos get close-match suggestions via Levenshtein up to 2.
+App ids do NOT get suggestions even on `id_not_found`. Asymmetric
+payoff: small upside (recovering one typo'd internal dep on one
+entry out of dozens) versus real downside (autoloop assistant grabs
+the suggestion without verifying, dependency graph silently corrupts,
+digest looks structurally correct while quietly being wrong).
+
+**Pre-Zod normalization, custom helper (2026-05-13):** Whitespace
+trim on strings, case-insensitive `"true"`/`"false"` to boolean,
+numeric strings to number via `Number.isFinite(parseFloat(v))`, nulls
+and missing keys untouched. NOT Zod's built-in `.coerce.*`:
+`.coerce.boolean()` truthifies any non-empty string and would
+silently accept `"false"` as `true`. Custom helper handles the
+unambiguous cases without that footgun.
+
+**Two-tier idempotency (2026-05-14):** Tier 1 explicit
+`idempotencyKey` (Stripe pattern, 24h TTL, hash-comparison collision
+detection). Tier 2 implicit `{user_id, request_hash}` with 5-min
+default TTL (per-tenant configurable) catches naive retries from
+assistants that don't supply a key. Hash compute and Redis storage
+are both rounding error; BYOK duplicate charges have no refund path
+unlike Stripe's card refunds, so cheap implicit protection of naive
+users is worth the small implementation cost. Override via fresh
+`idempotencyKey` (explicit beats implicit). Initially specced as
+Tier 1 only; reversed mid-PR after re-examining cost vs benefit with
+the outcome lens.
+
+**Sliding-TTL draft expiry with hard cap (2026-05-14):** Every
+access (read or write, MCP or web UI) bumps `expires_at` to `now() +
+sliding_ttl_days` (default 30, per-tenant configurable). Capped at
+`created_at + max_lifetime_days` (default 90, per-tenant
+configurable). Hard cap prevents indefinite retention for privacy
+and storage; sliding TTL accommodates real corporate workflow
+timelines (multi-week internal review, change management). Daily
+BullMQ cleanup at 3am UTC with in-flight Quality Evaluator and
+Pattern & Cluster Analyzer cancellation. Pre-expiry warning email
+queued as P3.
+
+**Tenant context propagation cleanup (2026-05-14):** Deleted the
+"Tenant context propagation" subsection that described an upstream
+context-to-MCP flow. Two reasons it was wrong: (1) digest production
+is a pure inventory of what exists, not what the user should build
+on; tenant constraints apply at the recommendation layer (Wave 1+),
+not at intake. (2) The subsection name said "tenant communication
+context" but described the structured tenant context fields; the
+two concepts are distinct (Wave 0 vs Pass 2 render layer). No
+replacement subsection needed; existing Wave 0 mechanism handles
+tenant context injection uniformly for text-intake and code-aware.
+
+**No orchestrator agent (clarified 2026-05-13):** The spec is
+explicit at [line 874](docs/spec.md#L874): "No LLM acts as an
+orchestrator at any level; agent calls are leaf nodes." This is
+worth surfacing because it trips people up when "Orchestration" is
+the name of a Wave 1 agent (that agent recommends orchestration
+patterns; it doesn't orchestrate our pipeline). Context flows via
+deterministic code-routing at prompt assembly time: structured
+tenant context goes to every Wave 1+ agent uniformly; tenant
+communication context goes only to render-layer agents (Pass 1 TW +
+Pass 2 SS + PS). The pattern is enforced in source, not by an
+agent.
+
+**Outcome-lens framing (recurring this session block):** Multiple
+design decisions resolved by asking "which produces a better /
+faster / lower-token-cost recommendation?" instead of "which matches
+design principle X?" Examples: strict-vs-loose validation
+(scenario-by-scenario outcome math beat Postel's law); reversing the
+Stripe-only-idempotency concession (cost analysis showed implicit
+dedup was free, BYOK duplicate cost is real and unrecoverable);
+didYouMean id-matching rejection (asymmetric payoff favored skipping
+the suggestions). Captured as a feedback memory.
+
+## Architecture decisions made in earlier session block (2026-05-07 to 2026-05-10)
 
 **MCP server hosting (2026-05-10):** Dedicated service in
 `packages/mcp/` deployed to Railway, NOT Vercel. Recommendation
