@@ -1,6 +1,6 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-15)
+## Current state (2026-05-16)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
 complete.** Code-aware backend (Phase 3.5b) **design complete for
@@ -9,15 +9,18 @@ complete.** Code-aware backend (Phase 3.5b) **design complete for
 validation policy and pre-Zod normalization, two-tier idempotency
 dedup, sliding-TTL draft expiry with hard cap, authentication
 mechanics, response-driven iteration), and 3.5b.4 (pre-digest intent
-collection plus Manifest Gatekeeper extension).** New Phase 3.5c
-(agent slot + variant abstraction) added as code-aware fork-readiness
-infrastructure. 3.5b.5 through 3.5b.7 are placeholder bullets pending
-their own design PRs. Remaining pre-UI work: the four backend wiring
-sub-phases of 3.5a (CV upstream, per-tool data availability,
-per-entry manifest versioning, correction exchange); 3.5b.5-7 design;
-implementation of the 3.5b backend agents and MCP server;
-implementation of 3.5c; plus a handful of P1 behavior items tracked
-in TODOS.md.
+collection plus Manifest Gatekeeper extension, plus five new per-app
+inferential fields on `AppEntry`, plus multi-part submission with
+`final: true` signal, idle-timeout backstop, and opt-in
+`triggerEvalNow` mid-stream eval; deferred-eval-by-default).** New
+Phase 3.5c (agent slot + variant abstraction) added as code-aware
+fork-readiness infrastructure. 3.5b.5 through 3.5b.7 are placeholder
+bullets pending their own design PRs. Remaining pre-UI work: the four
+backend wiring sub-phases of 3.5a (CV upstream, per-tool data
+availability, per-entry manifest versioning, correction exchange);
+3.5b.5-7 design; implementation of the 3.5b backend agents and MCP
+server; implementation of 3.5c; plus a handful of P1 behavior items
+tracked in TODOS.md.
 
 **Recent merges (2026-05-09 to 2026-05-14):**
 - **PR #63**: Free-tier BYOK gate spec (1 system-paid lifetime trial then
@@ -362,6 +365,16 @@ Older decisions live in [spec.md Settled decisions](spec.md) (canonical), PR des
 *Agent slot + variant abstraction.* See spec. Gut on long-term call: 3-5 of 8-10 Wave 1+ agents will likely benefit from code-aware-specific reasoning. Building the hook now (~3-4 days) avoids ~2-3x refactor cost later.
 
 *User-correctable accuracy lens.* Captured as a feedback memory. Calibrate accuracy targets to 85-90% (not 100%) for inference steps with downstream user-review surface. Asymmetric-payoff arguments apply only to flows the user never sees. Recalibrated several pushbacks this session.
+
+**2026-05-16**
+
+*Per-app inferential field expansion.* See spec. `AppEntry` gains five fields (`currentDecisionMaking`, `humanInTheLoop`, `stateAndMemory`, `dataSensitivity`, `failureModes`) beyond identification and interface metadata. User flagged that tool manifests + interfaces alone weren't enough to recommend where agentic upgrades should land; the new fields give Wave 1+ agents direct signal on the agentic-upgrade opportunity per app rather than forcing reverse-engineering from indirect signals.
+
+*Multi-part submission as first-class pattern.* See spec. Assistants pace large or deep digests across multiple MCP calls; `submit_codebase_digest` returns `intake-in-progress`; subsequent `revise_codebase_digest` parts apply incrementally without triggering eval; `final: true` (on submit for single-shot, on revise for multi-part) flips status to `evaluating` and enqueues full eval. Idle-timeout backstop (30 min default) catches assistants that crash mid-intake.
+
+*Deferred eval by default + opt-in mid-stream Quality Evaluator.* See spec settled-decision row updates. Quality Evaluator and Pattern & Cluster Analyzer both defer to `final: true` (or idle timeout). User's framing: "wasteful to start eval before we have all the parts." Single-pass eval against complete inventory saves ~60-80% tokens on partial-submission flows. Mid-stream Quality Evaluator opt-in via `triggerEvalNow: true` on `revise_codebase_digest` for assistants that want per-app feedback before composing more parts; Pattern & Cluster Analyzer never fires mid-stream regardless of flag.
+
+*Empty revise body now valid with signal flags.* Updated settled-decision row. `revise_codebase_digest` with empty body remains an error UNLESS accompanied by `final: true` or `triggerEvalNow: true`; signal flags are first-class purposes for an otherwise-empty call.
 
 ## Collaboration notes
 
