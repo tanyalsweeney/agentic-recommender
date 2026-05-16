@@ -1,5 +1,27 @@
 # Handoff — Agentic Architecture Recommender
 
+## Next session: follow-up PR for #77 design corrections
+
+After PR #77 (per-app schema + multi-part submission) merges, open a follow-up PR with these six course corrections from the 2026-05-16 pushback pass. New branch name suggestion: `tsweeney/spec-3.5b.4-pushback-corrections`.
+
+1. **Drop fields 3-5 from `AppEntry`.** Keep `currentDecisionMaking` and `humanInTheLoop` only. Remove `stateAndMemory`, `dataSensitivity`, `failureModes`. They're partially derivable from existing fields (dependencies, observedPatterns, externalIntegrations, isPrivate) and the marginal value did not justify the per-app cognitive load and assistant variance.
+
+2. **Default `final: true` on `submit_codebase_digest`.** Multi-part assistants set `final: false` on initial submit and intermediate revises; the final revise sets `final: true` (or omits, default true). Single-shot assistants pay zero friction. Tool description front-loads multi-part as the recommended path for digests over ~10 apps so multi-part stays discoverable.
+
+3. **Add idempotency to `revise_codebase_digest`.** Tier 2 hash-based implicit dedup keyed on `{user_id, draftId, payload_hash}` with a short window (5 min default, per-tenant configurable). Explicit `idempotencyKey` (Tier 1) optional. Closes the network-retry duplicate-creation gap that multi-part makes much more common than single-shot.
+
+4. **Re-eval scope on `final: true`.** Include apps whose `productCategory` peer set shifted since their last eval, not just changed entries. Prevents stale scoring on apps that were eval'd via mid-stream `triggerEvalNow` against a thin L2 group context and never re-evaluated as the inventory grew.
+
+5. **Email-only URL provisioning.** Draft URL no longer surfaced to the user via the assistant chat. Submit response still includes URL (for assistant introspection); response guidance directs assistant to tell user "I've submitted; you'll get an email when ready." User's first sight of the URL is the completion email. Avoids the partial-state-review-screen problem.
+
+6. **One-line example output per inferential field.** Add example outputs in spec for the two remaining new fields (`currentDecisionMaking`, `humanInTheLoop`) plus the existing inferential fields where it adds value (`primaryPurpose`, `distinguishingCharacteristics`). Reduces assistant variance.
+
+Source: 2026-05-16 critical-review pass at the user's explicit request ("did you push back on these changes all you want to"). #1 is a backout of an overcommit I should have pushed harder on. #2-#3 are real correctness fixes. #4-#6 are UX/discipline tightening. All are in spec/PLAN/handoff territory; no code touched.
+
+Approach: single focused commit per the doc-style "tight wins" rule. PR title and body should make clear this is a course correction on #77.
+
+---
+
 ## Current state (2026-05-16)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
