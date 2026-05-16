@@ -1077,7 +1077,7 @@ architecture.
 - Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
 - Pre-PR redteam pass per CLAUDE.md cadence
 
-### 3.5b.4. Pre-digest intent collection + Manifest Gatekeeper extension `[Upcoming]`
+### 3.5b.4. Pre-digest intent + per-app schema + multi-part submission `[Upcoming]`
 
 Seed the pre-digest intent question catalog (2 entries at MVP). Build
 the bimodal collection paths (web UI form, MCP-payload fields).
@@ -1185,6 +1185,96 @@ answer patterns to curated options over time. See spec.md
   categories on canonical eval scenarios
 - Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
 - Pre-PR redteam pass per CLAUDE.md cadence
+
+**Per-app schema expansion (rolled in):**
+- `AppEntry` gains five inferential fields, all `string or null`,
+  populated by the assistant during digest production: `currentDecisionMaking`,
+  `humanInTheLoop`, `stateAndMemory`, `dataSensitivity`, `failureModes`.
+  Field semantics per spec.md "Per-app inventory."
+- `AppEntryCreate` inherits the new fields. `AppEntryUpdate` partial-merge
+  semantics apply (absent = no change, value = set, explicit null = clear
+  for nullable fields).
+- Quality Evaluator L3 enrichment considers the new fields when present;
+  absent or weak values fall through to `pendingClarifications` for the
+  assistant's clarification loop.
+
+**Multi-part submission and deferred eval (rolled in):**
+- `submit_codebase_digest` accepts optional `final: true` on input.
+  When set, server flips draft status to `evaluating` immediately and
+  enqueues Quality Evaluator + Pattern & Cluster Analyzer. When absent,
+  status is `intake-in-progress`.
+- `revise_codebase_digest` accepts `final: true` (intake complete, full
+  eval) and optional `triggerEvalNow: true` (mid-stream Quality
+  Evaluator only; Pattern & Cluster Analyzer still defers).
+- Empty `revise_codebase_digest` body is valid IFF accompanied by
+  `final: true` or `triggerEvalNow: true`.
+- Idle-timeout backstop: BullMQ scheduled job sweeps `intake-in-progress`
+  drafts with `updated_at < now() - multi_part_idle_timeout_minutes`
+  (default 30, per-tenant configurable), flips status to `evaluating`,
+  enqueues eval, sets a cut-short flag on the completion email.
+- Token savings on partial-submission flows: 60-80% versus firing eval
+  per part.
+
+**Tests first (additions):**
+- `AppEntry` Zod validation passes for the five new fields with set or
+  null values; `AppEntryUpdate` partial-merge correctly clears, sets,
+  and preserves each
+- `submit_codebase_digest` with `final: true` returns status `evaluating`
+  and enqueues full eval; without `final`, returns `intake-in-progress`
+  and enqueues nothing
+- `revise_codebase_digest` with `final: true` flips status from
+  `intake-in-progress` to `evaluating` and enqueues full eval
+- `revise_codebase_digest` with `triggerEvalNow: true` enqueues Quality
+  Evaluator (not Pattern & Cluster Analyzer); status stays
+  `intake-in-progress`
+- `revise_codebase_digest` with empty body plus `final: true` or
+  `triggerEvalNow: true` is valid (no `isError`)
+- `revise_codebase_digest` with empty body and no signal flags returns
+  `isError: true` (existing rule unchanged)
+- Idle-timeout job correctly identifies stale `intake-in-progress`
+  drafts and enqueues eval; completion email carries the cut-short flag
+
+**Implementation (additions):**
+- Zod schema additions in `packages/mcp/src/schemas/` for the five new
+  `AppEntry` fields and the `final` / `triggerEvalNow` input flags on
+  `submit_codebase_digest` and `revise_codebase_digest`
+- `codebase_digest_drafts` schema: `status` column accepts the new
+  `intake-in-progress` value alongside the existing `evaluating`; check
+  if migration is needed or the column is already free-form text
+- Server logic in `packages/mcp/src/tools/` to:
+  - Apply incremental create / update / delete to draft state without
+    triggering eval when no signal flag is present
+  - Enqueue Quality Evaluator + Pattern & Cluster Analyzer on
+    `final: true`
+  - Enqueue Quality Evaluator only on `triggerEvalNow: true`; Pattern
+    & Cluster Analyzer never fires mid-stream
+- BullMQ scheduled job in
+  `packages/workers/src/workers/intake-idle-timeout.ts`: runs every 5
+  minutes, sweeps stale `intake-in-progress` drafts past the configured
+  timeout
+- New admin config row: `codebase_digest_drafts.multi_part_idle_timeout_minutes`
+  (default 30, per-tenant configurable)
+- Update Quality Evaluator's L3 enrichment and scoring rubric to factor
+  in the five new fields; surface `pendingClarifications` when fields
+  are missing or weak
+- Update Pattern & Cluster Analyzer's per-category prompts to consume
+  `currentDecisionMaking` content when present for consolidation
+  reasoning
+
+**Acceptance (additions):**
+- All five new `AppEntry` fields round-trip through submit / revise /
+  get_codebase_draft / get_pending_clarifications / update_codebase_digest
+  correctly
+- Single-shot submit with `final: true` produces one Quality Evaluator
+  pass and one Pattern & Cluster Analyzer pass against the complete
+  inventory
+- Multi-part flow (3 parts + final) coalesces to one Quality Evaluator
+  pass and one Pattern & Cluster Analyzer pass against the complete
+  inventory
+- Multi-part with `triggerEvalNow` in the middle produces a Quality
+  Evaluator pass at the trigger point and a full eval pass after `final`
+- Idle-timeout backstop fires correctly; completion email indicates
+  cut-short status
 
 **Deferred to follow-up:**
 - MCP `submit_codebase_digest` and `revise_codebase_digest` I/O contract
