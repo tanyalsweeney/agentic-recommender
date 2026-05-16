@@ -1,24 +1,10 @@
 # Handoff — Agentic Architecture Recommender
 
-## Next session: follow-up PR for #77 design corrections
+## Next session
 
-After PR #77 (per-app schema + multi-part submission) merges, open a follow-up PR with these six course corrections from the 2026-05-16 pushback pass. New branch name suggestion: `tsweeney/spec-3.5b.4-pushback-corrections`.
-
-1. **Drop fields 3-5 from `AppEntry`.** Keep `currentDecisionMaking` and `humanInTheLoop` only. Remove `stateAndMemory`, `dataSensitivity`, `failureModes`. They're partially derivable from existing fields (dependencies, observedPatterns, externalIntegrations, isPrivate) and the marginal value did not justify the per-app cognitive load and assistant variance.
-
-2. **Default `final: true` on `submit_codebase_digest`.** Multi-part assistants set `final: false` on initial submit and intermediate revises; the final revise sets `final: true` (or omits, default true). Single-shot assistants pay zero friction. Tool description front-loads multi-part as the recommended path for digests over ~10 apps so multi-part stays discoverable.
-
-3. **Add idempotency to `revise_codebase_digest`.** Tier 2 hash-based implicit dedup keyed on `{user_id, draftId, payload_hash}` with a short window (5 min default, per-tenant configurable). Explicit `idempotencyKey` (Tier 1) optional. Closes the network-retry duplicate-creation gap that multi-part makes much more common than single-shot.
-
-4. **Re-eval scope on `final: true`.** Include apps whose `productCategory` peer set shifted since their last eval, not just changed entries. Prevents stale scoring on apps that were eval'd via mid-stream `triggerEvalNow` against a thin L2 group context and never re-evaluated as the inventory grew.
-
-5. **Email-only URL provisioning.** Draft URL no longer surfaced to the user via the assistant chat. Submit response still includes URL (for assistant introspection); response guidance directs assistant to tell user "I've submitted; you'll get an email when ready." User's first sight of the URL is the completion email. Avoids the partial-state-review-screen problem.
-
-6. **One-line example output per inferential field.** Add example outputs in spec for the two remaining new fields (`currentDecisionMaking`, `humanInTheLoop`) plus the existing inferential fields where it adds value (`primaryPurpose`, `distinguishingCharacteristics`). Reduces assistant variance.
-
-Source: 2026-05-16 critical-review pass at the user's explicit request ("did you push back on these changes all you want to"). #1 is a backout of an overcommit I should have pushed harder on. #2-#3 are real correctness fixes. #4-#6 are UX/discipline tightening. All are in spec/PLAN/handoff territory; no code touched.
-
-Approach: single focused commit per the doc-style "tight wins" rule. PR title and body should make clear this is a course correction on #77.
+3.5b.4 design is closed. Next pickable PR-sized chunks (see "What's immediately next" below for the full punch list):
+- **3.5b.5 design**: migration-mapping prompt fragment + Pass 2 per-target invocation
+- **3.5b.1 implementation**: Quality Evaluator agent, BullMQ worker, 3-layer cache, self-iteration loop (gated only on user pick; design is fully landed)
 
 ---
 
@@ -29,20 +15,21 @@ complete.** Code-aware backend (Phase 3.5b) **design complete for
 3.5b.1 (Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer),
 3.5b.3 (MCP server: six-tool surface, full Tool I/O Zod contract with
 validation policy and pre-Zod normalization, two-tier idempotency
-dedup, sliding-TTL draft expiry with hard cap, authentication
-mechanics, response-driven iteration), and 3.5b.4 (pre-digest intent
-collection plus Manifest Gatekeeper extension, plus five new per-app
-inferential fields on `AppEntry`, plus multi-part submission with
-`final: true` signal, idle-timeout backstop, and opt-in
-`triggerEvalNow` mid-stream eval; deferred-eval-by-default).** New
-Phase 3.5c (agent slot + variant abstraction) added as code-aware
-fork-readiness infrastructure. 3.5b.5 through 3.5b.7 are placeholder
-bullets pending their own design PRs. Remaining pre-UI work: the four
-backend wiring sub-phases of 3.5a (CV upstream, per-tool data
-availability, per-entry manifest versioning, correction exchange);
-3.5b.5-7 design; implementation of the 3.5b backend agents and MCP
-server; implementation of 3.5c; plus a handful of P1 behavior items
-tracked in TODOS.md.
+dedup on submit and revise with `draftId`-scoped revise keys,
+sliding-TTL draft expiry with hard cap, authentication mechanics,
+response-driven iteration), and 3.5b.4 (pre-digest intent collection
+plus Manifest Gatekeeper extension, plus two new per-app inferential
+fields on `AppEntry` (`currentDecisionMaking`, `humanInTheLoop`) with
+example outputs, plus multi-part submission with `final` defaulting to
+`true`, idle-timeout backstop, deferred-eval-by-default, and
+email-only URL provisioning).** New Phase 3.5c (agent slot + variant
+abstraction) added as code-aware fork-readiness infrastructure.
+3.5b.5 through 3.5b.7 are placeholder bullets pending their own
+design PRs. Remaining pre-UI work: the four backend wiring sub-phases
+of 3.5a (CV upstream, per-tool data availability, per-entry manifest
+versioning, correction exchange); 3.5b.5-7 design; implementation of
+the 3.5b backend agents and MCP server; implementation of 3.5c; plus
+a handful of P1 behavior items tracked in TODOS.md.
 
 **Recent merges (2026-05-09 to 2026-05-14):**
 - **PR #63**: Free-tier BYOK gate spec (1 system-paid lifetime trial then
@@ -293,22 +280,27 @@ screen (4g placeholder added in plan), MCP server endpoint, Pass 2
 target-system selection UI, modification request submission UI,
 multi-provider BYOK key management UI, etc.
 
-## Spec doc state (2026-05-15)
+## Spec doc state (2026-05-16)
 
-`docs/spec.md` is at ~1,570 lines. Recent restructure: digest schema
+`docs/spec.md` is at ~1,575 lines. Recent restructure: digest schema
 went from three components (intake step pre-fills + per-app inventory +
 intent gaps) to one (per-app inventory) as project-level signals now
 derive from the inventory directly and intent moved to a pre-digest
-collection step. New "Pre-digest intent collection" subsection
-documents the two structured questions (target topology + timeline)
-plus optional constraints, plus the bimodal collection paths (web UI
-or MCP payload). Three new settled-decision rows added this session
-(outcome-gated execution; pre-digest intent collection; agent slot +
-variant abstraction); existing "Intent gap question evolution" row
-updated to drop the obsolete "Copilot matches" wording. MCP
-`submit_codebase_digest` tool description carries a forward-pointing
-note that its I/O contract subsection predates the pre-digest design
-and is updated in a follow-up PR.
+collection step. The Pre-digest intent collection subsection documents
+the two structured questions (target topology + timeline) plus
+optional constraints, plus the bimodal collection paths (web UI or
+MCP payload). The 2026-05-16 pushback pass consolidated heavy
+duplication around the multi-part / `final` mechanic, the idempotency
+contract, and the MCP tool surface (the per-tool envelope is now the
+authoritative contract, the multi-part section owns the override
+pattern, and settled-decision rows carry decision + why only). New
+settled-decision rows landed this session: per-app inferential field
+expansion (two fields), email-only URL provisioning. Idempotency row
+generalized to "Idempotency for write tools." The MCP tool table at
+the top of the tool-surface section was cut entirely; the lead
+paragraph carries the positioning labels and the envelope list
+follows immediately. The pre-pushback `triggerEvalNow` mid-stream
+eval design was cut from MVP scope and deferred post-MVP.
 
 ## Deployment requirements
 
@@ -390,13 +382,19 @@ Older decisions live in [spec.md Settled decisions](spec.md) (canonical), PR des
 
 **2026-05-16**
 
-*Per-app inferential field expansion.* See spec. `AppEntry` gains five fields (`currentDecisionMaking`, `humanInTheLoop`, `stateAndMemory`, `dataSensitivity`, `failureModes`) beyond identification and interface metadata. User flagged that tool manifests + interfaces alone weren't enough to recommend where agentic upgrades should land; the new fields give Wave 1+ agents direct signal on the agentic-upgrade opportunity per app rather than forcing reverse-engineering from indirect signals.
+*Per-app inferential field expansion (corrected same-day).* See spec. `AppEntry` initially gained five inferential fields; a same-day pushback pass cut three (`stateAndMemory`, `dataSensitivity`, `failureModes`) as partially derivable from existing fields (dependencies, observedPatterns, externalIntegrations, isPrivate). Kept: `currentDecisionMaking`, `humanInTheLoop`. Both have a clear Wave 1+ consumer and no code-derivable anchor, so assistant variance is high; spec now carries a one-line example output per inferential field (including `primaryPurpose` and `distinguishingCharacteristics`) to anchor extraction.
 
-*Multi-part submission as first-class pattern.* See spec. Assistants pace large or deep digests across multiple MCP calls; `submit_codebase_digest` returns `intake-in-progress`; subsequent `revise_codebase_digest` parts apply incrementally without triggering eval; `final: true` (on submit for single-shot, on revise for multi-part) flips status to `evaluating` and enqueues full eval. Idle-timeout backstop (30 min default) catches assistants that crash mid-intake.
+*Multi-part submission as first-class pattern.* See spec. Assistants pace large or deep digests across multiple MCP calls. `final` defaults to `true` on both `submit_codebase_digest` and `revise_codebase_digest`; single-shot assistants do nothing special. Multi-part assistants explicitly send `final: false` on the initial submit and intermediate revises, then accept the default on the final revise. Idle-timeout backstop (30 min default) catches assistants that crash mid-intake.
 
-*Deferred eval by default + opt-in mid-stream Quality Evaluator.* See spec settled-decision row updates. Quality Evaluator and Pattern & Cluster Analyzer both defer to `final: true` (or idle timeout). User's framing: "wasteful to start eval before we have all the parts." Single-pass eval against complete inventory saves ~60-80% tokens on partial-submission flows. Mid-stream Quality Evaluator opt-in via `triggerEvalNow: true` on `revise_codebase_digest` for assistants that want per-app feedback before composing more parts; Pattern & Cluster Analyzer never fires mid-stream regardless of flag.
+*Deferred eval by default.* See spec. Quality Evaluator and Pattern & Cluster Analyzer defer until resolved `final: true` (or idle timeout). Single-pass eval against complete inventory saves ~60-80% tokens on partial-submission flows.
 
-*Empty revise body now valid with signal flags.* Updated settled-decision row. `revise_codebase_digest` with empty body remains an error UNLESS accompanied by `final: true` or `triggerEvalNow: true`; signal flags are first-class purposes for an otherwise-empty call.
+*`triggerEvalNow` deferred post-MVP.* Initially specced as an opt-in mid-stream Quality Evaluator flag on `revise_codebase_digest`. Cut after a same-day cost/benefit pass: the use case (sophisticated assistants tuning subsequent parts from per-app feedback) is unproven, the spec complexity is real (a peer-shift re-eval rule existed only to clean up after mid-stream runs; a PCA-defers-regardless carveout existed in every related row), and the feature is purely additive (re-add cleanly if a customer asks). Cut also removed item 4 from the original pushback list.
+
+*Revise idempotency.* See spec. `revise_codebase_digest` gains the same two-tier dedup as `submit_codebase_digest`, with `draftId` added to the cache key scope so retries across drafts cannot collide. Closes the network-retry duplicate-creation gap that multi-part makes much more common than single-shot.
+
+*Email-only URL provisioning.* See spec. Draft URL is no longer surfaced to the user via the assistant chat. Submit response still includes `draftUrl` for assistant introspection (state polling, autonomous clarification loop); response guidance directs the assistant to tell the user "submitted; you'll get an email when it's ready." User's first sight of the URL is the completion email. Avoids the partial-state review screen problem.
+
+*Empty revise body rule simplified.* With `final` defaulting to `true`, an empty revise body resolves to a finalization signal (legitimate on `intake-in-progress` drafts). Explicit `final: false` with empty body still returns `isError: true`. (Previously the rule depended on both `final` and `triggerEvalNow` signal flags; the `triggerEvalNow` cut simplified to just `final`.)
 
 ## Collaboration notes
 
