@@ -1,43 +1,25 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-14)
+## Current state (2026-05-15)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
 complete.** Code-aware backend (Phase 3.5b) **design complete for
-3.5b.1 (Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer), and
+3.5b.1 (Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer),
 3.5b.3 (MCP server: six-tool surface, full Tool I/O Zod contract with
 validation policy and pre-Zod normalization, two-tier idempotency
 dedup, sliding-TTL draft expiry with hard cap, authentication
-mechanics, response-driven iteration).** 3.5b.4 through 3.5b.7 are
-placeholder bullets pending their own design PRs. Remaining pre-UI
-work is the four backend wiring sub-phases of 3.5a (CV upstream,
-per-tool data availability, per-entry manifest versioning, correction
-exchange), plus 3.5b.4-7 design, plus implementation of the 3.5b
-backend agents and MCP server, plus a handful of P1 behavior items
-tracked in TODOS.md.
+mechanics, response-driven iteration), and 3.5b.4 (pre-digest intent
+collection plus Manifest Gatekeeper extension).** New Phase 3.5c
+(agent slot + variant abstraction) added as code-aware fork-readiness
+infrastructure. 3.5b.5 through 3.5b.7 are placeholder bullets pending
+their own design PRs. Remaining pre-UI work: the four backend wiring
+sub-phases of 3.5a (CV upstream, per-tool data availability,
+per-entry manifest versioning, correction exchange); 3.5b.5-7 design;
+implementation of the 3.5b backend agents and MCP server;
+implementation of 3.5c; plus a handful of P1 behavior items tracked
+in TODOS.md.
 
-**Recent merges (2026-05-07 to 2026-05-14):**
-- **PR #56**: Phase 3.4 — static analysis hardening (ESLint flat config,
-  tsconfig `noUnusedLocals` / `noUnusedParameters`, GitHub Actions CI with
-  Postgres + Redis services). Pre-PR redteam pass cadence documented in
-  CLAUDE.md and saved verbatim at `docs/redteam-prompt.txt`.
-- **PR #57**: Phase 3.5a.1 — BYOK runtime wiring (tenant scope). Closes the
-  audit-class bug where `runner.ts:108` discarded the resolved key and
-  `base.ts:74` read `process.env` directly. `getApiKey` now reads
-  `tenant_secrets`; `apiKey` threaded through `callAgent` and 12 wrappers.
-- **PR #58**: Eval token streamlining sidequest. Intake 9 → 3 calls,
-  technical-writer 5 → 1 call (~40k tokens saved per full eval run).
-- **PR #59**: Phase 3.5a.1.b — user-scope BYOK + `user_api_tokens`
-  schema lock. Resolution chain now user → tenant → system env.
-- **PR #60**: Phase 3.4.5 — schema lock for four spec'd tables
-  (`codebase_digest_drafts`, `tenant_modification_requests`,
-  `tenant_communication_contexts`, `manifest_intent_gap_questions`).
-- **PR #61**: Phase 3.4.6 — multi-tenancy data isolation schema lock.
-  `tenants.auth_provider` + `tenants.auth_provider_org_id`,
-  `users.auth_provider` + `users.auth_provider_user_id`, `runs.tenant_id`,
-  composite uniques scoped to `(provider, id)`. Validated against Clerk's
-  and WorkOS's actual data models before locking.
-- **PR #62**: Docs refresh post schema-lock work block (handoff, PLAN, README).
+**Recent merges (2026-05-09 to 2026-05-14):**
 - **PR #63**: Free-tier BYOK gate spec (1 system-paid lifetime trial then
   BYOK-required, 3-per-day cap, then per-run purchase) plus
   OpenAI-compatible provider registry expansion.
@@ -148,13 +130,6 @@ tracked in TODOS.md.
   Wave 0 only). Two new admin config rows, one P3 TODO for
   pre-expiry warning email at hard cap.
 
-**Spec PRs landed in earlier session blocks:**
-- PR #52: Phase 3.5a backend wiring closure pass (specced)
-- PR #53: Code-aware intake architecture; multi-provider BYOK at user scope;
-  data model additions
-- PR #54: Structured intent gaps + product-level consolidation analysis
-- PR #55: Code-aware pricing (Pass 1 $49, Pass 2 $199 per spec+plan)
-
 **Queued PRs (not yet started):**
 - **3.5b.4 onward design PRs**: 3.5b.4 (manifest_intent_gap_questions
   seeder + Manifest Gatekeeper extension), 3.5b.5 (migration-mapping
@@ -237,20 +212,35 @@ must include `ENCRYPTION_KEY` (32-byte base64) and `ANTHROPIC_API_KEY`.
 **Code-aware backend (Phase 3.5b) — design path:**
 - 3.5b.3 design fully landed (PR #73 Tool I/O contract + PR #74 the
   remaining decisions). Implementation gating now removed.
-- 3.5b.4 through 3.5b.7 design (placeholder bullets in PLAN; will land
+- 3.5b.4 design landed this session block (pre-digest intent collection
+  plus Manifest Gatekeeper extension; outcome-gated execution principle
+  named and applied to Quality Evaluator + Pattern & Cluster Analyzer
+  refinements). Implementation gating now removed.
+- 3.5b.5 through 3.5b.7 design (placeholder bullets in PLAN; will land
   in their own focused PRs)
+- 3.5c (agent slot + variant abstraction) design landed this session
+  block as fork-readiness infrastructure for future code-aware Wave 1+
+  agent variants.
 
-**Code-aware backend (Phase 3.5b) — implementation path** (gated on
-design completion):
+**Code-aware backend (Phase 3.5b + 3.5c) — implementation path** (gated
+on design completion):
 - 3.5b.1 implementation (Quality Evaluator agent in
   `packages/agents/src/quality-evaluator/`, BullMQ worker, 3-layer cache,
-  self-iteration loop, server-side inference helpers, raw manifest
-  parsing)
+  self-iteration loop with four early-exit conditions including
+  sufficiency threshold and filtered iteration, server-side inference
+  helpers, raw manifest parsing)
 - 3.5b.2 implementation (Pattern & Cluster Analyzer agent + worker,
   per-category dispatch, single-app short-circuit, `cluster_analysis`
-  column migration, affected-only re-evaluation diff logic)
+  column migration including the new `summary` field, affected-only
+  re-evaluation diff logic)
 - 3.5b.3 implementation (MCP server in `packages/mcp/`, Railway
   deployment, HTTP+SSE transport, Bearer token auth)
+- 3.5b.4 implementation (seed 2 intent questions, web-UI form, MCP
+  payload fields, Intent Gap Pattern Detector specialist, Manifest
+  Gatekeeper extension, BullMQ promotion job)
+- 3.5c implementation (agent registry refactor to slot + variant,
+  resolver function with per-tenant config dispatch, checkpoint
+  storage updated)
 
 **Phase 3.5a behavior pieces** (in PLAN.md priority order):
 - **3.5a.2 — CV upstream wiring**: `queues.ts:46/49/56` passes `{}`
@@ -278,18 +268,22 @@ screen (4g placeholder added in plan), MCP server endpoint, Pass 2
 target-system selection UI, modification request submission UI,
 multi-provider BYOK key management UI, etc.
 
-## Spec doc state (2026-05-10)
+## Spec doc state (2026-05-15)
 
-`docs/spec.md` is at ~1,520 lines / ~26k words. This session block added
-significant new content for code-aware intake: MCP integration model
-subsection, expanded Quality evaluation and clarification loop, Pattern
-& Cluster Analyzer architecture details with structured output table,
-Cost transparency subsection, Per-dependency freshness badges
-subsection, plus five settled-decision row updates/additions covering
-the new architecture. Worth a re-read pass before any major spec change
-to catch references to retired patterns (e.g., the heuristic
-word-count layer that no longer exists; sub-component-level examples
-where product-level was standardized in PR #54).
+`docs/spec.md` is at ~1,570 lines. Recent restructure: digest schema
+went from three components (intake step pre-fills + per-app inventory +
+intent gaps) to one (per-app inventory) as project-level signals now
+derive from the inventory directly and intent moved to a pre-digest
+collection step. New "Pre-digest intent collection" subsection
+documents the two structured questions (target topology + timeline)
+plus optional constraints, plus the bimodal collection paths (web UI
+or MCP payload). Three new settled-decision rows added this session
+(outcome-gated execution; pre-digest intent collection; agent slot +
+variant abstraction); existing "Intent gap question evolution" row
+updated to drop the obsolete "Copilot matches" wording. MCP
+`submit_codebase_digest` tool description carries a forward-pointing
+note that its I/O contract subsection predates the pre-digest design
+and is updated in a follow-up PR.
 
 ## Deployment requirements
 
@@ -301,313 +295,73 @@ where product-level was standardized in PR #54).
 - **`GITHUB_TOKEN`** and **`NVD_API_KEY`** (both free): required before
   3h production traffic for CV API integration
 
-## Architecture decisions made this session block (2026-05-12 to 2026-05-14)
+## Architecture decisions (last 7 days)
 
-**MCP Tool I/O contract format (2026-05-13):** Per-tool envelopes
-described in prose-and-tables; shared shapes (`AppEntry`, `IntentGap`,
-`IntakePrefills`, `PartialFailure`, `PollGuidance`) as markdown
-tables. Initial draft used TypeScript code blocks; rejected because
-the rest of the spec uses prose and tables exclusively for structured
-shapes. Runtime Zod validation still lives in
-`packages/mcp/src/schemas/`; the spec describes the contract in
-human-readable form like the rest.
+Older decisions live in [spec.md Settled decisions](spec.md) (canonical), PR descriptions on GitHub, and git history. This section keeps only the past week plus rationale that wouldn't fit in a spec Reason cell.
 
-**Strict unknown keys at every nesting level (2026-05-13):** The
-outcome-lens reasoning that justified strict-with-didYouMean
-validation (scenario B: assistant typos a useful field name, strict
-recovers it via suggestion, loose silently degrades the digest)
-applies equally to nested keys. Initial wording "top-level keys" was
-narrower than the actual rule. Corrected to apply at every nesting
-level; the dot-path notation in `partialFailures.path` was already
-designed assuming nested keys can be flagged.
+**2026-05-09**
 
-**didYouMean excludes id matching (2026-05-13):** Field-name and
-enum-value typos get close-match suggestions via Levenshtein up to 2.
-App ids do NOT get suggestions even on `id_not_found`. Asymmetric
-payoff: small upside (recovering one typo'd internal dep on one
-entry out of dozens) versus real downside (autoloop assistant grabs
-the suggestion without verifying, dependency graph silently corrupts,
-digest looks structurally correct while quietly being wrong).
+*Cheap-now-expensive-later principle.* Repeatedly applied: include structured `blockers` / `capabilityVariance` / `supportingEvidence` in Pattern & Cluster Analyzer output now; add `estimate_digest_cost` MCP tool now; dedicated `cluster_analysis` column rather than nesting in `quality_summary`. Wins when marginal cost of inclusion is genuinely small.
 
-**Pre-Zod normalization, custom helper (2026-05-13):** Whitespace
-trim on strings, case-insensitive `"true"`/`"false"` to boolean,
-numeric strings to number via `Number.isFinite(parseFloat(v))`, nulls
-and missing keys untouched. NOT Zod's built-in `.coerce.*`:
-`.coerce.boolean()` truthifies any non-empty string and would
-silently accept `"false"` as `true`. Custom helper handles the
-unambiguous cases without that footgun.
+*Facts to agent, intent to user.* Assistant has code access; we don't. Code-derivable facts go to the agent; intent / judgment questions go to the user. Corrected multiple designs where I tried to ask the user something the agent could answer from code.
 
-**Two-tier idempotency (2026-05-14):** Tier 1 explicit
-`idempotencyKey` (Stripe pattern, 24h TTL, hash-comparison collision
-detection). Tier 2 implicit `{user_id, request_hash}` with 5-min
-default TTL (per-tenant configurable) catches naive retries from
-assistants that don't supply a key. Hash compute and Redis storage
-are both rounding error; BYOK duplicate charges have no refund path
-unlike Stripe's card refunds, so cheap implicit protection of naive
-users is worth the small implementation cost. Override via fresh
-`idempotencyKey` (explicit beats implicit). Initially specced as
-Tier 1 only; reversed mid-PR after re-examining cost vs benefit with
-the outcome lens.
+*MCP integration model / control boundary.* See spec. Worth re-stating: server responds when called, cannot push; quality of digest is bounded by quality of assistant.
 
-**Sliding-TTL draft expiry with hard cap (2026-05-14):** Every
-access (read or write, MCP or web UI) bumps `expires_at` to `now() +
-sliding_ttl_days` (default 30, per-tenant configurable). Capped at
-`created_at + max_lifetime_days` (default 90, per-tenant
-configurable). Hard cap prevents indefinite retention for privacy
-and storage; sliding TTL accommodates real corporate workflow
-timelines (multi-week internal review, change management). Daily
-BullMQ cleanup at 3am UTC with in-flight Quality Evaluator and
-Pattern & Cluster Analyzer cancellation. Pre-expiry warning email
-queued as P3.
+*Async + email digest evaluation completion.* See spec. Synchronous MCP response would block IDE on large digests (50+ apps push evaluator wall-clock past 5 minutes).
 
-**Tenant context propagation cleanup (2026-05-14):** Deleted the
-"Tenant context propagation" subsection that described an upstream
-context-to-MCP flow. Two reasons it was wrong: (1) digest production
-is a pure inventory of what exists, not what the user should build
-on; tenant constraints apply at the recommendation layer (Wave 1+),
-not at intake. (2) The subsection name said "tenant communication
-context" but described the structured tenant context fields; the
-two concepts are distinct (Wave 0 vs Pass 2 render layer). No
-replacement subsection needed; existing Wave 0 mechanism handles
-tenant context injection uniformly for text-intake and code-aware.
+*Quality Evaluator architecture.* See spec. Replaced an earlier heuristic + LLM-evaluator design with word-count and generic-vocabulary penalties (rejected as misleading specificity signal).
 
-**No orchestrator agent (clarified 2026-05-13):** The spec is
-explicit at [line 874](docs/spec.md#L874): "No LLM acts as an
-orchestrator at any level; agent calls are leaf nodes." This is
-worth surfacing because it trips people up when "Orchestration" is
-the name of a Wave 1 agent (that agent recommends orchestration
-patterns; it doesn't orchestrate our pipeline). Context flows via
-deterministic code-routing at prompt assembly time: structured
-tenant context goes to every Wave 1+ agent uniformly; tenant
-communication context goes only to render-layer agents (Pass 1 TW +
-Pass 2 SS + PS). The pattern is enforced in source, not by an
-agent.
+*Pattern & Cluster Analyzer architecture.* See spec. Sub-component-level considered and rejected; product-level matches how users think about migration.
 
-**Outcome-lens framing (recurring this session block):** Multiple
-design decisions resolved by asking "which produces a better /
-faster / lower-token-cost recommendation?" instead of "which matches
-design principle X?" Examples: strict-vs-loose validation
-(scenario-by-scenario outcome math beat Postel's law); reversing the
-Stripe-only-idempotency concession (cost analysis showed implicit
-dedup was free, BYOK duplicate cost is real and unrecoverable);
-didYouMean id-matching rejection (asymmetric payoff favored skipping
-the suggestions). Captured as a feedback memory.
+*Cost transparency static rate table.* See spec. Static page + `estimate_digest_cost` MCP tool; no cost gate at submit.
 
-## Architecture decisions made in earlier session block (2026-05-07 to 2026-05-10)
+**2026-05-10**
 
-**MCP server hosting (2026-05-10):** Dedicated service in
-`packages/mcp/` deployed to Railway, NOT Vercel. Recommendation
-flipped from "start in Next.js, extract later" to "dedicated from day
-one" once the user clarified that the first user will use MCP. With no
-pre-launch window where extraction is customer-free, the deferral cost
-calculation reverses: 5-10 days of extraction work plus customer URL
-migration outweighs 2-3 days of upfront infrastructure setup. Vercel
-ruled out because serverless function model fits poorly with HTTP+SSE
-patterns and longer-lived response shapes.
+*MCP server hosting.* See spec. Recommendation flipped from "start in Next.js, extract later" to "dedicated from day one" once the user clarified the first user will use MCP; extraction would be customer-visible.
 
-**MCP authentication mechanics (2026-05-10):** Bearer token in HTTP
-header (`Authorization: Bearer agent12_pat_<32 bytes base64url>`).
-SHA-256 hash storage in `user_api_tokens.token_hash`; raw tokens never
-persisted. Soft-delete revocation via `revoked_at`. Per-token rate
-limit defaults to 60 RPM (configurable, Redis-backed). Debounced
-`last_used_at` updates (once per ~60s per token). On miss: 401 with
-generic error. Token format follows GitHub PAT pattern; SHA-256
-sufficient for high-entropy tokens (slow-hash overkill applies to
-low-entropy passwords).
+*MCP authentication mechanics.* See spec. SHA-256 sufficient for high-entropy tokens; slow hashes overkill.
 
-**MCP response-driven iteration pattern (2026-05-10):** Tool responses
-include forward-looking guidance directing the assistant's next steps
-(Pattern 1). MCP server cannot push to clients (standard MCP
-semantics), so iteration relies on capable agentic assistants reading
-response payloads and continuing autonomously. Polling cadence
-configurable via admin dashboard, split by context: 90s default after
-`submit_codebase_digest` (long initial wait of 10-40 min); 20s default
-after `update_codebase_digest` (short re-eval wait of 30s-2min).
-Long-polling pattern explicitly rejected (40-min waits exceed Vercel
-function timeouts and HTTP connection lifetimes; would require chained
-calls anyway). Pattern 3 (user wrap-up authorization in initial prompt)
-complements Pattern 1 as a docs/education concern.
+*MCP response-driven iteration pattern.* See spec. Long-polling explicitly rejected (waits exceed function timeouts and HTTP connection lifetimes).
 
-**MCP-as-only-channel for code-aware (2026-05-10):** Considered five
-alternatives (IDE assistant, our CLI, self-hosted analyzer, repo
-connector, customer uploads). Settled on IDE-assistant model for MVP
-(lowest build cost; meets enterprise security bar where assistant runs
-in customer environment). Self-hosted analyzer (Docker/Helm) flagged
-as Enterprise-tier follow-on for customers who need full data
-sovereignty and CI/CD integration. Repo connector (we pull source) and
-customer uploads (we receive source) explicitly rejected on enterprise
-security grounds; they don't move the needle for buyers who reject
-IDE-assistant on security.
+*MCP-as-only-channel for code-aware.* Considered five alternatives (IDE assistant, our CLI, self-hosted analyzer, repo connector, customer uploads). IDE-assistant meets enterprise security bar (assistant runs in customer environment). Self-hosted analyzer flagged as Enterprise-tier follow-on.
 
-**Cheap-now-expensive-later, applied to step-function costs (2026-05-10):**
-The principle assumes monotonic cost growth over time. For decisions
-where cost is step-functioned (cheap before customer X, expensive
-after), the principle's relevance depends on the timeline to customer
-X. If pre-launch window is wide, deferral wins. If first user arrives
-with launch (as MCP customers will here), preemptive design wins.
-Caught when re-analyzing the MCP server hosting decision; useful
-calibration for similar future calls.
+*Cheap-now-expensive-later applied to step-function costs.* The principle assumes monotonic cost growth. For step-functioned costs (cheap before customer X, expensive after), timeline-to-customer-X matters. Caught when re-analyzing MCP server hosting.
 
+*Terminology disambiguation — app vs tool.* See spec. PR #68 resolved by renaming digest entries to `app` internally; user-facing word selection picks per-entry.
 
+**2026-05-13**
 
-**Cheap-now-expensive-later principle (2026-05-09):** Repeatedly applied
-this session. Examples: include structured `blockers` /
-`capabilityVariance` / `supportingEvidence` in Pattern & Cluster
-Analyzer output now (small cost, harder to retrofit later when
-downstream agents need them); ship user-chosen multi-select for subset
-re-runs in MVP (cost is mostly UX work, removable later); add
-`estimate_digest_cost` MCP tool now even though MVP UI uses static rate
-table (assistants get the option); dedicated `cluster_analysis` column
-on `codebase_digest_drafts` rather than nesting in `quality_summary`
-(cheap migration now, schema rework later). Tends to win when the
-marginal cost of inclusion is genuinely small.
+*MCP Tool I/O contract format.* See spec. Initial draft used TypeScript code blocks; rejected because the rest of the spec uses prose and tables exclusively for structured shapes.
 
-**Facts → agent, intent → user principle (2026-05-09):** The user's AI
-assistant has full code access; we do not. So code-derivable facts go
-to the agent (via the rework loop or server-side inference);
-intent/judgment questions go to the user (via existing intent gap
-mechanism). Caused multiple corrections this session: my initial design
-asked the user about things the agent should have answered (max-retries
-escalation to user; structured field gates); each was corrected back to
-agent-handled. The principle generalizes: any time we are tempted to
-ask the user something, check whether the assistant could have answered
-it from code first.
+*Strict unknown keys at every nesting level.* See spec. Initial wording "top-level keys" was narrower than the actual rule; corrected.
 
-**MCP integration model / control boundary (2026-05-09):** The user's
-AI assistant is their existing IDE tool (Copilot, Claude Code, Cursor,
-Continue.dev, etc.). We control MCP tool definitions and response
-payloads, not assistant behavior or model. Standard MCP semantics:
-server responds when called, cannot push to clients. Architecting
-around this boundary keeps the design honest. Quality of digest is
-bounded by quality of assistant. Captured as a settled-decision row in
-spec.md and explained in the Code-aware intake subsection.
+*didYouMean excludes id matching.* See spec. Asymmetric payoff: small upside (recovering one typo'd internal dep) versus real downside (autoloop assistant grabs the suggestion, dependency graph silently corrupts).
 
-**Async + email digest evaluation completion (2026-05-09):** MCP
-`submit_codebase_digest` returns within 1-2 seconds with draft URL plus
-status. Quality Evaluator and Pattern & Cluster Analyzer run as
-background BullMQ worker jobs sequentially. Single email when both
-complete (not separate emails). Real per-call latency on existing
-pipeline agents averages 30-160s; large digests put evaluation above 5
-minutes wall clock. Synchronous MCP response would block the user's
-IDE for too long.
+*Pre-Zod normalization, custom helper.* See spec. Zod's `.coerce.boolean()` truthifies any non-empty string and would silently accept `"false"` as `true`; custom helper avoids that footgun.
 
-**Quality Evaluator architecture (2026-05-09):** Two-stage. Server-side
-normalization runs synchronously: mechanical extraction from raw
-package manifests (dependencies, language, framework), rule-based
-inference for pattern fields (`observedPatterns`, partial
-`externalIntegrations`), LLM-inference fallback for inferential
-essentials (`displayName`, `primaryPurpose`, `productCategory`) when
-the agent did not provide them. Background LLM evaluator with 3-layer
-prompt cache (system + rubric, full per-app inventory + tenant context,
-per-app entry with dependency enrichment chain). Self-iterates up to
-3 passes (configurable) on low-scored entries by re-prompting itself
-with clarifying questions over existing data. Replaces an earlier
-heuristic + LLM-evaluator design with word-count and generic-vocabulary
-penalties (rejected as misleading specificity signal).
+*No orchestrator agent (clarification).* Spec is explicit at [spec.md:874](spec.md#L874): no LLM acts as an orchestrator; agent calls are leaf nodes. Worth surfacing because "Orchestration" names a Wave 1 agent that recommends orchestration patterns; it doesn't orchestrate our pipeline.
 
-**Pattern & Cluster Analyzer architecture (2026-05-09):** Sequential
-after Quality Evaluator (so it sees synthesized fields). Per-category
-LLM calls in parallel with configurable concurrency cap. Single-app
-categories skip the LLM call; server emits
-`consolidationOpportunity: 'none'` deterministically. Output includes
-structured `clusters`, `blockers` (typed array with type, description,
-affectedAppIds), `capabilityVariance`, `supportingEvidence`, plus
-`clarificationQuestions` and the `consolidationStrategyQuestion` per
-multi-app category. Stored in dedicated `cluster_analysis` jsonb
-column on `codebase_digest_drafts` (migration lands with 3.5b.2
-implementation PR). Re-evaluation on update only touches affected
-categories.
+*Outcome-lens framing (recurring).* Multiple decisions resolved by asking "which produces a better / faster / lower-token-cost recommendation?" instead of "which matches design principle X?" Captured as a feedback memory.
 
-**Cost transparency static rate table approach (2026-05-09):** Public
-pre-auth reference page with typical per-app token usage ranges and
-per-provider rates (effective-as-of date stamp, admin-curated). Plus
-`estimate_digest_cost` MCP tool for assistants that want richer
-pre-submit estimates. No cost confirmation gate at submit. MVP UI uses
-the static reference; the endpoint is built but UI dynamic estimates
-deferred.
+**2026-05-14**
 
-**Per-dependency freshness badges, neutral framing (2026-05-09):** Each
-dependency on the review screen carries a date-only badge: "Evaluated
-[date] ↻", "Manifest entry, version data at pipeline run", "Not yet
-evaluated, research at pipeline run", "Internal". No
-value-judgment language about staleness. Click to refresh fires CV API
-+ web-search calls for that single dep, charges BYOK, updates
-timestamp. Refresh does not re-trigger Quality Evaluator (description
-quality is independent of CV data freshness).
+*Two-tier idempotency.* See spec. Initially specced as Tier 1 only; reversed mid-PR after re-examining cost vs benefit with the outcome lens.
 
-**Terminology disambiguation — internal app vs user-facing word
-selection (resolved 2026-05-10):** "Tool" was overloaded across four
-senses: digest tool (user's app in code-aware intake) vs manifest tool
-(third-party service we recommend) vs Wave 1 T&I "tool" (architectural
-concept and recommended manifest entry) vs MCP "tool" (SDK function
-sense). PR #68 resolves by renaming sense #1 to `app` internally
-(code, schemas, prompts, design docs) and adding a user-facing
-word-selection rule: agents render via `displayName` /
-`productCategory.displayName`; when an umbrella is needed, agents pick
-the most semantically accurate word per entry from per-entry signals
-(`observedPatterns`, `inputs`/`outputs`, `isPrivate`) — "service" /
-"worker" / "library" / "utility" / "app" per case. The word "tool" is
-reserved for senses 2/3/4 and never used for a digest entry. The
-narrower-than-bucket cost of a single umbrella was the original blocker
-on this rename; per-entry word selection removes it because agents have
-the signal needed to pick the right word per surface. CV's "per-tool
-sub-task" work-unit terminology unchanged in PR #68; broader CV-
-terminology rename queued as a separate follow-up.
+*Sliding-TTL draft expiry with hard cap.* See spec. Hard cap prevents indefinite retention; sliding TTL accommodates corporate workflow timelines.
 
-**Static analysis scope (2026-05-07):** Adopted ESLint flat config with
-`typescript-eslint`, four explicit rules (`no-floating-promises`,
-`no-misused-promises`, `no-unused-vars`, `no-unused-expressions`). Knip
-was specced and dropped: 26 of 29 findings were Phase 4 entry-point
-scaffolding (false positives), and the audit-class bug it was sold to
-catch (`conflict-resolution.ts` tested-but-unwired) actually slips past
-knip because tests count as consumers. Tracked as a TODOS P3 item for
-post-Phase-4 revisit.
+*Tenant context propagation cleanup.* Deleted the "Tenant context propagation" subsection that described an upstream context-to-MCP flow. Wrong because digest production is pure inventory; tenant constraints apply at recommendation layer (Wave 1+). Worth noting because someone may grep for the deleted subsection name.
 
-**Pre-PR redteam pass scope (2026-05-07):** Anti-doc framing — read only
-production code, find production call sites, target consumer-exists-but-
-broken (not consumer-doesn't-exist-yet). Generic "tested-but-unwired"
-framing was rejected because Phase 4 scaffolding would generate
-false-positive noise. The prompt is saved verbatim at
-`docs/redteam-prompt.txt`.
+**2026-05-15**
 
-**BYOK signature shape (2026-05-07):** `getApiKey(db, provider, userId,
-tenantId)` returns the resolved key; runner captures `run.userId`
-(already on the run row, no `RunAgentOpts` change). Maintenance workers
-pass `undefined, undefined` (system-scoped). Resolution: user → tenant
-→ env.
+*Outcome-gated execution.* See spec. Companion principle to outcome-lens: outcome-lens evaluates designs against outcome; outcome-gated execution skips work whose outcome wouldn't shift. New instances added this session: Quality Evaluator sufficiency threshold + filtered iteration; intent-gap catalog discipline; Pattern & Cluster Analyzer clarification-question scoping tightened.
 
-**Eval consolidation pattern (2026-05-07):** Each scenario gets ONE
-`beforeAll` call shared across all `it` blocks. Multiple `it` blocks
-making their own API calls is the inefficient anti-pattern. ~40k tokens
-saved per full eval run from intake + technical-writer alone.
+*Pre-digest intent collection.* See spec. Replaces an earlier "intent gaps as post-digest checklist" framing. Two structured questions (target topology, timeline) plus optional constraints; bimodal collection (web UI or MCP payload).
 
-**Auth abstraction validated against providers (2026-05-08):** Both Clerk
-and WorkOS treat their API as source of truth for profile / membership /
-role data. We mirror only join keys: `(auth_provider, auth_provider_user_id)`
-on users, `(auth_provider, auth_provider_org_id)` on tenants. Composite
-unique with PostgreSQL NULL semantics so pre-signup rows coexist. We
-explicitly do NOT mirror firstName/lastName/profilePicture/lastSignInAt,
-organization metadata, session tokens, multi-org membership, or roles.
+*Digest schema simplification.* Removed intake step pre-fills from the digest. Wave 1+ agents derive project-level signals from per-app inventory directly. Aligns with "code-aware user does not walk through the 11-step intake" and "agents do the heavy lifting from an 85%-correct digest."
 
-**Honest "out of scope" rule (2026-05-08):** When listing items as
-out-of-scope on a PR description or PLAN entry, every item must have a
-tracking destination (existing PLAN phase, TODOS row, or explicit
-"unaccounted, will draft spec PR"). Ad hoc "out of scope" lists without
-homes are exactly the deferral that bites later. Caught when reviewing
-the 3.4.6 PR — multiple items had no home, fixed by adding three P1 and
-four P3 entries to TODOS.md.
+*Agent slot + variant abstraction.* See spec. Gut on long-term call: 3-5 of 8-10 Wave 1+ agents will likely benefit from code-aware-specific reasoning. Building the hook now (~3-4 days) avoids ~2-3x refactor cost later.
 
-**Per-table test naming pattern (2026-05-07):** Schema test files map
-1:1 to schema export names so future readers find them by direct match
-(`manifest-intent-gap-questions.test.ts` for `manifestIntentGapQuestions`,
-etc.). Process-temporal names like `schema-lock.test.ts` were rejected.
-
-## Architecture decisions from previous sessions
-
-(Earlier decisions retained; see git history of this file for the full
-list. Key ones: streaming via SDK event accumulation; UUIDv7 PKs;
-field-level encryption for BYOK; concurrent-safe test isolation
-non-negotiable; org list gatekeeper does not auto-apply changes.)
+*User-correctable accuracy lens.* Captured as a feedback memory. Calibrate accuracy targets to 85-90% (not 100%) for inference steps with downstream user-review surface. Asymmetric-payoff arguments apply only to flows the user never sees. Recalibrated several pushbacks this session.
 
 ## Collaboration notes
 

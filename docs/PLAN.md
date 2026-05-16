@@ -1077,11 +1077,122 @@ architecture.
 - Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
 - Pre-PR redteam pass per CLAUDE.md cadence
 
-### 3.5b.4. manifest_intent_gap_questions seeder + Manifest Gatekeeper extension `[Upcoming]`
+### 3.5b.4. Pre-digest intent collection + Manifest Gatekeeper extension `[Upcoming]`
 
-Seed the curated intent-gap question catalog. Extend Manifest Gatekeeper
-to promote frequently-occurring free-text answer patterns to curated
-options over time. Detailed design TBD.
+Seed the pre-digest intent question catalog (2 entries at MVP). Build
+the bimodal collection paths (web UI form, MCP-payload fields).
+Extend Manifest Gatekeeper to promote frequently-occurring free-text
+answer patterns to curated options over time. See spec.md
+"Pre-digest intent collection" subsection for the design.
+
+**Settled design:**
+- Pre-digest intent: 2 structured questions (target topology + timeline
+  pressure) plus optional free-text constraints. Catalog lives in
+  `manifest_intent_gap_questions` (existing table from Phase 3.4.5).
+- Target topology options: augmentation, 1:1 replacement, consolidation
+  to single target if possible, consolidation to multiple smaller
+  targets, recommend the best fit. Free text for "mixed" / "other."
+- Timeline options: no fixed deadline, soft target, hard deadline within
+  6 months, hard deadline within 6 weeks. Free text for specifics.
+- Constraints field: free text classified at submit as binary exclusions
+  or optimization targets, identical to text-intake constraints handling.
+- Bimodal collection: web UI path (sign in, answer, get assistant snippet
+  referencing the session) and MCP payload path (assistant collects in
+  chat, ships as optional fields on `submit_codebase_digest`). Both paths
+  unify into the same draft state. Server attaches pre-digest intent to
+  the draft alongside the digest payload.
+- Gatekeeper extension: free-text answers to pre-digest questions
+  accumulate; an Intent Gap Pattern Detector specialist (LLM clustering
+  over recent free-text) proposes new options; existing Manifest
+  Gatekeeper reviews via `manifest_proposals` table with new
+  `proposal_type` discriminator. Auto-promote on Gatekeeper accept for
+  additions and option-list extensions; human gate on destructive
+  changes (remove or rename a question / option).
+- Promotion cadence: scheduled weekly BullMQ job (cadence
+  admin-configurable), mirroring existing staleness check pattern.
+- Promotion threshold: distinct-user count >= 10 over a 90-day rolling
+  window (both admin-configurable).
+
+**Outcome-gated execution refinements (rolled in):**
+- Quality Evaluator gains a sufficiency-threshold early-exit (default
+  3 / 5, admin-configurable) and per-pass filtering of clarifying
+  questions to those whose resolution would shift `qualityScore`.
+- Pattern & Cluster Analyzer's `clarificationQuestions` scoping
+  tightened to divergences whose resolution would shift the
+  consolidation recommendation.
+- Pattern & Cluster Analyzer output gains a one-sentence `summary`
+  field for the row-summary review-screen UX (Phase 4g).
+
+**Tests first:**
+- `manifest_intent_gap_questions` seed insertion + select round-trip;
+  the two seeded questions land with expected curated options
+- Web-UI POST: intent payload validated, draft session created with
+  pre-digest intent stored, session id returned
+- MCP-payload path: optional `intent` fields on `submit_codebase_digest`
+  parsed via Zod, attached to draft state alongside digest
+- Idempotency rules apply identically across both paths (Tier 1 and
+  Tier 2 hashing covers the intent payload)
+- Manifest Gatekeeper extension: free-text clustering proposal includes
+  `proposal_type` discriminator; Gatekeeper review accepts / rejects /
+  escalates per existing flow; destructive change proposal surfaces in
+  admin queue
+- Quality Evaluator: sufficiency-threshold early-exit fires when
+  `qualityScore >= 3` on default config; filter on iteration removes
+  questions whose resolution wouldn't move the score
+- Pattern & Cluster Analyzer: `summary` field populated alongside
+  `reasoning` for each multi-app category
+
+**Implementation:**
+- Migration (no new table; `manifest_intent_gap_questions` is locked
+  schema from migration 0010): seed 2 entries with `owner = 'global'`,
+  curated options per the spec
+- Web UI: simple two-question form + constraints textarea + submit;
+  POST creates a draft session and returns id + assistant snippet
+- MCP `submit_codebase_digest` Zod schema: add optional `intent` (object:
+  `targetTopology`, `timelinePressure`, optional `constraints` array)
+  and optional `intentSessionId` (string). Update tool description and
+  the I/O contract in spec.md (deferred from PR scope; tracked in
+  TODOS.md)
+- Intent Gap Pattern Detector specialist in
+  `packages/agents/src/intent-gap-pattern-detector/` (3-layer prompt
+  cache; LLM-clustering over recent free-text answers; emits
+  `manifest_proposals` rows with `proposal_type = 'intent_gap_option'`)
+- Manifest Gatekeeper extension: handle `proposal_type = 'intent_gap_option'`
+  per existing accept / reject / escalate flow; destructive change
+  flag routes to admin queue rather than auto-applying
+- BullMQ scheduled job in `packages/workers/src/workers/intent-gap-promotion.ts`:
+  weekly trigger, queries recent free-text answers per question
+  (`distinct user_id` within rolling window per admin config), invokes
+  the specialist, queues Gatekeeper review
+- Quality Evaluator refinements (`packages/agents/src/quality-evaluator/`):
+  sufficiency-threshold early-exit + filtered iteration in the iteration
+  loop logic. Eval cases extended to cover the new exit conditions.
+- Pattern & Cluster Analyzer output schema gains `summary`: one-sentence
+  rationale generated alongside the existing `reasoning`. Eval cases
+  extended.
+
+**Acceptance:**
+- Two seeded intent questions render correctly on both web UI and MCP
+  payload paths; round-trip submission stores them on the draft
+- Idempotency applies identically across both paths (per-tenant config
+  honored)
+- Pattern Detector + Gatekeeper extension propose option additions
+  end-to-end on a synthetic dataset of free-text answers
+- Quality Evaluator sufficiency-threshold and filtered iteration pass
+  evals; existing eval baselines remain passing or are re-baselined
+  with notes
+- Pattern & Cluster Analyzer `summary` field populated for multi-app
+  categories on canonical eval scenarios
+- Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+- Pre-PR redteam pass per CLAUDE.md cadence
+
+**Deferred to follow-up:**
+- MCP `submit_codebase_digest` and `revise_codebase_digest` I/O contract
+  updates to remove intent-gap operations and add the new pre-digest
+  intent fields (current spec section flags this; tracked in TODOS.md)
+- Tenant-scoped intent questions (forward-compatible via `owner` column;
+  MVP is global-only)
+- Review-screen rendering of pre-answered intent (Phase 4g design)
 
 ### 3.5b.5. Migration-mapping prompt fragment + Pass 2 per-target invocation `[Upcoming]`
 
@@ -1120,6 +1231,95 @@ fresh with subset-only context, or offer a toggle; (b) does the system
 surface a confidence/risk signal to the user when cross-target
 dependencies in the parent were load-bearing for those apps and a
 standalone analysis would likely diverge.
+
+---
+
+## Phase 3.5c — Agent slot + variant abstraction `[Upcoming]`
+
+Refactor agent registry from flat keys to slot + variant. Each slot
+supports an arbitrary number of named variants; variant keys are flat
+strings (`orchestration.textIntake`, `orchestration.codeAwareIntake`)
+with dots and underscores as naming convention. Runner resolves variant
+per run via a resolver function consuming `runContext` (intake mode,
+user id, tenant id, tier); default resolver dispatches by intake mode.
+Variant selection is config-driven per tenant via the standard `config`
+table (`owner = 'global'` default, `owner = tenant_id` override
+following the existing config-resolution pattern). MVP ships only
+`textIntake` variants populated; code-aware runs use the `textIntake`
+variants until specific agents are forked. Forking later: add registry
+entry, write prompt, build eval, extend the resolver. No surgery to
+FlowProducer, checkpoint reuse, or observability.
+
+**Motivation:** decided 2026-05-15. Long-term call is that 3-5 of the
+8-10 Wave 1+ agents will likely benefit from code-aware-specific
+reasoning over time (Orchestration most likely; Security and Skeptic
+plausible). Without the abstraction, switching later costs roughly 2-3x
+because flat keys are baked into Runner, FlowProducer wiring,
+checkpoint reuse, and observability. With it, forking is per-agent,
+incremental, and data-driven post-launch.
+
+**Tests first:**
+- Registry resolves slot to default variant when no override exists
+- Registry resolves slot to specified variant when config sets one
+- Runner picks variant per intake mode (`textIntake` vs
+  `codeAwareIntake`), falls back to default variant when
+  `codeAwareIntake` is not registered for that slot
+- Variant version hash differs from default's hash (separate prompt
+  file means separate version)
+- Checkpoint reuse keyed on variant key + version (`textIntake`
+  prompt changes do not invalidate `codeAwareIntake` checkpoints and
+  vice versa)
+- FlowProducer wires by slot name; variant selection happens at agent
+  invocation time
+- Eval framework can target a specific variant
+  (`pnpm --filter evals eval:orchestration:codeAwareIntake`)
+
+**Implementation:**
+- Registry refactor: each agent entry becomes
+  `{ slot, variants: { textIntake: {...}, codeAwareIntake?: {...} }, fallbackVariant: 'textIntake' }`
+  in `packages/agents/src/registry.ts` (or equivalent location).
+- Runner update: call the slot's resolver function with `runContext`
+  (intake mode, user id, tenant id, tier) to get the variant key; fall
+  back to `fallbackVariant` if resolver returns undefined. Resolver
+  reads per-tenant `config` overrides via the standard config-resolution
+  helper (`getConfig(key, tenantId)` falls back to `owner = 'global'`).
+- Version tracking: per-variant version hashes via the existing
+  `YYYY-MM-DD-{hash8}` pattern, computed per variant prompt file.
+- Checkpoint storage: `agent_version` column on `run_checkpoints`
+  carries `{slot}.{variant}@{hash8}`; reuse logic compares the full
+  string (variant key + hash).
+- BYOK resolution + observability labels run by `{slot}.{variant}`
+  rather than flat agent key.
+- Eval framework: `pnpm --filter evals eval:{slot}:{variant}` syntax
+  for targeting a specific variant.
+- Prompt files: existing files become the `textIntake` variant
+  entries; no rename at this phase. Suffix prompts with `_textIntake`
+  only when a `codeAwareIntake` variant is added for that slot.
+
+**Acceptance:**
+- All existing eval suites pass against `textIntake` variants (zero
+  behavior change for text-intake runs)
+- New unit tests on variant resolution + fallback pass
+- Adding a placeholder `codeAwareIntake` variant for one agent (test
+  fixture only) demonstrates the abstraction works end-to-end without
+  surgery elsewhere
+- Resolver-override fixture: a hypothetical tenant-scoped variant
+  resolves correctly when the tenant has an override `config` row, and
+  falls back to the intake-mode default for tenants without an override
+- Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+- Pre-PR redteam pass per CLAUDE.md cadence
+
+**Sequencing:** Lands after 3.5b (so the code-aware design pieces are
+coherent in the spec) and before any code-aware Wave 1+ variant forks
+(3.5b.6 may consume the abstraction). Independent of 3.5b.5
+(migration-mapping prompt fragment) and 3.5b.7 (subset re-runs).
+
+**Out of scope, deferred to follow-ups:**
+- Code-aware eval suite (P1 in TODOS.md). The suite generates the
+  evidence needed to decide which agents to fork; without it, the
+  abstraction has no live use case.
+- Per-agent fork decisions (each consumes this abstraction; tracked
+  separately when each fork happens).
 
 ---
 
