@@ -1,20 +1,23 @@
 # Handoff — Agentic Architecture Recommender
 
-## Current state (2026-05-14)
+## Current state (2026-05-15)
 
 Phases 0-3h **plus 3.4, 3.4.5, 3.4.6, 3.5a.1, 3.5a.1.b implementation
 complete.** Code-aware backend (Phase 3.5b) **design complete for
-3.5b.1 (Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer), and
+3.5b.1 (Quality Evaluator), 3.5b.2 (Pattern & Cluster Analyzer),
 3.5b.3 (MCP server: six-tool surface, full Tool I/O Zod contract with
 validation policy and pre-Zod normalization, two-tier idempotency
 dedup, sliding-TTL draft expiry with hard cap, authentication
-mechanics, response-driven iteration).** 3.5b.4 through 3.5b.7 are
-placeholder bullets pending their own design PRs. Remaining pre-UI
-work is the four backend wiring sub-phases of 3.5a (CV upstream,
-per-tool data availability, per-entry manifest versioning, correction
-exchange), plus 3.5b.4-7 design, plus implementation of the 3.5b
-backend agents and MCP server, plus a handful of P1 behavior items
-tracked in TODOS.md.
+mechanics, response-driven iteration), and 3.5b.4 (pre-digest intent
+collection plus Manifest Gatekeeper extension).** New Phase 3.5c
+(agent slot + variant abstraction) added as code-aware fork-readiness
+infrastructure. 3.5b.5 through 3.5b.7 are placeholder bullets pending
+their own design PRs. Remaining pre-UI work: the four backend wiring
+sub-phases of 3.5a (CV upstream, per-tool data availability,
+per-entry manifest versioning, correction exchange); 3.5b.5-7 design;
+implementation of the 3.5b backend agents and MCP server;
+implementation of 3.5c; plus a handful of P1 behavior items tracked
+in TODOS.md.
 
 **Recent merges (2026-05-07 to 2026-05-14):**
 - **PR #56**: Phase 3.4 — static analysis hardening (ESLint flat config,
@@ -237,20 +240,35 @@ must include `ENCRYPTION_KEY` (32-byte base64) and `ANTHROPIC_API_KEY`.
 **Code-aware backend (Phase 3.5b) — design path:**
 - 3.5b.3 design fully landed (PR #73 Tool I/O contract + PR #74 the
   remaining decisions). Implementation gating now removed.
-- 3.5b.4 through 3.5b.7 design (placeholder bullets in PLAN; will land
+- 3.5b.4 design landed this session block (pre-digest intent collection
+  plus Manifest Gatekeeper extension; outcome-gated execution principle
+  named and applied to Quality Evaluator + Pattern & Cluster Analyzer
+  refinements). Implementation gating now removed.
+- 3.5b.5 through 3.5b.7 design (placeholder bullets in PLAN; will land
   in their own focused PRs)
+- 3.5c (agent slot + variant abstraction) design landed this session
+  block as fork-readiness infrastructure for future code-aware Wave 1+
+  agent variants.
 
-**Code-aware backend (Phase 3.5b) — implementation path** (gated on
-design completion):
+**Code-aware backend (Phase 3.5b + 3.5c) — implementation path** (gated
+on design completion):
 - 3.5b.1 implementation (Quality Evaluator agent in
   `packages/agents/src/quality-evaluator/`, BullMQ worker, 3-layer cache,
-  self-iteration loop, server-side inference helpers, raw manifest
-  parsing)
+  self-iteration loop with four early-exit conditions including
+  sufficiency threshold and filtered iteration, server-side inference
+  helpers, raw manifest parsing)
 - 3.5b.2 implementation (Pattern & Cluster Analyzer agent + worker,
   per-category dispatch, single-app short-circuit, `cluster_analysis`
-  column migration, affected-only re-evaluation diff logic)
+  column migration including the new `summary` field, affected-only
+  re-evaluation diff logic)
 - 3.5b.3 implementation (MCP server in `packages/mcp/`, Railway
   deployment, HTTP+SSE transport, Bearer token auth)
+- 3.5b.4 implementation (seed 2 intent questions, web-UI form, MCP
+  payload fields, Intent Gap Pattern Detector specialist, Manifest
+  Gatekeeper extension, BullMQ promotion job)
+- 3.5c implementation (agent registry refactor to slot + variant,
+  resolver function with per-tenant config dispatch, checkpoint
+  storage updated)
 
 **Phase 3.5a behavior pieces** (in PLAN.md priority order):
 - **3.5a.2 — CV upstream wiring**: `queues.ts:46/49/56` passes `{}`
@@ -278,18 +296,22 @@ screen (4g placeholder added in plan), MCP server endpoint, Pass 2
 target-system selection UI, modification request submission UI,
 multi-provider BYOK key management UI, etc.
 
-## Spec doc state (2026-05-10)
+## Spec doc state (2026-05-15)
 
-`docs/spec.md` is at ~1,520 lines / ~26k words. This session block added
-significant new content for code-aware intake: MCP integration model
-subsection, expanded Quality evaluation and clarification loop, Pattern
-& Cluster Analyzer architecture details with structured output table,
-Cost transparency subsection, Per-dependency freshness badges
-subsection, plus five settled-decision row updates/additions covering
-the new architecture. Worth a re-read pass before any major spec change
-to catch references to retired patterns (e.g., the heuristic
-word-count layer that no longer exists; sub-component-level examples
-where product-level was standardized in PR #54).
+`docs/spec.md` is at ~1,570 lines. Recent restructure: digest schema
+went from three components (intake step pre-fills + per-app inventory +
+intent gaps) to one (per-app inventory) as project-level signals now
+derive from the inventory directly and intent moved to a pre-digest
+collection step. New "Pre-digest intent collection" subsection
+documents the two structured questions (target topology + timeline)
+plus optional constraints, plus the bimodal collection paths (web UI
+or MCP payload). Three new settled-decision rows added this session
+(outcome-gated execution; pre-digest intent collection; agent slot +
+variant abstraction); existing "Intent gap question evolution" row
+updated to drop the obsolete "Copilot matches" wording. MCP
+`submit_codebase_digest` tool description carries a forward-pointing
+note that its I/O contract subsection predates the pre-digest design
+and is updated in a follow-up PR.
 
 ## Deployment requirements
 
@@ -301,7 +323,7 @@ where product-level was standardized in PR #54).
 - **`GITHUB_TOKEN`** and **`NVD_API_KEY`** (both free): required before
   3h production traffic for CV API integration
 
-## Architecture decisions made this session block (2026-05-12 to 2026-05-14)
+## Architecture decisions made this session block (2026-05-12 to 2026-05-15)
 
 **MCP Tool I/O contract format (2026-05-13):** Per-tool envelopes
 described in prose-and-tables; shared shapes (`AppEntry`, `IntentGap`,
@@ -392,6 +414,72 @@ Stripe-only-idempotency concession (cost analysis showed implicit
 dedup was free, BYOK duplicate cost is real and unrecoverable);
 didYouMean id-matching rejection (asymmetric payoff favored skipping
 the suggestions). Captured as a feedback memory.
+
+**Outcome-gated execution (2026-05-15):** Pipeline work runs only when
+its outcome would shift the recommendation. Named as a cross-cutting
+principle and recorded as a settled-decision row. Applies at two
+grains: whole-work (catalog inclusion, surfaced gaps, iteration loops,
+retries, deep validation) and within-work (specific clarifying
+questions to attempt, specific cycles to run). Existing instances
+already in spec: Skeptic Advisory-floor early-exit, CV result cache,
+Pattern & Cluster Analyzer single-app short-circuit, Quality Evaluator
+score plateau. New refinements added this session: Quality Evaluator
+sufficiency threshold and filtered iteration; intent-gap catalog
+discipline; Pattern & Cluster Analyzer clarification-question scoping
+tightened. Companion principle to the outcome-lens (which is about
+evaluating designs; this one is about gating execution).
+
+**Pre-digest intent collection (2026-05-15):** Earlier "intent gaps as
+post-digest checklist" framing replaced by pre-digest collection of two
+structured questions (target topology, timeline pressure) plus optional
+free-text constraints, before the assistant produces the digest. Code
+cannot answer these; intent doesn't shape the digest itself; collecting
+earlier keeps the review screen focused on validating digest accuracy
+and lets Quality Evaluator and Pattern & Cluster Analyzer reason with
+intent during background passes. Bimodal collection: web UI session or
+inline MCP payload fields. Catalog lives in
+`manifest_intent_gap_questions` (already in migration 0010); MVP
+seeds 2 entries with `owner = 'global'`. Manifest Gatekeeper extension
+evolves option lists from free-text patterns over time. Implementation
+in PLAN.md 3.5b.4.
+
+**Digest schema simplification (2026-05-15):** Removed intake step
+pre-fills from the digest. Wave 1+ agents derive project-level signals
+(deployed platform, dominant language, observed scale signals,
+external integrations) from the per-app inventory directly rather than
+consuming pre-baked intake-step values. Aligns with the "code-aware
+user does not walk through the 11-step intake" clarification and the
+"agents do the heavy lifting from an 85%-correct digest" lens. Per-app
+inventory is now the digest's one primary component; intent comes
+separately pre-digest.
+
+**Agent slot + variant abstraction (2026-05-15):** Registry refactor
+from flat agent keys to slot + variant structure. Each slot supports
+N variants (flat string keys, dots/underscores as naming convention);
+Runner resolves variant per run via a resolver function consuming
+`runContext` (intake mode, user id, tenant id, tier). Variant
+selection is config-driven per tenant via the standard `config` table.
+MVP ships only `textIntake` variants populated; code-aware runs use
+`textIntake` until specific agents are forked. Built now as
+fork-readiness infrastructure: gut on the long-term call is that 3-5
+of the 8-10 Wave 1+ agents will likely benefit from code-aware-
+specific reasoning over time. Without the abstraction, forking later
+costs ~2-3x because flat keys are baked into Runner, FlowProducer,
+checkpoint reuse, and observability. Resolver-function shape supports
+future dimensions (A/B testing, tier-based, tenant-scoped) without
+restructure. Implementation in PLAN.md 3.5c.
+
+**User-correctable accuracy lens (2026-05-15):** Calibrate accuracy
+targets to 85-90% (not 100%) for inference steps that have a user
+review/correction surface downstream. Asymmetric-payoff arguments
+(used to justify strict validation in load-bearing flows like
+didYouMean-for-ids) apply only to flows the user never sees; they
+don't apply to inference values the user reviews before they reach
+load-bearing input. Captured as a feedback memory. Recalibrated
+several design pushbacks this session including server-side
+opportunistic intent-gap matching (initially retracted as
+asymmetric-payoff-bad, restored after the lens revealed questionId
+is metadata not load-bearing input).
 
 ## Architecture decisions made in earlier session block (2026-05-07 to 2026-05-10)
 
