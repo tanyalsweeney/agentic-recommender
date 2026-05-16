@@ -905,37 +905,43 @@ architecture.
   after `update_codebase_digest` or `revise_codebase_digest`
 
 *Idempotency Tier 1 (explicit, assistant supplies `idempotencyKey`):*
+- Applies to both `submit_codebase_digest` and `revise_codebase_digest`
 - Same key + identical payload returns the cached response with
   `dedupedFromRecentSubmit: true` and `dedupePath: "explicit"`; no new
-  draft, no new eval, no additional BYOK billing
+  state change, no new eval, no additional BYOK billing
 - Same key + different payload returns `partialFailures` entry with
-  `code: idempotency_collision` and `isError: true`; no draft created
-- Fresh key (no prior entry) processes as a new submit and creates a
-  new draft; Tier 2 implicit cache is NOT consulted on keyed submits
-- Redis-backed key store with 24-hour TTL; keys scoped to
-  `{user_id, idempotencyKey}`
+  `code: idempotency_collision` and `isError: true`; no state change
+- Fresh key (no prior entry) processes as a new call; Tier 2 implicit
+  cache is NOT consulted on keyed calls
+- Redis-backed key store with 24-hour TTL. Submit scoping:
+  `{user_id, idempotencyKey}`. Revise scoping:
+  `{user_id, draftId, idempotencyKey}` so retries across drafts
+  cannot collide.
 
 *Idempotency Tier 2 (implicit, no `idempotencyKey` supplied):*
-- No key + payload hash matching a recent same-user submit within the
-  implicit dedup window returns the cached response with
-  `dedupedFromRecentSubmit: true` and `dedupePath: "implicit"`; no new
-  draft, no new eval, no additional BYOK billing
-- No key + non-matching payload creates a new draft and stores a new
+- Applies to both `submit_codebase_digest` and `revise_codebase_digest`
+- No key + payload hash matching a recent same-user (and, for revise,
+  same-draft) call within the implicit dedup window returns the cached
+  response with `dedupedFromRecentSubmit: true` and
+  `dedupePath: "implicit"`; no new state change, no new eval, no
+  additional BYOK billing
+- No key + non-matching payload processes normally and stores a new
   implicit cache entry
 - No key + matching payload after the implicit window has expired
-  processes as a new submit (window TTL drives the freshness boundary)
-- Implicit cache is `{user_id, request_hash} → response` in Redis with
-  TTL `codebase_digest_drafts.implicit_dedup_window_minutes` (default
-  5, per-tenant configurable)
+  processes as a new call (window TTL drives the freshness boundary)
+- Implicit cache key. Submit: `{user_id, request_hash} → response`.
+  Revise: `{user_id, draftId, request_hash} → response`. Redis TTL is
+  `codebase_digest_drafts.implicit_dedup_window_minutes` (default 5,
+  per-tenant configurable).
 - Per-tenant override of `implicit_dedup_window_minutes` is honored at
   both cache read and cache write times
 
 *Precedence and override:*
-- Fresh `idempotencyKey` + payload matching a recent un-keyed submit:
-  Tier 1 wins, server processes as a new submit, implicit cache is
+- Fresh `idempotencyKey` + payload matching a recent un-keyed call:
+  Tier 1 wins, server processes as a new call, implicit cache is
   bypassed (explicit always beats implicit)
-- Keyed submit writes to Tier 1 cache only (not Tier 2); un-keyed
-  submit writes to Tier 2 cache only (not Tier 1)
+- Keyed call writes to Tier 1 cache only (not Tier 2); un-keyed call
+  writes to Tier 2 cache only (not Tier 1)
 
 *Draft expiry:*
 - Every read or write access (any MCP tool + web-UI review screen load)
@@ -981,16 +987,16 @@ architecture.
 - `packages/mcp/src/partial-failure.ts`: `PartialFailure` builder plus
   `didYouMean` helper (Levenshtein distance up to 2 against the valid
   set for field names and enum values; never against ids)
-- `packages/mcp/src/idempotency.ts`: two-tier Redis-backed dedup.
-  Tier 1 explicit: `{user_id, idempotencyKey} → {request_hash,
-  response}` with 24h TTL, collision detection on hash mismatch emits
-  `idempotency_collision` partialFailure. Tier 2 implicit: `{user_id,
-  request_hash} → response` with TTL from
-  `codebase_digest_drafts.implicit_dedup_window_minutes` (default 5,
-  per-tenant configurable). Mode selection: keyed submits use Tier 1
-  only (read and write); un-keyed submits use Tier 2 only. Helper
-  emits `dedupedFromRecentSubmit` and `dedupePath` fields on the
-  response.
+- `packages/mcp/src/idempotency.ts`: two-tier Redis-backed dedup for
+  `submit_codebase_digest` and `revise_codebase_digest`. Cache key
+  builder takes `(toolName, userId, draftId | null, keyOrHash)`;
+  revise always passes `draftId`, submit passes `null`. Tier 1
+  explicit (24h TTL) with collision detection on hash mismatch emits
+  `idempotency_collision` partialFailure. Tier 2 implicit with TTL
+  from `codebase_digest_drafts.implicit_dedup_window_minutes` (default
+  5, per-tenant configurable). Mode selection: keyed calls use Tier 1
+  only (read and write); un-keyed calls use Tier 2 only. Helper emits
+  `dedupedFromRecentSubmit` and `dedupePath` fields on the response.
 - `packages/mcp/src/draft-expiry.ts`: helper computing new
   `expires_at` on every draft access (`min(now() + sliding_ttl_days,
   created_at + max_lifetime_days)`); reads per-tenant config via
@@ -1054,18 +1060,9 @@ architecture.
   consistent across all per-entry validation failures
 - Integration test for full submit → poll → clarification-response flow
   passes with mocked Quality Evaluator
-- Idempotency Tier 1: same-key + same-payload returns cached response
-  with `dedupedFromRecentSubmit: true` and `dedupePath: "explicit"`;
-  same-key + different-payload returns `idempotency_collision`; fresh
-  key creates a new draft and bypasses Tier 2
-- Idempotency Tier 2: no key + payload hash matching recent same-user
-  submit within the implicit dedup window returns cached response with
-  `dedupePath: "implicit"`; no key + non-matching payload creates a
-  new draft; window expiry causes implicit cache miss; per-tenant
-  override of `implicit_dedup_window_minutes` honored
-- Explicit beats implicit: fresh `idempotencyKey` + payload matching a
-  recent un-keyed submit creates a new draft (Tier 1 wins, Tier 2 not
-  consulted)
+- Idempotency: Tests first bullets above cover end-to-end behavior for
+  both `submit_codebase_digest` and `revise_codebase_digest` across
+  Tiers 1 / 2 and the precedence rule. No separate acceptance assertions.
 - Draft expiry: every access bumps `expires_at` within the per-tenant
   sliding TTL; hard cap honored; daily cleanup deletes expired drafts
   and cancels in-flight evaluator and analyzer jobs; concurrent MCP
@@ -1187,10 +1184,14 @@ answer patterns to curated options over time. See spec.md
 - Pre-PR redteam pass per CLAUDE.md cadence
 
 **Per-app schema expansion (rolled in):**
-- `AppEntry` gains five inferential fields, all `string or null`,
-  populated by the assistant during digest production: `currentDecisionMaking`,
-  `humanInTheLoop`, `stateAndMemory`, `dataSensitivity`, `failureModes`.
-  Field semantics per spec.md "Per-app inventory."
+- `AppEntry` gains two inferential fields, both `string or null`,
+  populated by the assistant during digest production: `currentDecisionMaking`
+  and `humanInTheLoop`. Field semantics and example outputs per spec.md
+  "Per-app inventory." (Three additional fields specced in the initial
+  2026-05-16 design were rolled back the same day: `stateAndMemory`,
+  `dataSensitivity`, `failureModes` were partially derivable from
+  existing fields and the marginal signal didn't justify the per-app
+  cognitive load.)
 - `AppEntryCreate` inherits the new fields. `AppEntryUpdate` partial-merge
   semantics apply (absent = no change, value = set, explicit null = clear
   for nullable fields).
@@ -1199,55 +1200,80 @@ answer patterns to curated options over time. See spec.md
   assistant's clarification loop.
 
 **Multi-part submission and deferred eval (rolled in):**
-- `submit_codebase_digest` accepts optional `final: true` on input.
-  When set, server flips draft status to `evaluating` immediately and
-  enqueues Quality Evaluator + Pattern & Cluster Analyzer. When absent,
-  status is `intake-in-progress`.
-- `revise_codebase_digest` accepts `final: true` (intake complete, full
-  eval) and optional `triggerEvalNow: true` (mid-stream Quality
-  Evaluator only; Pattern & Cluster Analyzer still defers).
-- Empty `revise_codebase_digest` body is valid IFF accompanied by
-  `final: true` or `triggerEvalNow: true`.
+- `final` defaults to `true` on both `submit_codebase_digest` and
+  `revise_codebase_digest`. Single-shot assistants do nothing special;
+  multi-part assistants explicitly send `final: false` on the initial
+  submit and intermediate revises, then accept the default on the final
+  revise.
+- Resolved `final: true` flips status from `intake-in-progress` to
+  `evaluating` and enqueues Quality Evaluator + Pattern & Cluster
+  Analyzer against the complete inventory.
+- Empty `revise_codebase_digest` body is valid when resolved `final` is
+  `true` (default or explicit); explicit `final: false` with empty body
+  returns `isError: true`.
 - Idle-timeout backstop: BullMQ scheduled job sweeps `intake-in-progress`
   drafts with `updated_at < now() - multi_part_idle_timeout_minutes`
   (default 30, per-tenant configurable), flips status to `evaluating`,
   enqueues eval, sets a cut-short flag on the completion email.
 - Token savings on partial-submission flows: 60-80% versus firing eval
   per part.
+- `triggerEvalNow` opt-in mid-stream Quality Evaluator is deferred
+  post-MVP. The schema flag, handler, and per-app peer-set tracking add
+  significant complexity (the `productCategory` peer-shift re-eval rule
+  exists only to clean up after mid-stream runs) for a feature with
+  unproven demand. Re-add as a clean additive feature if a customer asks.
+
+**Revise idempotency (rolled in):**
+- `revise_codebase_digest` gains the same two-tier dedup as
+  `submit_codebase_digest`, with `draftId` added to the cache key
+  scope. Full design + implementation lives in 3.5b.3.
+
+**Email-only URL provisioning (rolled in):**
+- Submit response carries `draftUrl` for assistant introspection only.
+  Tool response guidance instructs the assistant to tell the user
+  "submitted; you'll get an email when it's ready" without surfacing
+  the URL.
+- Completion email (Quality Evaluator + Pattern & Cluster Analyzer
+  both done) carries the draft URL. User's first sight of the URL is
+  the email.
 
 **Tests first (additions):**
-- `AppEntry` Zod validation passes for the five new fields with set or
+- `AppEntry` Zod validation passes for the two new fields with set or
   null values; `AppEntryUpdate` partial-merge correctly clears, sets,
   and preserves each
-- `submit_codebase_digest` with `final: true` returns status `evaluating`
-  and enqueues full eval; without `final`, returns `intake-in-progress`
-  and enqueues nothing
-- `revise_codebase_digest` with `final: true` flips status from
-  `intake-in-progress` to `evaluating` and enqueues full eval
-- `revise_codebase_digest` with `triggerEvalNow: true` enqueues Quality
-  Evaluator (not Pattern & Cluster Analyzer); status stays
-  `intake-in-progress`
-- `revise_codebase_digest` with empty body plus `final: true` or
-  `triggerEvalNow: true` is valid (no `isError`)
-- `revise_codebase_digest` with empty body and no signal flags returns
-  `isError: true` (existing rule unchanged)
+- `submit_codebase_digest` with `final` omitted (default true) returns
+  status `evaluating` and enqueues full eval; explicit `final: false`
+  returns `intake-in-progress` and enqueues nothing
+- `revise_codebase_digest` with `final` omitted (default true) or
+  explicit `final: true` flips status from `intake-in-progress` to
+  `evaluating` and enqueues full eval
+- `revise_codebase_digest` with empty body and default-resolved
+  `final: true` is valid (no `isError`); empty body with explicit
+  `final: false` returns `isError: true`
 - Idle-timeout job correctly identifies stale `intake-in-progress`
   drafts and enqueues eval; completion email carries the cut-short flag
+- Revise idempotency Tier 1: same `{user_id, draftId, key}` + same
+  payload returns cached; different payload returns
+  `idempotency_collision`
+- Revise idempotency Tier 2: same `{user_id, draftId, hash}` within
+  window returns cached with `dedupePath: "implicit"`; outside window
+  processes normally
+- Completion email rendering includes the draft URL; tool response
+  guidance asserts the assistant should not surface the URL
 
 **Implementation (additions):**
-- Zod schema additions in `packages/mcp/src/schemas/` for the five new
-  `AppEntry` fields and the `final` / `triggerEvalNow` input flags on
-  `submit_codebase_digest` and `revise_codebase_digest`
+- Zod schema additions in `packages/mcp/src/schemas/` for the two new
+  `AppEntry` fields and the `final` input flag on
+  `submit_codebase_digest` and `revise_codebase_digest` (defaulting to
+  true via Zod `.default(true)`)
 - `codebase_digest_drafts` schema: `status` column accepts the new
   `intake-in-progress` value alongside the existing `evaluating`; check
   if migration is needed or the column is already free-form text
 - Server logic in `packages/mcp/src/tools/` to:
   - Apply incremental create / update / delete to draft state without
-    triggering eval when no signal flag is present
-  - Enqueue Quality Evaluator + Pattern & Cluster Analyzer on
+    triggering eval when resolved `final` is `false`
+  - Enqueue Quality Evaluator + Pattern & Cluster Analyzer on resolved
     `final: true`
-  - Enqueue Quality Evaluator only on `triggerEvalNow: true`; Pattern
-    & Cluster Analyzer never fires mid-stream
 - BullMQ scheduled job in
   `packages/workers/src/workers/intake-idle-timeout.ts`: runs every 5
   minutes, sweeps stale `intake-in-progress` drafts past the configured
@@ -1255,26 +1281,35 @@ answer patterns to curated options over time. See spec.md
 - New admin config row: `codebase_digest_drafts.multi_part_idle_timeout_minutes`
   (default 30, per-tenant configurable)
 - Update Quality Evaluator's L3 enrichment and scoring rubric to factor
-  in the five new fields; surface `pendingClarifications` when fields
+  in the two new fields; surface `pendingClarifications` when fields
   are missing or weak
 - Update Pattern & Cluster Analyzer's per-category prompts to consume
   `currentDecisionMaking` content when present for consolidation
   reasoning
+- Extend `packages/mcp/src/idempotency.ts` to handle revise: cache key
+  includes `draftId`; otherwise reuses existing Tier 1 / Tier 2 helper
+- Tool response guidance template for `submit_codebase_digest`: append
+  the "submitted; you'll get an email when it's ready" instruction
+  alongside the existing polling guidance
+- Completion email template: include draft URL prominently (first
+  surfacing for the user)
 
 **Acceptance (additions):**
-- All five new `AppEntry` fields round-trip through submit / revise /
+- Both new `AppEntry` fields round-trip through submit / revise /
   get_codebase_draft / get_pending_clarifications / update_codebase_digest
   correctly
-- Single-shot submit with `final: true` produces one Quality Evaluator
-  pass and one Pattern & Cluster Analyzer pass against the complete
-  inventory
-- Multi-part flow (3 parts + final) coalesces to one Quality Evaluator
-  pass and one Pattern & Cluster Analyzer pass against the complete
-  inventory
-- Multi-part with `triggerEvalNow` in the middle produces a Quality
-  Evaluator pass at the trigger point and a full eval pass after `final`
+- Single-shot submit (default `final: true`) produces one Quality
+  Evaluator pass and one Pattern & Cluster Analyzer pass against the
+  complete inventory
+- Multi-part flow (initial submit with `final: false` + 3 revises with
+  `final: false` + final revise) coalesces to one Quality Evaluator pass
+  and one Pattern & Cluster Analyzer pass against the complete inventory
 - Idle-timeout backstop fires correctly; completion email indicates
   cut-short status
+- Revise idempotency: Tier 1 and Tier 2 both work end-to-end with
+  draftId-scoped keys; cross-draft retries do not collide
+- Submit / revise responses include `draftUrl` but no email is sent
+  until eval completes; completion email contains the URL
 
 **Deferred to follow-up:**
 - MCP `submit_codebase_digest` and `revise_codebase_digest` I/O contract
