@@ -1319,13 +1319,129 @@ answer patterns to curated options over time. See spec.md
   MVP is global-only)
 - Review-screen rendering of pre-answered intent (Phase 4g design)
 
-### 3.5b.5. Migration-mapping prompt fragment + Pass 2 per-target invocation `[Upcoming]`
+### 3.5b.5. Pass 2 per-target invocation + migration-mapping prompt fragment `[Upcoming]`
 
-Spec Synthesizer migration-mapping specialist prompt fragment. Pass 1
-consolidation surfacing logic (full prose / brief callout / omitted by
-assessment magnitude and user intent). Pass 2 runs once per selected
-target system. Migration orchestration overview when multiple targets
-identified. Detailed design TBD.
+Per-target Pass 2 invocation model for code-aware runs. Each target
+identified at Pass 1 is an independent purchase. Per-target run
+re-pipelines Waves 1-3 + Skeptic on the live digest filtered to the
+target's current app membership, with Pattern & Cluster Analyzer
+bypassed. Cross-target context comes from parent Pass 1's migration
+orchestration overview, auto-refreshed if digest has drifted. See
+spec.md "Per-target Pass 2 invocation" for the full architecture.
+
+**Settled architecture:**
+
+- One Pass 2 per target system, independently selected/billed/delivered
+  ($199 each + BYOK)
+- `runs.parent_run_id` (uuid nullable, FK runs.id) links per-target
+  Pass 2 runs to their code-aware Pass 1 origin
+- Per-target run flow: re-pipeline Waves 1-3 + Skeptic on live subset
+  → render (7 spec specialists + 1 plan) → store deliverable on
+  `runs.pass2_output`
+- PCA bypass on re-pipeline: feed filtered slice of parent's PCA
+  output as context, no LLM call
+- Cross-target overview: parent's overview used as-is; auto-refresh
+  fires at Pass 2 purchase time if digest has drifted in ways
+  affecting cross-target boundaries (additions OR subtractive changes
+  that flip cross-target dependency status); one Technical
+  Writer-equivalent LLM call on BYOK, no service fee
+- Drift detection: deterministic comparison of pre-revision vs
+  post-revision per-target dependency graphs
+- Buy buttons reflect live target list (current PCA output + strategy
+  answers); parent Pass 1 deliverable stays as historical artifact
+- Pass 2 deliverable annotation: "based on cross-target analysis as
+  of [timestamp]"
+- Plan Synthesizer for per-target receives filtered per-app inventory
+  + cross-target overview (plans can reference shared services as
+  prerequisites without re-planning them)
+- Migration-mapping specialist prompt fragment: input is shared
+  upstream Wave 1-3 + filtered per-app inventory + filtered PCA
+  output for contributing categories + cross-target overview; output
+  is one structured Migration Mapping section (per-app disposition +
+  migration notes)
+- Skeptic re-runs as part of the per-target re-pipeline; per-target
+  caveats may differ from parent Pass 1 caveats
+
+**Tests first:**
+
+- `runs.parent_run_id` schema: nullable FK to runs.id; cascade
+  behavior on parent delete
+- Per-target Pass 2 run creation: clicking buy creates new `runs` row
+  with `parent_run_id`, `tier='pass2'`, inherits `verified_context`
+  from parent
+- Re-pipeline scope filtering: target's current app membership pulled
+  from live `codebase_digest_drafts` filtered to PCA's current
+  categorization + user strategy answer for the target
+- PCA bypass: per-target re-pipeline does not enqueue a PCA worker
+  job; parent's PCA output filtered to subset categories is fed to
+  Waves 1-3 as context
+- Drift detection: structural diff of pre-revision vs post-revision
+  per-target dependency graphs; fires on additions OR
+  cross-target-boundary-affecting subtractive changes
+- Auto-refresh trigger: Pass 2 purchase fires overview refresh before
+  re-pipeline when drift detected; refresh fires exactly once per
+  purchase
+- Refresh content: one LLM call producing updated overview; refreshed
+  overview persists on parent run alongside original
+- Live buy buttons: target list rendered from current PCA output;
+  parent Pass 1 deliverable unchanged
+- Migration-mapping specialist: Zod schema for input and output
+  (disposition table + per-app notes)
+- Migration-mapping prompt fragment: produces Migration Mapping
+  section matching schema on canonical eval scenarios
+- Spec assembly for code-aware: six standard sections in canonical
+  order + Migration Mapping appended; TOC + intros generated
+  mechanically
+- Plan Synthesizer per-target: receives assembled spec + cross-target
+  overview; produces plan where phases reference Migration Mapping
+  entries
+- Per-target Skeptic: runs on subset, may surface caveats parent
+  didn't carry
+- Eval cases under `packages/evals/src/migration-mapping/` for
+  canonical scenarios
+
+**Implementation:**
+
+- Migration: add `runs.parent_run_id` column (uuid nullable, FK
+  runs.id)
+- BullMQ flow for per-target Pass 2: parent job → re-pipeline
+  (Waves 1-3 + Skeptic on filtered subset) → 7 spec specialists in
+  parallel (including migration-mapping) → assembly → plan child
+- Auto-refresh logic in pre-Pass-2 hook: compare per-target
+  dependency graphs at parent Pass 1 time vs current; if drift
+  detected, fire overview-refresh LLM call before enqueueing
+  re-pipeline
+- Drift detection helper: structural graph diff, deterministic
+  (no LLM)
+- Migration-mapping specialist prompt + Zod schema in
+  `packages/agents/src/migration-mapping/`
+- Live target list computation: deterministic from current PCA +
+  strategy answers, no LLM call
+- Pass 2 deliverable annotation: cross-target overview timestamp
+  included in deliverable metadata
+- Pre-Pass-2 dispatcher in
+  `packages/workers/src/workers/pass2-per-target.ts`: drift check,
+  conditional overview refresh, re-pipeline orchestration
+- Pass-2-purchase API in `packages/web/` (Phase 4 frontend ships UI;
+  this PR ships the data contract)
+
+**Acceptance:**
+
+- Buying Pass 2 for a target produces a deliverable scoped to that
+  target's apps, with the six architecture sections instantiated for
+  the target
+- Migration Mapping section names each existing app's disposition
+  (replaced/consolidated/retained/retired) with per-app notes
+- Plan phases reference Migration Mapping entries explicitly
+- PCA worker job does not fire during per-target Pass 2
+- Auto-refresh fires only when drift detected; otherwise the
+  per-target run uses parent's overview as-is
+- Pass 2 deliverable annotation includes the cross-target overview
+  timestamp
+- `runs.parent_run_id` enables querying all per-target deliverables
+  for a code-aware Pass 1
+- Phase 3.4 checks pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+- Pre-PR redteam pass per CLAUDE.md cadence
 
 ### 3.5b.6. CV isPrivate cache bypass + Skeptic consolidation reconciliation + code-aware BYOK gate + tenant communication context resolver `[Upcoming]`
 
